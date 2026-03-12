@@ -967,34 +967,101 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /** Alias groups: when an override sets one key, propagate to siblings so pickFirstValue works regardless of order. */
 const PROP_ALIAS_GROUPS: readonly (readonly string[])[] = [
     ['title', 'headline', 'heading'],
-    ['subtitle', 'subheading', 'description', 'body'],
-    ['button', 'buttonText', 'button_text', 'ctaText', 'cta_text', 'label'],
-    ['button_url', 'buttonLink', 'button_link', 'ctaLink', 'cta_link', 'href', 'url'],
-    ['backgroundImage', 'background_image', 'image', 'image_url'],
+    ['subtitle', 'subheading', 'description', 'body', 'copy', 'text'],
+    ['button', 'buttonText', 'button_text', 'buttonLabel', 'button_label', 'ctaText', 'cta_text', 'ctaLabel', 'cta_label', 'label', 'submit_label'],
+    ['button_url', 'buttonLink', 'button_link', 'buttonUrl', 'ctaLink', 'cta_link', 'ctaUrl', 'cta_url', 'href', 'url'],
+    ['backgroundImage', 'background_image', 'image', 'image_url', 'imageUrl'],
 ];
 
-function getAliasGroup(key: string): readonly string[] | null {
+export function getComponentPropAliasGroup(key: string): readonly string[] | null {
     for (const group of PROP_ALIAS_GROUPS) {
         if (group.includes(key)) return group;
     }
     return null;
 }
 
-function mergeResolvedProps(base: Record<string, unknown>, overrides: Record<string, unknown>): Record<string, unknown> {
+export function expandComponentPropAliasPath(path: string | null | undefined): string[] {
+    const normalizedSegments = String(path ?? '')
+        .split('.')
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+    if (normalizedSegments.length === 0) {
+        return [];
+    }
+
+    const lastSegment = normalizedSegments[normalizedSegments.length - 1] ?? '';
+    const aliasGroup = getComponentPropAliasGroup(lastSegment);
+    if (!aliasGroup) {
+        return [normalizedSegments.join('.')];
+    }
+
+    const prefix = normalizedSegments.slice(0, -1);
+    return Array.from(new Set(aliasGroup.map((alias) => [...prefix, alias].join('.'))));
+}
+
+function normalizeComparablePropPath(path: string): string {
+    return path
+        .split('.')
+        .map((segment) => segment.trim())
+        .filter((segment) => segment !== '' && !/^\d+$/.test(segment))
+        .join('.');
+}
+
+function collectSchemaComparablePropPaths(schema: BuilderComponentSchema | null): Set<string> {
+    const comparablePaths = new Set<string>();
+
+    schema?.fields.forEach((field) => {
+        const fieldPath = normalizeComparablePropPath(field.path);
+        if (fieldPath !== '') {
+            comparablePaths.add(fieldPath);
+        }
+
+        field.itemFields?.forEach((itemField) => {
+            const nestedPath = normalizeComparablePropPath(`${field.path}.${itemField.path}`);
+            if (nestedPath !== '') {
+                comparablePaths.add(nestedPath);
+            }
+        });
+    });
+
+    return comparablePaths;
+}
+
+function shouldPropagateAliasPath(
+    aliasPath: string,
+    comparableSchemaPaths: Set<string> | null,
+): boolean {
+    if (!comparableSchemaPaths || comparableSchemaPaths.size === 0) {
+        return false;
+    }
+
+    const comparableAliasPath = normalizeComparablePropPath(aliasPath);
+    return comparableSchemaPaths.has(comparableAliasPath);
+}
+
+function mergeResolvedProps(
+    base: Record<string, unknown>,
+    overrides: Record<string, unknown>,
+    comparableSchemaPaths: Set<string> | null = null,
+    pathPrefix: string[] = [],
+): Record<string, unknown> {
     const next: Record<string, unknown> = { ...base };
 
     Object.entries(overrides).forEach(([key, value]) => {
         const current = next[key];
         if (isPlainObject(current) && isPlainObject(value)) {
-            next[key] = mergeResolvedProps(current, value);
+            next[key] = mergeResolvedProps(current, value, comparableSchemaPaths, [...pathPrefix, key]);
             return;
         }
 
         next[key] = value;
-        const group = getAliasGroup(key);
+        const group = getComponentPropAliasGroup(key);
         if (group && !isPlainObject(value)) {
             group.forEach((alias) => {
-                next[alias] = value;
+                const aliasPath = [...pathPrefix, alias].join('.');
+                if (shouldPropagateAliasPath(aliasPath, comparableSchemaPaths)) {
+                    next[alias] = value;
+                }
             });
         }
     });
@@ -2093,8 +2160,9 @@ export function resolveComponentProps(registryId: string, propsInput: unknown): 
     const runtimeEntry = getComponentRuntimeEntry(registryId);
     const defaults = runtimeEntry?.defaults ?? getDefaultProps(registryId);
     const overrides = parseComponentProps(propsInput);
+    const comparableSchemaPaths = collectSchemaComparablePropPaths(runtimeEntry?.schema ?? null);
 
-    return mergeResolvedProps(defaults, overrides);
+    return mergeResolvedProps(defaults, overrides, comparableSchemaPaths);
 }
 
 export function getComponentSchemaJson(registryId: string): Record<string, unknown> | null {

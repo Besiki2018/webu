@@ -82,8 +82,6 @@ import {
     type WorkspaceBuilderCodePage as BuilderCodePage,
     type WorkspaceBuilderStructureItem as BuilderStructureItem,
 } from '@/builder/cms/workspaceBuilderSync';
-import { BuilderSidebarFrame } from '@/builder/chat/BuilderSidebarFrame';
-import { BuilderPreviewFrame } from '@/builder/chat/BuilderPreviewFrame';
 import { useGeneratedCodePreview } from '@/builder/chat/useGeneratedCodePreview';
 import {
     buildOptimisticInsertedStructureItems,
@@ -91,8 +89,10 @@ import {
     createPendingBuilderSelectionSnapshot,
     type PendingBuilderStructureMutation,
 } from '@/builder/cms/chatBuilderStructureMutations';
-import { useBuilderWorkspace, type BuilderLibraryItem } from '@/builder/chat/useBuilderWorkspace';
+import { buildBuilderPreviewUrl, useBuilderWorkspace, type BuilderLibraryItem } from '@/builder/chat/useBuilderWorkspace';
 import { buildCanonicalBridgeSelectedTargetPayload } from '@/builder/cms/canonicalSelectionPayload';
+import { BuilderWorkspaceShell } from '@/builder/workspace/BuilderWorkspaceShell';
+import { BuilderPreviewSurface } from '@/builder/workspace/BuilderPreviewSurface';
 
 const FileTree = lazy(async () => ({ default: (await import('@/components/Code/FileTree')).FileTree }));
 const CodeEditor = lazy(async () => ({ default: (await import('@/components/Code/CodeEditor')).CodeEditor }));
@@ -715,6 +715,11 @@ export default function Chat({
         : effectivePreviewUrl
             ? t('Live preview ready')
             : t('Waiting for your first build');
+    const builderPreviewUrl = buildBuilderPreviewUrl(
+        viewMode as 'preview' | 'inspect' | 'design',
+        effectivePreviewUrl,
+        effectivePreviewUrlWithOverrides,
+    );
     const creditLabel = credits.isUnlimited
         ? t('Unlimited builds')
         : t(':count builds left', { count: credits.remaining });
@@ -1887,6 +1892,413 @@ export default function Chat({
         </div>
     );
 
+    const workspaceSidebarContent = (
+        <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col md:w-auto">
+            {startError && (
+                <div className="mx-6 mt-4 flex shrink-0 items-center justify-between gap-3 rounded-[16px] border border-amber-300/50 bg-amber-50 px-4 py-3">
+                    <p className="text-sm text-amber-950">
+                        {t('Builder is offline. Start it with "composer dev" or run "bash scripts/start-local-builder.sh".')}
+                    </p>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void retryStart()}
+                        className="rounded-full border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                    >
+                        {t('Retry')}
+                    </Button>
+                </div>
+            )}
+
+            <div className="workspace-sidebar-content">
+                <div
+                    className={cn(
+                        'workspace-sidebar-chat-column',
+                        viewMode === 'inspect' && 'workspace-sidebar-chat-column--inspect',
+                    )}
+                >
+                    {viewMode === 'inspect' ? (
+                        <div className="workspace-builder-pane">
+                            <div className="workspace-builder-inline-shell">
+                                <div
+                                    className={cn(
+                                        'workspace-builder-library-shell',
+                                        builderPaneMode !== 'elements' && 'workspace-builder-library-shell--hidden',
+                                    )}
+                                >
+                                    {groupedBuilderLibraryItems.length > 0 ? (
+                                        <div className="workspace-builder-library-list">
+                                            {groupedBuilderLibraryItems.map((group) => (
+                                                <section key={group.category} className="workspace-builder-library-group">
+                                                    <div className="workspace-builder-library-group-header">
+                                                        <div className="workspace-builder-library-group-title">
+                                                            <Layers className="h-4 w-4" />
+                                                            <span>{group.categoryLabel}</span>
+                                                        </div>
+                                                        <span className="workspace-builder-library-group-count">
+                                                            {group.items.length}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="workspace-builder-library-grid">
+                                                        {group.items.map((item) => {
+                                                            const IconComponent = resolveBuilderWidgetIcon(item.key, item.category);
+
+                                                            return (
+                                                                <button
+                                                                    key={item.key}
+                                                                    type="button"
+                                                                    draggable
+                                                                    onPointerDown={(event) => {
+                                                                        if (event.button === 0) {
+                                                                            inspectLog('sidebar: setActiveLibraryItem (pointer)', item.key);
+                                                                            setActiveLibraryItem(item);
+                                                                        }
+                                                                    }}
+                                                                    onClick={() => handleLibraryItemActivate(item)}
+                                                                    onDragStart={(event) => {
+                                                                        event.dataTransfer.effectAllowed = 'copy';
+                                                                        event.dataTransfer.setData('text/plain', item.key);
+                                                                        inspectLog('sidebar: dragStart', item.key);
+                                                                        setActiveLibraryItem(item);
+                                                                    }}
+                                                                    onDragEnd={() => {
+                                                                        inspectLog('sidebar: dragEnd');
+                                                                        setActiveLibraryItem(null);
+                                                                    }}
+                                                                    className={cn(
+                                                                        'workspace-builder-library-card flex flex-col items-center justify-center text-center gap-1.5 min-h-[72px]',
+                                                                        activeLibraryItem?.key === item.key && 'workspace-builder-library-card--active',
+                                                                    )}
+                                                                    title={item.label}
+                                                                >
+                                                                    <span className="workspace-builder-library-card-icon shrink-0">
+                                                                        <IconComponent className="h-4 w-4" />
+                                                                    </span>
+                                                                    <span className="workspace-builder-library-card-label text-center text-xs leading-tight line-clamp-2 w-full min-w-0">
+                                                                        {getShortDisplayName(item.key, item.label || item.key)}
+                                                                    </span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </section>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="workspace-builder-library-empty">
+                                            {t('Components loading...')}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div
+                                    className={cn(
+                                        'workspace-builder-settings-shell',
+                                        builderPaneMode !== 'settings' && 'workspace-builder-settings-shell--hidden',
+                                    )}
+                                >
+                                    <div className="workspace-builder-settings-toolbar">
+                                        <button
+                                            type="button"
+                                            onClick={handleBuilderShowElements}
+                                            className="workspace-builder-settings-back"
+                                        >
+                                            <ArrowLeft className="h-3.5 w-3.5" />
+                                            <span>{t('Components')}</span>
+                                        </button>
+                                    </div>
+                                    <iframe
+                                        ref={builderSidebarFrameRef}
+                                        src={visualBuilderSidebarUrl}
+                                        title={t('Visual Builder Sidebar')}
+                                        className="workspace-builder-frame workspace-builder-frame--sidebar"
+                                        sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-downloads"
+                                        onLoad={handleBuilderSidebarFrameLoad}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="shrink-0 border-b border-[#e8e6e3] px-4 py-2">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
+                                    <span className="font-semibold text-[#1c1917] truncate">{t('Webu')}</span>
+                                </div>
+                            </div>
+                            <ScrollArea className="workspace-chat-scroll">
+                                <div className="workspace-scroll-mask flex flex-col py-2">
+                                    {initialLoading && visibleMessages.length === 0 ? (
+                                        <div className="workspace-thread-shell workspace-thread-shell--skeleton space-y-4">
+                                            <MessageListSkeleton count={3} />
+                                        </div>
+                                    ) : visibleMessages.length === 0 && !isLoading ? (
+                                        <div className="workspace-empty-state">
+                                            <h2 className="workspace-empty-state-title">
+                                                {t('Webu')}
+                                            </h2>
+                                            <p className="workspace-empty-state-text">
+                                                {t('Describe what you want to build or change')}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {visibleMessages.map((msg) => (
+                                                <MessageBubble
+                                                    key={msg.id}
+                                                    message={msg}
+                                                    currentUser={_user}
+                                                    shouldType={typingAssistantMessageIds.includes(msg.id)}
+                                                    onTypingComplete={() => handleAssistantTypingComplete(msg.id)}
+                                                />
+                                            ))}
+                                            {(isAiSiteEditorBusy && agentPhaseLabel) && (
+                                                <PendingAssistantBubble
+                                                    progress={{
+                                                        status: 'running',
+                                                        iterations: 0,
+                                                        tokensUsed: 0,
+                                                        hasFileChanges: false,
+                                                        statusMessage: agentPhaseLabel,
+                                                        messages: [],
+                                                        actions: [],
+                                                        toolCalls: [],
+                                                        toolResults: [],
+                                                        thinkingContent: null,
+                                                        thinkingStartTime: null,
+                                                        error: null,
+                                                        previewUrl: null,
+                                                    }}
+                                                    label={agentPhaseLabel}
+                                                    showPipelineSteps={false}
+                                                />
+                                            )}
+                                        </>
+                                    )}
+
+                                    {failedMessages.map((failed) => (
+                                        <div key={failed.timestamp} className="workspace-thread-shell workspace-thread-shell--error animate-fade-in">
+                                            <div className="flex justify-start">
+                                                <div className="max-w-[78%] rounded-[28px] border border-red-200 bg-[#fff4f2] px-6 py-4 text-[#3f3f46]">
+                                                    <p className="whitespace-pre-wrap break-words text-sm">{failed.message}</p>
+                                                    <p className="mt-1.5 text-xs text-red-500">{t('Builder offline, message not sent')}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {isLoading && (
+                                        <PendingAssistantBubble
+                                            progress={progress}
+                                            label={progress.thinkingContent ?? progress.statusMessage}
+                                        />
+                                    )}
+
+                                    <div ref={scrollEndRef} />
+                                </div>
+                            </ScrollArea>
+                        </>
+                    )}
+
+                    {agentRunFailedAt && !isAiSiteEditorBusy && (
+                        <div className="px-6 pb-2">
+                            <AgentProgressInline
+                                progress={{
+                                    status: 'failed',
+                                    iterations: 0,
+                                    tokensUsed: 0,
+                                    hasFileChanges: false,
+                                    statusMessage: t('Failed'),
+                                    messages: [],
+                                    actions: [],
+                                    toolCalls: [],
+                                    toolResults: [],
+                                    thinkingContent: null,
+                                    thinkingStartTime: null,
+                                    error: 'Failed',
+                                    previewUrl: null,
+                                }}
+                                currentStepLabel={t('Failed')}
+                            />
+                        </div>
+                    )}
+
+                    <div className="workspace-input-wrap">
+                        <ChatInputWithMentions
+                            projectId={project.id}
+                            value={prompt}
+                            onChange={setPrompt}
+                            onSubmit={handleSubmit}
+                            disabled={isLoading}
+                            selectedElement={selectedElementMention}
+                            onClearElement={() => {
+                                clearBuilderSelection();
+                                postBuilderCommand({
+                                    type: 'builder:set-sidebar-mode',
+                                    mode: 'elements',
+                                });
+                                postBuilderCommand({
+                                    type: 'builder:clear-selected-section',
+                                });
+                            }}
+                            placeholder={t('Write to Webu')}
+                            isLoading={isLoading}
+                            onCancel={cancelBuild}
+                            variant="workspace"
+                            footerStartSlot={
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleVisualBuilderToggle}
+                                    className={cn(
+                                        'workspace-visual-edit-button',
+                                        isVisualBuilderOpen && 'workspace-visual-edit-button--active',
+                                    )}
+                                >
+                                    {isVisualBuilderOpen ? (
+                                        <MessageSquare className="h-4 w-4" />
+                                    ) : (
+                                        <MousePointerClick className="h-4 w-4" />
+                                    )}
+                                    {isVisualBuilderOpen ? t('Chat') : visualBuilderLabel}
+                                </Button>
+                            }
+                        />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
+    const workspacePreviewContent = (
+        <BuilderPreviewSurface
+            isSidebarVisible={isSidebarVisible}
+            viewMode={viewMode}
+            settingsContent={(
+                <div className="h-full p-4">
+                    <div className="workspace-surface h-full">
+                        <Suspense fallback={lazyPanelFallback}>
+                            <ProjectSettingsPanel
+                                project={project}
+                                baseDomain={baseDomain}
+                                canUseSubdomains={canUseSubdomains}
+                                canCreateMoreSubdomains={canCreateMoreSubdomains}
+                                canUsePrivateVisibility={canUsePrivateVisibility}
+                                subdomainUsage={subdomainUsage}
+                                suggestedSubdomain={suggestedSubdomain}
+                                firebase={firebase}
+                                storage={storage}
+                                moduleRegistry={moduleRegistry}
+                            />
+                        </Suspense>
+                    </div>
+                </div>
+            )}
+            codeContent={(
+                <div className="flex h-full min-h-0 gap-4 p-4">
+                    <div className="workspace-surface flex h-full min-h-0 w-60 shrink-0 flex-col">
+                        <Suspense fallback={lazyPanelFallback}>
+                            <FileTree
+                                projectId={project.id}
+                                onFileSelect={handleCodeFileSelect}
+                                selectedFile={selectedFile}
+                                refreshTrigger={fileRefreshTrigger}
+                                virtualFiles={generatedVirtualFiles.map((file) => ({
+                                    path: file.path,
+                                    displayName: file.displayName,
+                                    sourceLabel: t('Derived preview'),
+                                }))}
+                                onRegenerateFromSite={handleRegenerateCodeFromSite}
+                                isRegenerating={isRegeneratingCode}
+                            />
+                        </Suspense>
+                    </div>
+                    <div className="workspace-surface flex min-h-0 min-w-0 flex-1 flex-col">
+                        <Suspense fallback={lazyPanelFallback}>
+                            <div className="flex h-full flex-col">
+                                <div className="border-b px-3 py-2 text-xs text-muted-foreground">
+                                    {t('Workspace = real editable files (AI edits these). Derived preview = read-only CMS projection (AI never sees it).')}
+                                </div>
+                                <div className="min-h-0 flex-1">
+                                    <CodeEditor
+                                        ref={codeEditorRef}
+                                        projectId={project.id}
+                                        selectedFile={selectedFile}
+                                        selectedFileMeta={selectedFileMeta}
+                                        onSave={refreshWorkspaceAfterChange}
+                                        virtualFiles={generatedVirtualFiles}
+                                    />
+                                </div>
+                            </div>
+                        </Suspense>
+                    </div>
+                </div>
+            )}
+            previewContent={(
+                <Suspense fallback={lazyPanelFallback}>
+                    <InspectPreview
+                        projectId={project.id}
+                        mode={viewMode as 'preview' | 'inspect' | 'design'}
+                        viewport={previewViewport}
+                        previewUrl={builderPreviewUrl}
+                        refreshTrigger={previewRefreshTrigger}
+                        isBuilding={isBuildingPreview}
+                        captureThumbnailTrigger={captureThumbnailTrigger}
+                        onElementSelect={handleElementSelect}
+                        onElementEdit={handleElementEdit}
+                        pendingEdits={pendingEdits}
+                        onSaveAllEdits={handleSaveAllEdits}
+                        onDiscardAllEdits={handleDiscardAllEdits}
+                        onRemoveEdit={handleRemoveEdit}
+                        onThemeSelect={applyThemeToPreview}
+                        isSavingTheme={isSavingTheme}
+                        currentTheme={appliedTheme}
+                        highlightSectionKey={viewMode === 'inspect' ? effectiveSelectedPreviewSectionKey : null}
+                        highlightSectionLocalId={viewMode === 'inspect' ? (agentHighlightLocalId ?? effectiveSelectedBuilderSectionLocalId) : null}
+                        liveStructureItems={viewMode === 'inspect' ? visibleBuilderStructureItems : []}
+                        selectedElementMention={viewMode === 'inspect' ? selectedElementMention : null}
+                        pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
+                        onLibraryItemPlace={handleLibraryItemPlace}
+                        onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
+                        themeDesignerSlot={(
+                            <Suspense fallback={lazyPanelFallback}>
+                                <ThemeDesigner
+                                    currentTheme={appliedTheme}
+                                    onThemeSelect={applyThemeToPreview}
+                                    onApply={async (presetId) => {
+                                        setIsSavingTheme(true);
+                                        try {
+                                            const response = await axios.put(`/project/${project.id}/theme`, {
+                                                theme_preset: presetId,
+                                            });
+                                            if (response.data.success) {
+                                                setAppliedTheme(presetId);
+                                                if (response.data.warning) {
+                                                    toast.warning(response.data.warning);
+                                                } else {
+                                                    toast.success(t('Theme applied successfully'));
+                                                }
+                                                setPreviewRefreshTrigger(Date.now());
+                                                setCaptureThumbnailTrigger(Date.now());
+                                            }
+                                        } catch {
+                                            toast.error(t('Failed to apply theme'));
+                                        } finally {
+                                            setIsSavingTheme(false);
+                                        }
+                                    }}
+                                    isSaving={isSavingTheme}
+                                />
+                            </Suspense>
+                        )}
+                    />
+                </Suspense>
+            )}
+        />
+    );
+
     /** სანამ აგენტი მუშაობს (build_status === 'building'), საიტი დახურული — იგივე ლოადერი როგორც პროექტის შექმნისას. */
     if (project.build_status === 'building') {
         return (
@@ -2357,416 +2769,11 @@ export default function Chat({
                     </div>
                 </nav>
 
-                <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-                    {isSidebarVisible && (
-                                <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col md:w-auto">
-                                    {startError && (
-                                        <div className="mx-6 mt-4 flex shrink-0 items-center justify-between gap-3 rounded-[16px] border border-amber-300/50 bg-amber-50 px-4 py-3">
-                                            <p className="text-sm text-amber-950">
-                                                {t('Builder is offline. Start it with "composer dev" or run "bash scripts/start-local-builder.sh".')}
-                                            </p>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => void retryStart()}
-                                                className="rounded-full border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
-                                            >
-                                                {t('Retry')}
-                                            </Button>
-                                        </div>
-                                    )}
-
-                                    <div className="workspace-sidebar-content">
-                                        <div
-                                            className={cn(
-                                                'workspace-sidebar-chat-column',
-                                                viewMode === 'inspect' && 'workspace-sidebar-chat-column--inspect'
-                                            )}
-                                        >
-                                            {viewMode === 'inspect' ? (
-                                                <div className="workspace-builder-pane">
-                                                    <div className="workspace-builder-inline-shell">
-                                                        <div
-                                                            className={cn(
-                                                                'workspace-builder-library-shell',
-                                                                builderPaneMode !== 'elements' && 'workspace-builder-library-shell--hidden'
-                                                            )}
-                                                        >
-                                                            {groupedBuilderLibraryItems.length > 0 ? (
-                                                                <div className="workspace-builder-library-list">
-                                                                    {groupedBuilderLibraryItems.map((group) => (
-                                                                        <section key={group.category} className="workspace-builder-library-group">
-                                                                            <div className="workspace-builder-library-group-header">
-                                                                                <div className="workspace-builder-library-group-title">
-                                                                                    <Layers className="h-4 w-4" />
-                                                                                    <span>{group.categoryLabel}</span>
-                                                                                </div>
-                                                                                <span className="workspace-builder-library-group-count">
-                                                                                    {group.items.length}
-                                                                                </span>
-                                                                            </div>
-
-                                                                            <div className="workspace-builder-library-grid">
-                                                                                {group.items.map((item) => {
-                                                                                    const IconComponent = resolveBuilderWidgetIcon(item.key, item.category);
-
-                                                                                    return (
-                                                                                        <button
-                                                                                            key={item.key}
-                                                                                            type="button"
-                                                                                            draggable
-                                                            onPointerDown={(event) => {
-                                                                if (event.button === 0) {
-                                                                    inspectLog('sidebar: setActiveLibraryItem (pointer)', item.key);
-                                                                    setActiveLibraryItem(item);
-                                                                }
-                                                            }}
-                                                            onClick={() => handleLibraryItemActivate(item)}
-                                                            onDragStart={(event) => {
-                                                                event.dataTransfer.effectAllowed = 'copy';
-                                                                event.dataTransfer.setData('text/plain', item.key);
-                                                                inspectLog('sidebar: dragStart', item.key);
-                                                                setActiveLibraryItem(item);
-                                                            }}
-                                                            onDragEnd={() => {
-                                                                inspectLog('sidebar: dragEnd');
-                                                                setActiveLibraryItem(null);
-                                                            }}
-                                                                                            className={cn(
-                                                                                                'workspace-builder-library-card flex flex-col items-center justify-center text-center gap-1.5 min-h-[72px]',
-                                                                                                activeLibraryItem?.key === item.key && 'workspace-builder-library-card--active'
-                                                                                            )}
-                                                                                            title={item.label}
-                                                                                        >
-                                                                                            <span className="workspace-builder-library-card-icon shrink-0">
-                                                                                                <IconComponent className="h-4 w-4" />
-                                                                                            </span>
-                                                                                            <span className="workspace-builder-library-card-label text-center text-xs leading-tight line-clamp-2 w-full min-w-0">
-                                                                                                {getShortDisplayName(item.key, item.label || item.key)}
-                                                                                            </span>
-                                                                                        </button>
-                                                                                    );
-                                                                                })}
-                                                                            </div>
-                                                                        </section>
-                                                                    ))}
-                                                                </div>
-                                                            ) : (
-                                                                <div className="workspace-builder-library-empty">
-                                                                    {t('Components loading...')}
-                                                                </div>
-                                                            )}
-                                                        </div>
-
-                                                        <div
-                                                            className={cn(
-                                                                'workspace-builder-settings-shell',
-                                                                builderPaneMode !== 'settings' && 'workspace-builder-settings-shell--hidden'
-                                                            )}
-                                                        >
-                                                            <div className="workspace-builder-settings-toolbar">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={handleBuilderShowElements}
-                                                                    className="workspace-builder-settings-back"
-                                                                >
-                                                                    <ArrowLeft className="h-3.5 w-3.5" />
-                                                                    <span>{t('Components')}</span>
-                                                                </button>
-                                                            </div>
-                                                            <BuilderSidebarFrame
-                                                                frameRef={builderSidebarFrameRef}
-                                                                src={visualBuilderSidebarUrl}
-                                                                title={t('Visual Builder Sidebar')}
-                                                                onLoad={handleBuilderSidebarFrameLoad}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                <div className="shrink-0 border-b border-[#e8e6e3] px-4 py-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
-                                                        <span className="font-semibold text-[#1c1917] truncate">{t('Webu')}</span>
-                                                    </div>
-                                                </div>
-                                                <ScrollArea className="workspace-chat-scroll">
-                                                    <div className="workspace-scroll-mask flex flex-col py-2">
-                                                        {initialLoading && visibleMessages.length === 0 ? (
-                                                            <div className="workspace-thread-shell workspace-thread-shell--skeleton space-y-4">
-                                                                <MessageListSkeleton count={3} />
-                                                            </div>
-                                                        ) : visibleMessages.length === 0 && !isLoading ? (
-                                                            <div className="workspace-empty-state">
-                                                                <h2 className="workspace-empty-state-title">
-                                                                    {t('Webu')}
-                                                                </h2>
-                                                                <p className="workspace-empty-state-text">
-                                                                    {t('Describe what you want to build or change')}
-                                                                </p>
-                                                            </div>
-                                                        ) : (
-                                                            <>
-                                                                {visibleMessages.map((msg) => (
-                                                                    <MessageBubble
-                                                                        key={msg.id}
-                                                                        message={msg}
-                                                                        currentUser={_user}
-                                                                        shouldType={typingAssistantMessageIds.includes(msg.id)}
-                                                                        onTypingComplete={() => handleAssistantTypingComplete(msg.id)}
-                                                                    />
-                                                                ))}
-                                                                {(isAiSiteEditorBusy && agentPhaseLabel) && (
-                                                                    <PendingAssistantBubble
-                                                                        progress={{
-                                                                            status: 'running',
-                                                                            iterations: 0,
-                                                                            tokensUsed: 0,
-                                                                            hasFileChanges: false,
-                                                                            statusMessage: agentPhaseLabel,
-                                                                            messages: [],
-                                                                            actions: [],
-                                                                            toolCalls: [],
-                                                                            toolResults: [],
-                                                                            thinkingContent: null,
-                                                                            thinkingStartTime: null,
-                                                                            error: null,
-                                                                            previewUrl: null,
-                                                                        }}
-                                                                        label={agentPhaseLabel}
-                                                                        showPipelineSteps={false}
-                                                                    />
-                                                                )}
-                                                            </>
-                                                        )}
-
-                                                        {failedMessages.map((failed) => (
-                                                            <div key={failed.timestamp} className="workspace-thread-shell workspace-thread-shell--error animate-fade-in">
-                                                                <div className="flex justify-start">
-                                                                    <div className="max-w-[78%] rounded-[28px] border border-red-200 bg-[#fff4f2] px-6 py-4 text-[#3f3f46]">
-                                                                        <p className="whitespace-pre-wrap break-words text-sm">{failed.message}</p>
-                                                                        <p className="mt-1.5 text-xs text-red-500">{t('Builder offline, message not sent')}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-
-                                                        {isLoading && (
-                                                            <PendingAssistantBubble
-                                                                progress={progress}
-                                                                label={progress.thinkingContent ?? progress.statusMessage}
-                                                            />
-                                                        )}
-
-                                                        <div ref={scrollEndRef} />
-                                                    </div>
-                                                </ScrollArea>
-                                                </>
-                                            )}
-
-                                            {agentRunFailedAt && !isAiSiteEditorBusy && (
-                                                <div className="px-6 pb-2">
-                                                    <AgentProgressInline
-                                                        progress={{
-                                                            status: 'failed',
-                                                            iterations: 0,
-                                                            tokensUsed: 0,
-                                                            hasFileChanges: false,
-                                                            statusMessage: t('Failed'),
-                                                            messages: [],
-                                                            actions: [],
-                                                            toolCalls: [],
-                                                            toolResults: [],
-                                                            thinkingContent: null,
-                                                            thinkingStartTime: null,
-                                                            error: 'Failed',
-                                                            previewUrl: null,
-                                                        }}
-                                                        currentStepLabel={t('Failed')}
-                                                    />
-                                                </div>
-                                            )}
-
-                                            <div className="workspace-input-wrap">
-                                                <ChatInputWithMentions
-                                                    projectId={project.id}
-                                                    value={prompt}
-                                                    onChange={setPrompt}
-                                                    onSubmit={handleSubmit}
-                                                    disabled={isLoading}
-                                                    selectedElement={selectedElementMention}
-                                                    onClearElement={() => {
-                                                        clearBuilderSelection();
-                                                        postBuilderCommand({
-                                                            type: 'builder:set-sidebar-mode',
-                                                            mode: 'elements',
-                                                        });
-                                                        postBuilderCommand({
-                                                            type: 'builder:clear-selected-section',
-                                                        });
-                                                    }}
-                                                    placeholder={t('Write to Webu')}
-                                                    isLoading={isLoading}
-                                                    onCancel={cancelBuild}
-                                                    variant="workspace"
-                                                    footerStartSlot={
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={handleVisualBuilderToggle}
-                                                            className={cn(
-                                                                'workspace-visual-edit-button',
-                                                                isVisualBuilderOpen && 'workspace-visual-edit-button--active'
-                                                            )}
-                                                        >
-                                                            {isVisualBuilderOpen ? (
-                                                                <MessageSquare className="h-4 w-4" />
-                                                            ) : (
-                                                                <MousePointerClick className="h-4 w-4" />
-                                                            )}
-                                                            {isVisualBuilderOpen ? t('Chat') : visualBuilderLabel}
-                                                        </Button>
-                                                    }
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div
-                                className={cn(
-                                    'workspace-preview-panel flex min-w-0 basis-0 flex-1 flex-col overflow-hidden',
-                                    isSidebarVisible && 'workspace-preview-panel--sidebar-open'
-                                )}
-                            >
-                                <div className="relative flex-1 min-h-0 min-w-0 overflow-hidden">
-                                    {viewMode === 'settings' ? (
-                                        <div className="h-full p-4">
-                                            <div className="workspace-surface h-full">
-                                                <Suspense fallback={lazyPanelFallback}>
-                                                    <ProjectSettingsPanel
-                                                        project={project}
-                                                        baseDomain={baseDomain}
-                                                        canUseSubdomains={canUseSubdomains}
-                                                        canCreateMoreSubdomains={canCreateMoreSubdomains}
-                                                        canUsePrivateVisibility={canUsePrivateVisibility}
-                                                        subdomainUsage={subdomainUsage}
-                                                        suggestedSubdomain={suggestedSubdomain}
-                                                        firebase={firebase}
-                                                        storage={storage}
-                                                        moduleRegistry={moduleRegistry}
-                                                    />
-                                                </Suspense>
-                                            </div>
-                                        </div>
-                                    ) : viewMode === 'code' ? (
-                                        <div className="flex h-full min-h-0 gap-4 p-4">
-                                            <div className="workspace-surface flex h-full min-h-0 w-60 shrink-0 flex-col">
-                                                <Suspense fallback={lazyPanelFallback}>
-                                                    <FileTree
-                                                        projectId={project.id}
-                                                        onFileSelect={handleCodeFileSelect}
-                                                        selectedFile={selectedFile}
-                                                        refreshTrigger={fileRefreshTrigger}
-                                                        virtualFiles={generatedVirtualFiles.map((file) => ({
-                                                            path: file.path,
-                                                            displayName: file.displayName,
-                                                            sourceLabel: t('Derived preview'),
-                                                        }))}
-                                                        onRegenerateFromSite={handleRegenerateCodeFromSite}
-                                                        isRegenerating={isRegeneratingCode}
-                                                    />
-                                                </Suspense>
-                                            </div>
-                                            <div className="workspace-surface flex min-h-0 min-w-0 flex-1 flex-col">
-                                                <Suspense fallback={lazyPanelFallback}>
-                                                    <div className="flex h-full flex-col">
-                                                        <div className="border-b px-3 py-2 text-xs text-muted-foreground">
-                                                            {t('Workspace = real editable files (AI edits these). Derived preview = read-only CMS projection (AI never sees it).')}
-                                                        </div>
-                                                        <div className="min-h-0 flex-1">
-                                                            <CodeEditor
-                                                                ref={codeEditorRef}
-                                                                projectId={project.id}
-                                                                selectedFile={selectedFile}
-                                                                selectedFileMeta={selectedFileMeta}
-                                                                onSave={refreshWorkspaceAfterChange}
-                                                                virtualFiles={generatedVirtualFiles}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </Suspense>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <Suspense fallback={lazyPanelFallback}>
-                                            <BuilderPreviewFrame
-                                                InspectPreviewComponent={InspectPreview}
-                                                projectId={project.id}
-                                                viewMode={viewMode as 'preview' | 'inspect' | 'design'}
-                                                previewViewport={previewViewport}
-                                                effectivePreviewUrl={effectivePreviewUrl}
-                                                effectivePreviewUrlWithOverrides={effectivePreviewUrlWithOverrides}
-                                                refreshTrigger={previewRefreshTrigger}
-                                                isBuilding={isBuildingPreview}
-                                                captureThumbnailTrigger={captureThumbnailTrigger}
-                                                onElementSelect={handleElementSelect}
-                                                onElementEdit={handleElementEdit}
-                                                pendingEdits={pendingEdits}
-                                                onSaveAllEdits={handleSaveAllEdits}
-                                                onDiscardAllEdits={handleDiscardAllEdits}
-                                                onRemoveEdit={handleRemoveEdit}
-                                                onThemeSelect={applyThemeToPreview}
-                                                isSavingTheme={isSavingTheme}
-                                                currentTheme={appliedTheme}
-                                                highlightSectionKey={viewMode === 'inspect' ? effectiveSelectedPreviewSectionKey : null}
-                                                highlightSectionLocalId={viewMode === 'inspect' ? (agentHighlightLocalId ?? effectiveSelectedBuilderSectionLocalId) : null}
-                                                liveStructureItems={viewMode === 'inspect' ? visibleBuilderStructureItems : []}
-                                                selectedElementMention={viewMode === 'inspect' ? selectedElementMention : null}
-                                                pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
-                                                onLibraryItemPlace={handleLibraryItemPlace}
-                                                onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
-                                                themeDesignerSlot={
-                                                    <Suspense fallback={lazyPanelFallback}>
-                                                        <ThemeDesigner
-                                                            currentTheme={appliedTheme}
-                                                            onThemeSelect={applyThemeToPreview}
-                                                            onApply={async (presetId) => {
-                                                                setIsSavingTheme(true);
-                                                                try {
-                                                                    const response = await axios.put(`/project/${project.id}/theme`, {
-                                                                        theme_preset: presetId,
-                                                                    });
-                                                                    if (response.data.success) {
-                                                                        setAppliedTheme(presetId);
-                                                                        if (response.data.warning) {
-                                                                            toast.warning(response.data.warning);
-                                                                        } else {
-                                                                            toast.success(t('Theme applied successfully'));
-                                                                        }
-                                                                        setPreviewRefreshTrigger(Date.now());
-                                                                        setCaptureThumbnailTrigger(Date.now());
-                                                                    }
-                                                                } catch {
-                                                                    toast.error(t('Failed to apply theme'));
-                                                                } finally {
-                                                                    setIsSavingTheme(false);
-                                                                }
-                                                            }}
-                                                            isSaving={isSavingTheme}
-                                                        />
-                                                    </Suspense>
-                                                }
-                                            />
-                                        </Suspense>
-                                    )}
-
-                                </div>
-                            </div>
-                </div>
+                <BuilderWorkspaceShell
+                    isSidebarVisible={isSidebarVisible}
+                    sidebarContent={workspaceSidebarContent}
+                    previewContent={workspacePreviewContent}
+                />
             </div>
 
             {/* Publish Modal */}

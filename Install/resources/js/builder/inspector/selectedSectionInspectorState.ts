@@ -61,6 +61,8 @@ export interface SelectedSectionInspectorState<TControlMeta extends InspectorFie
     usesEcommerceProductDetailBinding: boolean;
 }
 
+const warnedInspectorTargetMismatchSignatures = new Set<string>();
+
 function normalizeInspectorPath(path: string[] | string | null | undefined): string {
     if (Array.isArray(path)) {
         return path.map((segment) => String(segment).trim()).filter(Boolean).join('.');
@@ -100,6 +102,37 @@ function collectInspectorPropPaths(target: BuilderEditableTarget | null): string
         .filter(Boolean)));
 }
 
+function warnInspectorTargetSchemaMismatchInDev(input: {
+    sectionLocalId: string;
+    schemaFieldPaths: string[];
+    target: BuilderEditableTarget;
+    inspectorPropPaths: string[];
+}): void {
+    if (!import.meta.env.DEV) {
+        return;
+    }
+
+    const signature = JSON.stringify({
+        sectionLocalId: input.sectionLocalId,
+        targetPath: input.target.path ?? null,
+        componentPath: input.target.componentPath ?? null,
+        inspectorPropPaths: input.inspectorPropPaths,
+    });
+    if (warnedInspectorTargetMismatchSignatures.has(signature)) {
+        return;
+    }
+
+    warnedInspectorTargetMismatchSignatures.add(signature);
+    console.warn('[WebuLegacyBuilder] Ignoring inspector target with no schema-backed field match.', {
+        sectionLocalId: input.sectionLocalId,
+        sectionKey: input.target.sectionKey ?? input.target.componentType ?? null,
+        targetPath: input.target.path ?? null,
+        componentPath: input.target.componentPath ?? null,
+        inspectorPropPaths: input.inspectorPropPaths,
+        schemaFieldPaths: input.schemaFieldPaths,
+    });
+}
+
 function resolveSchemaBackedInspectorTarget(
     target: BuilderEditableTarget | null,
     sectionLocalId: string,
@@ -126,6 +159,14 @@ function resolveSchemaBackedInspectorTarget(
     const hasSchemaMatch = inspectorPropPaths.some((path) => (
         schemaFieldPaths.some((schemaPath) => isPathSchemaRelated(path, schemaPath))
     ));
+    if (!hasSchemaMatch) {
+        warnInspectorTargetSchemaMismatchInDev({
+            sectionLocalId,
+            schemaFieldPaths,
+            target,
+            inspectorPropPaths,
+        });
+    }
 
     return {
         inspectorTarget: hasSchemaMatch ? target : null,

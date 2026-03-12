@@ -112,7 +112,6 @@ import { optimizeSite, type OptimizationStep } from '@/builder/ai/siteOptimizer'
 import { applyOptimizationStepsToSections } from '@/builder/ai/chatImprovementCommands';
 import type { ComponentScoringReport } from '@/builder/ai/componentScoring';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { collectSchemaPrimitiveFieldDescriptors } from '@/lib/schemaPrimitiveFields';
 import { cn } from '@/lib/utils';
 import { resolveBuilderWidgetIcon as resolveBuilderWidgetIconKey } from '@/lib/resolveBuilderWidgetIcon';
 import type { PageProps } from '@/types';
@@ -165,7 +164,24 @@ import {
 import { useCmsStructureMutationHandlers } from '@/builder/cms/useCmsStructureMutationHandlers';
 import { SelectedSectionEditableFields } from '@/builder/inspector/SelectedSectionEditableFields';
 import { filterInspectorSchemaFields } from '@/builder/inspector/filterInspectorSchemaFields';
+import {
+    buildCanonicalControlMetadataForSchemaField,
+    collectInspectorSchemaPrimitiveFields,
+    getMinimalSchemaFieldLabel,
+    getSchemaFieldControlType,
+    type CanonicalControlGroup,
+    type CanonicalPrimaryPanelTab,
+    type SchemaPrimitiveField,
+} from '@/builder/inspector/InspectorFieldResolver';
+import {
+    buildCanonicalControlGroupAuditRows,
+    buildCanonicalControlGroupFieldSets,
+    buildCanonicalPrimaryPanelTabFieldSetBuckets,
+    type CanonicalControlGroupAuditRow,
+} from '@/builder/inspector/InspectorRenderer';
 import { buildSelectedSectionInspectorState } from '@/builder/inspector/selectedSectionInspectorState';
+import { buildInspectorMutationHandlers } from '@/builder/mutations/applyInspectorMutation';
+import { resolveSchemaPreferredStringProp } from '@/builder/schema/schemaBindingResolver';
 import {
     DesignSystemPanel,
     designSystemVarsToStyleContent,
@@ -176,7 +192,9 @@ import { generateDesignSystemFromPrompt } from '@/builder/ai/aiBrandGenerator';
 import {
     getAvailableComponents,
     getComponent,
+    getComponentSchema,
     getComponentSchemaJson,
+    resolveComponentProps,
 } from '@/builder/componentRegistry';
 import { isComponentCompatibleWithProjectType } from '@/builder/componentCompatibility';
 import { getEntry, hasEntry } from '@/builder/registry/componentRegistry';
@@ -798,43 +816,6 @@ function mergeDraftSaveOptions(base: DraftSaveOptions | null, next: DraftSaveOpt
         refreshAfterSave: base.refreshAfterSave || next.refreshAfterSave,
         notifyParentPreviewRefresh: base.notifyParentPreviewRefresh || next.notifyParentPreviewRefresh,
     };
-}
-
-type SchemaPrimitiveScalarType = 'string' | 'number' | 'integer' | 'boolean';
-type CanonicalControlGroup = 'content' | 'layout' | 'style' | 'advanced' | 'responsive' | 'states' | 'data' | 'bindings' | 'meta';
-type CanonicalPrimaryPanelTab = 'content' | 'layout' | 'style' | 'advanced';
-
-interface CanonicalControlMetadata {
-    type: SchemaPrimitiveScalarType;
-    label: string;
-    group: CanonicalControlGroup;
-    responsive: boolean;
-    stateful: boolean;
-    dynamic_capable: boolean;
-}
-
-interface CanonicalControlGroupAuditRow {
-    group: CanonicalControlGroup;
-    count: number;
-    sample_labels: string[];
-}
-
-interface CanonicalControlGroupFieldSet {
-    group: CanonicalControlGroup;
-    fields: SchemaPrimitiveField[];
-}
-
-interface CanonicalPrimaryPanelTabFieldSetBucket {
-    tab: CanonicalPrimaryPanelTab;
-    fieldSets: CanonicalControlGroupFieldSet[];
-}
-
-interface SchemaPrimitiveField {
-    path: string[];
-    type: SchemaPrimitiveScalarType;
-    label: string;
-    definition: Record<string, unknown>;
-    control_meta: CanonicalControlMetadata;
 }
 
 interface ApiErrorPayload {
@@ -4524,280 +4505,6 @@ function getValueAtPath(source: Record<string, unknown>, path: string[]): unknow
 
 function setValueAtPath(source: Record<string, unknown>, path: string[], value: unknown): Record<string, unknown> {
     return setSectionPropValueAtPath(source, path, value);
-}
-
-function normalizeCanonicalControlGroup(value: unknown): CanonicalControlGroup | null {
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const normalized = value.trim().toLowerCase();
-    if (normalized === '') {
-        return null;
-    }
-
-    if (normalized === 'state') {
-        return 'states';
-    }
-    if (normalized === 'binding') {
-        return 'bindings';
-    }
-
-    if (['content', 'layout', 'style', 'advanced', 'responsive', 'states', 'data', 'bindings', 'meta'].includes(normalized)) {
-        return normalized as CanonicalControlGroup;
-    }
-
-    return null;
-}
-
-function readOptionalBoolean(value: unknown): boolean | null {
-    return typeof value === 'boolean' ? value : null;
-}
-
-function inferCanonicalControlGroupForSchemaField(path: string[], label: string, definition: Record<string, unknown>): CanonicalControlGroup {
-    const explicit = normalizeCanonicalControlGroup(definition.control_group ?? definition.group);
-    if (explicit) {
-        return explicit;
-    }
-
-    const lastKey = String(path[path.length - 1] ?? '').trim().toLowerCase();
-    if (lastKey === 'layout_variant' || lastKey === 'style_variant') {
-        return 'style';
-    }
-
-    const root = String(path[0] ?? '').trim().toLowerCase();
-    const rootGroup = normalizeCanonicalControlGroup(root);
-    if (rootGroup) {
-        return rootGroup;
-    }
-
-    const normalizedLabel = label.trim().toLowerCase();
-    if (normalizedLabel.startsWith('style:')) return 'style';
-    if (normalizedLabel.startsWith('advanced:')) return 'advanced';
-    if (normalizedLabel.startsWith('responsive:')) return 'responsive';
-    if (normalizedLabel.startsWith('state:') || normalizedLabel.startsWith('states:')) return 'states';
-    if (normalizedLabel.startsWith('data:')) return 'data';
-    if (normalizedLabel.startsWith('binding:') || normalizedLabel.startsWith('bindings:')) return 'bindings';
-    if (normalizedLabel.startsWith('meta:')) return 'meta';
-
-    return 'content';
-}
-
-function inferCanonicalDynamicCapabilityForSchemaField(
-    path: string[],
-    type: SchemaPrimitiveScalarType,
-    group: CanonicalControlGroup,
-    definition: Record<string, unknown>
-): boolean {
-    const explicitDynamicCapable = readOptionalBoolean(definition.dynamic_capable ?? definition['dynamic-capable']);
-    if (explicitDynamicCapable !== null) {
-        return explicitDynamicCapable;
-    }
-
-    const explicitSupportsDynamic = readOptionalBoolean(definition.supports_dynamic);
-    if (explicitSupportsDynamic !== null) {
-        return explicitSupportsDynamic;
-    }
-
-    if (type !== 'string') {
-        return false;
-    }
-
-    if (['style', 'responsive', 'states', 'advanced', 'meta'].includes(group)) {
-        return false;
-    }
-
-    const normalizedPath = path.map((segment) => segment.trim().toLowerCase()).filter(Boolean);
-    const last = normalizedPath[normalizedPath.length - 1] ?? '';
-    const format = typeof definition.format === 'string' ? definition.format.trim().toLowerCase() : '';
-    if (last === 'html_id' || /(^|_)(icon_class|css_class|class_name)$/.test(last)) {
-        return false;
-    }
-    if (format === 'color' || format === 'hex-color') {
-        return false;
-    }
-    if (/(^|[._-])(color|colour|opacity|radius|padding|margin)($|[._-])/.test(normalizedPath.join('.'))) {
-        return false;
-    }
-
-    return true;
-}
-
-function buildCanonicalControlMetadataForSchemaField(
-    path: string[],
-    type: SchemaPrimitiveScalarType,
-    label: string,
-    definition: Record<string, unknown>
-): CanonicalControlMetadata {
-    const group = inferCanonicalControlGroupForSchemaField(path, label, definition);
-    const responsive = readOptionalBoolean(definition.responsive) ?? group === 'responsive';
-    const stateful = readOptionalBoolean(definition.stateful) ?? group === 'states';
-    const dynamicCapable = inferCanonicalDynamicCapabilityForSchemaField(path, type, group, definition);
-
-    return {
-        type,
-        label,
-        group,
-        responsive,
-        stateful,
-        dynamic_capable: dynamicCapable,
-    };
-}
-
-function collectSchemaPrimitiveFields(
-    properties: Record<string, unknown>,
-    currentValues: unknown = null,
-): SchemaPrimitiveField[] {
-    return collectSchemaPrimitiveFieldDescriptors(properties, { values: currentValues }).map((field) => ({
-        ...field,
-        control_meta: buildCanonicalControlMetadataForSchemaField(field.path, field.type, field.label, field.definition),
-    }));
-}
-
-function buildCanonicalControlGroupAuditRows(fields: SchemaPrimitiveField[]): CanonicalControlGroupAuditRow[] {
-    if (fields.length === 0) {
-        return [];
-    }
-
-    const order: CanonicalControlGroup[] = [
-        'content',
-        'layout',
-        'style',
-        'advanced',
-        'responsive',
-        'states',
-        'data',
-        'bindings',
-        'meta',
-    ];
-    const buckets = new Map<CanonicalControlGroup, CanonicalControlGroupAuditRow>();
-
-    fields.forEach((field) => {
-        const group = field.control_meta.group;
-        const existing = buckets.get(group) ?? {
-            group,
-            count: 0,
-            sample_labels: [],
-        };
-
-        existing.count += 1;
-        if (existing.sample_labels.length < 3 && !existing.sample_labels.includes(field.label)) {
-            existing.sample_labels.push(field.label);
-        }
-
-        buckets.set(group, existing);
-    });
-
-    return order
-        .map((group) => buckets.get(group) ?? null)
-        .filter((row): row is CanonicalControlGroupAuditRow => row !== null && row.count > 0);
-}
-
-function buildCanonicalControlGroupFieldSets(fields: SchemaPrimitiveField[]): CanonicalControlGroupFieldSet[] {
-    if (fields.length === 0) {
-        return [];
-    }
-
-    const order: CanonicalControlGroup[] = [
-        'content',
-        'layout',
-        'style',
-        'advanced',
-        'responsive',
-        'states',
-        'data',
-        'bindings',
-        'meta',
-    ];
-    const buckets = new Map<CanonicalControlGroup, SchemaPrimitiveField[]>();
-
-    fields.forEach((field) => {
-        const group = field.control_meta.group;
-        const existing = buckets.get(group) ?? [];
-        existing.push(field);
-        buckets.set(group, existing);
-    });
-
-    return order
-        .map((group) => {
-            let groupFields = buckets.get(group) ?? [];
-            if (groupFields.length === 0) {
-                return null;
-            }
-            // Design variant first in Content tab: layout_variant then style_variant then rest
-            if (group === 'content') {
-                const variantOrder: Record<string, number> = { layout_variant: 0, style_variant: 1 };
-                groupFields = [...groupFields].sort((a, b) => {
-                    const aLast = a.path[a.path.length - 1] as string;
-                    const bLast = b.path[b.path.length - 1] as string;
-                    const aOrd = variantOrder[aLast] ?? 2;
-                    const bOrd = variantOrder[bLast] ?? 2;
-                    return aOrd - bOrd;
-                });
-            }
-            // Design variant first in Style tab too
-            if (group === 'style') {
-                const variantOrder: Record<string, number> = { layout_variant: 0, style_variant: 1 };
-                groupFields = [...groupFields].sort((a, b) => {
-                    const aLast = a.path[a.path.length - 1] as string;
-                    const bLast = b.path[b.path.length - 1] as string;
-                    const aOrd = variantOrder[aLast] ?? 2;
-                    const bOrd = variantOrder[bLast] ?? 2;
-                    return aOrd - bOrd;
-                });
-            }
-
-            return {
-                group,
-                fields: groupFields,
-            };
-        })
-        .filter((fieldSet): fieldSet is CanonicalControlGroupFieldSet => fieldSet !== null);
-}
-
-function mapCanonicalControlGroupToPrimaryPanelTab(group: CanonicalControlGroup): CanonicalPrimaryPanelTab {
-    if (group === 'layout') {
-        return 'layout';
-    }
-    if (group === 'style' || group === 'responsive' || group === 'states') {
-        return 'style';
-    }
-    if (group === 'advanced') {
-        return 'advanced';
-    }
-    return 'content';
-}
-
-function buildCanonicalPrimaryPanelTabFieldSetBuckets(
-    fieldSets: CanonicalControlGroupFieldSet[],
-): CanonicalPrimaryPanelTabFieldSetBucket[] {
-    if (fieldSets.length === 0) {
-        return [];
-    }
-
-    const order: CanonicalPrimaryPanelTab[] = ['content', 'layout', 'style', 'advanced'];
-    const buckets = new Map<CanonicalPrimaryPanelTab, CanonicalControlGroupFieldSet[]>();
-
-    fieldSets.forEach((fieldSet) => {
-        const tab = mapCanonicalControlGroupToPrimaryPanelTab(fieldSet.group);
-        const existing = buckets.get(tab) ?? [];
-        existing.push(fieldSet);
-        buckets.set(tab, existing);
-    });
-
-    return order
-        .map((tab) => {
-            const tabFieldSets = buckets.get(tab) ?? [];
-            if (tabFieldSets.length === 0) {
-                return null;
-            }
-
-            return {
-                tab,
-                fieldSets: tabFieldSets,
-            };
-        })
-        .filter((bucket): bucket is CanonicalPrimaryPanelTabFieldSetBucket => bucket !== null);
 }
 
 function normalizeTemplateSectionBlueprints(raw: unknown): Array<{ type: string; props: Record<string, unknown> }> {
@@ -9223,13 +8930,13 @@ export default function Cms({
     const selectedFixedSectionSchemaFields = useMemo(
         () => (
             selectedFixedSectionSchemaProperties
-                ? collectSchemaPrimitiveFields(selectedFixedSectionSchemaProperties, selectedFixedSectionParsedProps)
+                ? collectInspectorSchemaPrimitiveFields(selectedFixedSectionSchemaProperties, selectedFixedSectionParsedProps)
                 : []
         ),
         [selectedFixedSectionParsedProps, selectedFixedSectionSchemaProperties]
     );
     const selectedFixedSectionEditableFields = useMemo(() => {
-        const filterAutoGeneratedFields = (field: ReturnType<typeof collectSchemaPrimitiveFields>[number]): boolean => {
+        const filterAutoGeneratedFields = (field: ReturnType<typeof collectInspectorSchemaPrimitiveFields>[number]): boolean => {
             const rootKey = String(field.path[0] ?? '').trim().toLowerCase();
             if (rootKey === '') {
                 return false;
@@ -16412,19 +16119,23 @@ main[data-webu-role="page-root"],
         }
 
         const normalizedSectionType = normalizeSectionTypeKey(sectionType);
-        const effectiveProps = applyFixedSectionAliasProps(normalizedSectionType, props);
+        const schema = getComponentSchema(normalizedSectionType);
+        const effectiveProps = resolveComponentProps(
+            normalizedSectionType,
+            applyFixedSectionAliasProps(normalizedSectionType, props),
+        );
 
         const heading = container.querySelector('[data-webu-field="headline"], [data-webu-field="title"], h1, h2, h3');
         const subtitle = container.querySelector('[data-webu-field="subtitle"], [data-webu-field="body"], p');
         const button = container.querySelector('[data-webu-field="button"], [data-webu-field="primary_cta"], button, a.btn, a.button');
 
-        const headingValue = effectiveProps.headline ?? effectiveProps.title;
-        if (heading && typeof headingValue === 'string' && headingValue.trim() !== '') {
+        const headingValue = resolveSchemaPreferredStringProp(schema, effectiveProps, ['title', 'headline', 'heading']);
+        if (heading && headingValue) {
             heading.textContent = headingValue;
         }
 
-        const subtitleValue = effectiveProps.subtitle ?? effectiveProps.body;
-        if (subtitle && typeof subtitleValue === 'string' && subtitleValue.trim() !== '') {
+        const subtitleValue = resolveSchemaPreferredStringProp(schema, effectiveProps, ['subtitle', 'body', 'description', 'text']);
+        if (subtitle && subtitleValue) {
             subtitle.textContent = subtitleValue;
         }
 
@@ -16433,6 +16144,24 @@ main[data-webu-role="page-root"],
             ctaPayload = effectiveProps.primary_cta;
         } else if (isRecord(effectiveProps.button)) {
             ctaPayload = effectiveProps.button;
+        } else if (isRecord(effectiveProps.buttonLink)) {
+            ctaPayload = effectiveProps.buttonLink;
+        } else if (
+            (typeof effectiveProps.buttonText === 'string' && effectiveProps.buttonText.trim() !== '')
+            || (typeof effectiveProps.buttonLink === 'string' && effectiveProps.buttonLink.trim() !== '')
+        ) {
+            ctaPayload = {
+                label: effectiveProps.buttonText,
+                url: effectiveProps.buttonLink,
+            };
+        } else if (
+            (typeof effectiveProps.ctaText === 'string' && effectiveProps.ctaText.trim() !== '')
+            || (typeof effectiveProps.ctaLink === 'string' && effectiveProps.ctaLink.trim() !== '')
+        ) {
+            ctaPayload = {
+                label: effectiveProps.ctaText,
+                url: effectiveProps.ctaLink,
+            };
         } else if (typeof effectiveProps.button === 'string' && effectiveProps.button.trim() !== '') {
             ctaPayload = { label: effectiveProps.button };
         } else if (typeof effectiveProps.cta_label === 'string' && effectiveProps.cta_label.trim() !== '') {
@@ -27947,99 +27676,6 @@ ${showRules}
         );
     };
 
-    const getMinimalSchemaFieldLabel = (field: SchemaPrimitiveField): string => {
-        const leafKey = field.path[field.path.length - 1] ?? field.label;
-        const normalizedLeafKey = leafKey.trim().toLowerCase();
-        const compactOverrideByLeafKey: Record<string, string> = {
-            bg_color: 'Background',
-            overlay_color: 'Overlay',
-            overlay_opacity_percent: 'Overlay Opacity',
-            fg_color: 'Text Color',
-            bd_color: 'Border Color',
-            border_radius_px: 'Radius',
-            padding_y_px: 'Padding Y',
-            padding_x_px: 'Padding X',
-            margin_y_px: 'Margin Y',
-            margin_x_px: 'Margin X',
-            opacity_percent: 'Opacity',
-            html_id: 'ID',
-            css_class: 'Class',
-            custom_css: 'Custom CSS',
-            button_preset: 'Button Preset',
-            card_preset: 'Card Preset',
-            input_preset: 'Input Preset',
-            position_mode: 'Position',
-            z_index: 'Z-Index',
-            top_px: 'Top',
-            right_px: 'Right',
-            bottom_px: 'Bottom',
-            left_px: 'Left',
-            data_testid: 'Test ID',
-            data_tracking: 'Tracking',
-        };
-
-        if (compactOverrideByLeafKey[normalizedLeafKey]) {
-            return compactOverrideByLeafKey[normalizedLeafKey];
-        }
-
-        const compactFromTitle = field.label
-            .replace(/^Content:\s*/i, '')
-            .replace(/^Style:\s*/i, '')
-            .replace(/^Advanced:\s*/i, '')
-            .replace(/^Responsive:\s*(Desktop|Tablet|Mobile)\s*/i, '')
-            .replace(/^State:\s*(Normal|Hover|Focus|Active)\s*/i, '')
-            .replace(/\(\s*Preview Tag\s*\)/ig, '')
-            .replace(/\(\s*Token-backed\s*\)/ig, '')
-            .replace(/\(\s*Scoped to Element\s*\)/ig, '')
-            .replace(/\(\s*Preview Override\s*\)/ig, '')
-            .replace(/\(\s*component\s*\)/ig, '')
-            .replace(/\bOverride\b/ig, '')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
-        if (compactFromTitle !== '') {
-            return compactFromTitle;
-        }
-
-        return humanizePropertyKey(leafKey);
-    };
-
-    /** Schema-driven control type: from field.definition.builder_field_type (registry schema) when present. */
-    const getSchemaFieldControlType = (field: SchemaPrimitiveField): 'text' | 'textarea' | 'color' | 'image' | 'icon' | 'link' | 'menu' | 'select' | 'toggle' | 'number' | 'spacing' | 'alignment' | null => {
-        const raw = field.definition?.builder_field_type ?? field.definition?.builderFieldType;
-        if (typeof raw !== 'string' || raw.trim() === '') return null;
-        const normalized = raw.trim().toLowerCase();
-        switch (normalized) {
-            case 'text':
-                return 'text';
-            case 'richtext':
-                return 'textarea';
-            case 'color':
-                return 'color';
-            case 'image':
-                return 'image';
-            case 'icon':
-                return 'icon';
-            case 'link':
-                return 'link';
-            case 'menu':
-                return 'menu';
-            case 'select':
-            case 'layout-variant':
-            case 'style-variant':
-                return 'select';
-            case 'boolean':
-                return 'toggle';
-            case 'number':
-                return 'number';
-            case 'spacing':
-                return 'spacing';
-            case 'alignment':
-                return 'alignment';
-            default:
-                return null;
-        }
-    };
-
     const renderSchemaFieldEditorControl = (options: {
         field: SchemaPrimitiveField;
         parsedProps: Record<string, unknown>;
@@ -28779,15 +28415,19 @@ ${showRules}
         const effectiveProps = selectedSectionResolvedProps ?? selectedSectionEffectiveParsedProps ?? selectedSectionParsedProps;
         const isNested = selectedNestedSection != null && selectedNestedSection.parentLocalId === selectedSectionDraft.localId && selectedNestedSection.path.length > 0;
         const nestedPath = selectedNestedSection?.path ?? [];
-        const onChangePath = isNested && selectedNestedSection
-            ? (path: string[], value: unknown) => updateNestedSectionPathProp(selectedNestedSection.parentLocalId, nestedPath, path, value)
-            : (path: string[], value: unknown) => updateSectionPathProp(selectedSectionDraft.localId, path, value);
-        const onChangeTextTypography = isNested && selectedNestedSection
-            ? (fieldKey: string, updater: (current: TextTypographyStyle | null) => TextTypographyStyle | null) => updateNestedSectionTextTypographyProp(selectedNestedSection.parentLocalId, nestedPath, fieldKey, updater)
-            : (fieldKey: string, updater: (current: TextTypographyStyle | null) => TextTypographyStyle | null) => updateSectionTextTypographyProp(selectedSectionDraft.localId, fieldKey, updater);
-        const onClearTextTypography = isNested && selectedNestedSection
-            ? (fieldKey: string) => updateNestedSectionTextTypographyProp(selectedNestedSection.parentLocalId, nestedPath, fieldKey, () => null)
-            : (fieldKey: string) => updateSectionTextTypographyProp(selectedSectionDraft.localId, fieldKey, () => null);
+        const { onChangePath, onChangeTextTypography, onClearTextTypography } = buildInspectorMutationHandlers<TextTypographyStyle>({
+            selectedSectionLocalId: selectedSectionDraft.localId,
+            selectedNestedSection: isNested && selectedNestedSection
+                ? {
+                    parentLocalId: selectedNestedSection.parentLocalId,
+                    path: selectedNestedSection.path,
+                }
+                : null,
+            updateSectionPathProp,
+            updateNestedSectionPathProp,
+            updateSectionTextTypographyProp,
+            updateNestedSectionTextTypographyProp,
+        });
         const resolvedEffectiveProps = effectiveProps ?? {};
 
         return (

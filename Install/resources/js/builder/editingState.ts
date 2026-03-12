@@ -1,5 +1,13 @@
 import { getComponentShortName } from '@/builder/componentParameterMetadata';
 import { getComponentSchema } from '@/builder/componentRegistry';
+import {
+    collectSchemaFieldPaths,
+    expandSchemaAwareAliasPaths,
+    isSchemaFieldPathRelated,
+    normalizeComparableSchemaFieldPath,
+    resolveSchemaMatchedField,
+    splitSchemaFieldPath,
+} from '@/builder/schema/schemaBindingResolver';
 import { getEntry } from './registry/componentRegistry';
 import { isRecord, parseSectionProps } from '@/builder/state/sectionProps';
 import type { BuilderSection } from '@/builder/visual/treeUtils';
@@ -136,13 +144,6 @@ export function getBuilderTargetPropPaths(target: BuilderEditableTarget | null):
     ]);
 }
 
-function splitFieldPath(path: string | null | undefined): string[] {
-    return (path ?? '')
-        .split('.')
-        .map((segment) => segment.trim())
-        .filter(Boolean);
-}
-
 /**
  * Resolve componentPath (scope) for a given parameter path.
  * For leaf paths like items.0.title, returns the parent scope (items.0).
@@ -178,10 +179,6 @@ function resolvePreferredComponentPath(
 
 function isNumericPathSegment(value: string | undefined): boolean {
     return Boolean(value && /^\d+$/.test(value));
-}
-
-function normalizeComparableFieldPath(path: string | null | undefined): string {
-    return splitFieldPath(path).filter((segment) => !isNumericPathSegment(segment)).join('.');
 }
 
 function deriveFieldStem(path: string): string {
@@ -231,64 +228,6 @@ function deriveFieldStem(path: string): string {
     return tokenized.slice(0, end).join('_') || tokenized.join('_');
 }
 
-function resolveMatchedSchemaField(
-    schema: BuilderComponentSchema | null,
-    path: string | null,
-): {
-    matchedField: BuilderFieldDefinition | null;
-    scopeField: BuilderFieldDefinition | null;
-} {
-    if (!schema || !path) {
-        return {
-            matchedField: null,
-            scopeField: null,
-        };
-    }
-
-    const normalizedPath = path.trim();
-    const comparablePath = normalizeComparableFieldPath(normalizedPath);
-    const exactField = schema.fields.find((field) => field.path === normalizedPath) ?? null;
-    if (exactField) {
-        return {
-            matchedField: exactField,
-            scopeField: exactField,
-        };
-    }
-
-    const scopeField = [...schema.fields]
-        .filter((field) => {
-            const comparableFieldPath = normalizeComparableFieldPath(field.path);
-            return comparablePath === comparableFieldPath
-                || comparablePath.startsWith(`${comparableFieldPath}.`);
-        })
-        .sort((left, right) => right.path.length - left.path.length)[0] ?? null;
-
-    if (scopeField?.itemFields && comparablePath.startsWith(`${normalizeComparableFieldPath(scopeField.path)}.`)) {
-        const scopeSegments = splitFieldPath(scopeField.path);
-        const remainingSegments = splitFieldPath(normalizedPath).slice(scopeSegments.length);
-        const itemPath = (isNumericPathSegment(remainingSegments[0]) ? remainingSegments.slice(1) : remainingSegments).join('.');
-        const itemField = itemPath
-            ? [...scopeField.itemFields]
-                .filter((field) => itemPath === field.path || itemPath.startsWith(`${field.path}.`))
-                .sort((left, right) => right.path.length - left.path.length)[0] ?? null
-            : null;
-
-        return {
-            matchedField: itemField ?? scopeField,
-            scopeField,
-        };
-    }
-
-    const familyStem = deriveFieldStem(normalizedPath);
-    const familyField = familyStem === ''
-        ? null
-        : schema.fields.find((field) => deriveFieldStem(field.path) === familyStem) ?? null;
-
-    return {
-        matchedField: scopeField ?? familyField,
-        scopeField: scopeField ?? familyField,
-    };
-}
 
 function resolveComponentScopePath(
     path: string | null,
@@ -303,10 +242,10 @@ function resolveComponentScopePath(
         return null;
     }
 
-    const segments = splitFieldPath(normalizedPath);
+    const segments = splitSchemaFieldPath(normalizedPath);
     const isIndexedCompoundField = scopeField && ['menu', 'repeater', 'button-group'].includes(scopeField.type);
     if (scopeField?.itemFields && normalizedPath.startsWith(`${scopeField.path}.`)) {
-        const scopeSegments = splitFieldPath(scopeField.path);
+        const scopeSegments = splitSchemaFieldPath(scopeField.path);
         const nextSegment = segments[scopeSegments.length];
         if (isNumericPathSegment(nextSegment)) {
             return [...scopeSegments, nextSegment as string].join('.');
@@ -316,7 +255,7 @@ function resolveComponentScopePath(
     }
 
     if (isIndexedCompoundField && normalizedPath.startsWith(`${scopeField.path}.`)) {
-        const scopeSegments = splitFieldPath(scopeField.path);
+        const scopeSegments = splitSchemaFieldPath(scopeField.path);
         const nextSegment = segments[scopeSegments.length];
         if (isNumericPathSegment(nextSegment)) {
             return [...scopeSegments, nextSegment as string].join('.');
@@ -367,7 +306,7 @@ function resolveFieldMeta(sectionKey: string | null, path: string | null): {
             fields: editableFields.map((f) => ({ path: f.key, type: (f.type ?? 'text') as BuilderFieldType, label: f.key })),
         } as BuilderComponentSchema;
     }
-    const matchedMeta = resolveMatchedSchemaField(schema, path);
+    const matchedMeta = resolveSchemaMatchedField(schema, path);
     const rawEditable = schema?.editableFields ?? schema?.fields?.map((field) => field.path) ?? [];
     const editableFields: string[] = Array.isArray(rawEditable)
         ? rawEditable.map((f) => (typeof f === 'string' ? f : (f as { key?: string }).key ?? '')).filter(Boolean)
@@ -389,7 +328,7 @@ function readValueAtPath(input: Record<string, unknown> | null | undefined, path
         return null;
     }
 
-    const segments = splitFieldPath(path);
+    const segments = splitSchemaFieldPath(path);
     if (segments.length === 0) {
         return null;
     }
@@ -439,12 +378,6 @@ function uniqueStringList(values: Array<string | null | undefined>): string[] {
             .map((value) => (typeof value === 'string' ? value.trim() : ''))
             .filter(Boolean)
     ));
-}
-
-function isPathRelated(candidate: string, targetPath: string): boolean {
-    return candidate === targetPath
-        || candidate.startsWith(`${targetPath}.`)
-        || targetPath.startsWith(`${candidate}.`);
 }
 
 function normalizeBreakpoint(value: string | null | undefined): BuilderBreakpoint {
@@ -513,10 +446,13 @@ function resolveAllowedFieldPaths(
         return [];
     }
 
-    const root = splitFieldPath(normalizedPath)[0] ?? '';
+    const schemaFieldPaths = collectSchemaFieldPaths(schema);
+    const aliasPaths = expandSchemaAwareAliasPaths(normalizedPath, schemaFieldPaths);
+    const comparableAliasPaths = aliasPaths.map((candidate) => normalizeComparableSchemaFieldPath(candidate));
+    const roots = new Set(aliasPaths.map((candidate) => splitSchemaFieldPath(candidate)[0] ?? '').filter(Boolean));
     const matchedType = matchedField?.type ?? scopeField?.type ?? null;
-    const targetStem = deriveFieldStem(normalizedPath);
-    const related = new Set<string>([normalizedPath]);
+    const targetStems = new Set(aliasPaths.map((candidate) => deriveFieldStem(candidate)).filter(Boolean));
+    const related = new Set<string>(aliasPaths);
     const normalizedComponentPath = componentPath?.trim() ?? '';
 
     if (normalizedComponentPath !== '' && scopeField?.itemFields && normalizedComponentPath.startsWith(`${scopeField.path}.`)) {
@@ -546,7 +482,7 @@ function resolveAllowedFieldPaths(
 
     if (
         normalizedComponentPath !== ''
-        && ['menu', 'button-group', 'repeater', 'link'].includes(matchedType ?? '')
+        && ['menu', 'button-group', 'repeater'].includes(matchedType ?? '')
         && (normalizedPath === normalizedComponentPath || normalizedPath.startsWith(`${normalizedComponentPath}.`))
     ) {
         return Array.from(related);
@@ -558,7 +494,21 @@ function resolveAllowedFieldPaths(
             return;
         }
 
-        if (isPathRelated(candidate, normalizedPath)) {
+        const candidateAliasPaths = expandSchemaAwareAliasPaths(candidate, schemaFieldPaths);
+        const comparableCandidatePaths = candidateAliasPaths.map((value) => normalizeComparableSchemaFieldPath(value));
+
+        const isAliasRelated = aliasPaths.some((aliasPath) => candidateAliasPaths.some((candidateAlias) => isSchemaFieldPathRelated(candidateAlias, aliasPath)))
+            || comparableAliasPaths.some((aliasPath) => comparableCandidatePaths.some((candidateComparablePath) => (
+                aliasPath === candidateComparablePath
+                || aliasPath.startsWith(`${candidateComparablePath}.`)
+                || candidateComparablePath.startsWith(`${aliasPath}.`)
+            )));
+        if (isAliasRelated) {
+            related.add(candidate);
+            return;
+        }
+
+        if (isSchemaFieldPathRelated(candidate, normalizedPath)) {
             related.add(candidate);
             return;
         }
@@ -570,27 +520,27 @@ function resolveAllowedFieldPaths(
 
         if (
             normalizedComponentPath !== ''
-            && normalizeComparableFieldPath(candidate) === normalizeComparableFieldPath(normalizedComponentPath)
+            && normalizeComparableSchemaFieldPath(candidate) === normalizeComparableSchemaFieldPath(normalizedComponentPath)
         ) {
             related.add(candidate);
             return;
         }
 
         if (
-            root !== ''
+            roots.size > 0
             && (
                 ['menu', 'button-group', 'repeater', 'link', 'image', 'video', 'icon'].includes(matchedType ?? '')
-                || /(button|cta|link|menu|image|logo|icon)/i.test(root)
+                || Array.from(roots).some((root) => /(button|cta|link|menu|image|logo|icon)/i.test(root))
             )
-            && candidate.split('.')[0] === root
+            && roots.has(candidate.split('.')[0] ?? '')
         ) {
             related.add(candidate);
         }
 
         if (
-            targetStem !== ''
+            targetStems.size > 0
             && ['text', 'link', 'richtext'].includes(matchedType ?? '')
-            && deriveFieldStem(candidate) === targetStem
+            && targetStems.has(deriveFieldStem(candidate))
         ) {
             related.add(candidate);
         }
@@ -606,12 +556,6 @@ function resolveAllowedFieldPaths(
             related.add(typographyCompanion);
         }
     }
-
-    (schema.bindingFields ?? []).forEach((fieldPath) => {
-        if (typeof fieldPath === 'string' && fieldPath.trim() !== '') {
-            related.add(fieldPath.trim());
-        }
-    });
 
     return Array.from(related);
 }

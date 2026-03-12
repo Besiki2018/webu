@@ -201,4 +201,55 @@ describe('editingState selected target metadata', () => {
 
         expect(areBuilderEditableTargetsEqual(initialTarget, updatedTarget)).toBe(true);
     });
+
+    it('normalizes preview button aliases to canonical schema paths for CTA sections', () => {
+        const target = buildEditableTargetFromMessagePayload({
+            sectionLocalId: 'cta-1',
+            sectionKey: 'webu_general_cta_01',
+            componentType: 'webu_general_cta_01',
+            componentName: 'CTA',
+            parameterPath: 'buttonUrl',
+            componentPath: 'buttonUrl',
+            elementId: 'CTA.buttonUrl',
+            props: {
+                title: 'Ready to start?',
+                subtitle: 'Talk to our team.',
+                buttonText: 'Book a call',
+                buttonLink: '/contact',
+            },
+        });
+
+        expect(target?.path).toBe('buttonUrl');
+        expect(target?.componentPath).toBe('buttonUrl');
+        expect(target?.fieldLabel).toBe('Button link');
+        expect(target?.allowedUpdates?.fieldPaths).toEqual(expect.arrayContaining([
+            'buttonLink',
+            'buttonText',
+        ]));
+        expect(target?.allowedUpdates?.fieldPaths).not.toContain('ghostButtonUrl');
+    });
+
+    it('normalizes preview button label aliases to canonical schema paths for CTA sections', () => {
+        const target = buildEditableTargetFromMention({
+            id: 'CTA.buttonLabel',
+            tagName: 'a',
+            selector: '[data-webu-field=\"buttonLabel\"]',
+            textPreview: 'Book a call',
+            sectionKey: 'webu_general_cta_01',
+            sectionLocalId: 'cta-1',
+            parameterName: 'buttonLabel',
+            elementId: 'CTA.buttonLabel',
+        }, {
+            title: 'Ready to start?',
+            subtitle: 'Talk to our team.',
+            buttonText: 'Book a call',
+            buttonLink: '/contact',
+        });
+
+        expect(target?.fieldLabel).toBe('Button text');
+        expect(target?.allowedUpdates?.fieldPaths).toEqual(expect.arrayContaining([
+            'buttonText',
+            'buttonLink',
+        ]));
+    });
 });

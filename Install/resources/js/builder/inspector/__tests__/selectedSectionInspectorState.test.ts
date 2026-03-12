@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildEditableTargetFromMessagePayload } from '@/builder/editingState';
 import { buildSelectedSectionInspectorState } from '../selectedSectionInspectorState';
 
 describe('buildSelectedSectionInspectorState', () => {
@@ -189,5 +190,114 @@ describe('buildSelectedSectionInspectorState', () => {
         expect(state.usesSafeFallbackInspector).toBe(true);
         expect(state.editableSchemaFields).toHaveLength(0);
         expect(state.editableSchemaFieldsForDisplay).toHaveLength(0);
+    });
+
+    it('maps CTA preview button aliases back to canonical inspector fields', () => {
+        const target = buildEditableTargetFromMessagePayload({
+            sectionLocalId: 'cta-1',
+            sectionKey: 'webu_general_cta_01',
+            componentType: 'webu_general_cta_01',
+            parameterPath: 'buttonUrl',
+            componentPath: 'buttonUrl',
+            props: {
+                title: 'Ready to start?',
+                subtitle: 'Talk to our team.',
+                buttonText: 'Book a call',
+                buttonLink: '/contact',
+            },
+        });
+
+        const state = buildSelectedSectionInspectorState({
+            selectedSectionDraft: {
+                localId: 'cta-1',
+                type: 'webu_general_cta_01',
+            },
+            selectedSectionEffectiveType: null,
+            selectedSectionEffectiveParsedProps: {
+                title: 'Ready to start?',
+                subtitle: 'Talk to our team.',
+                buttonText: 'Book a call',
+                buttonLink: '/contact',
+            },
+            selectedSectionSchemaProperties: {
+                title: {},
+            },
+            selectedSectionSchemaHtmlTemplate: '',
+            selectedBuilderTarget: target,
+            previewMode: 'desktop',
+            interactionState: 'normal',
+            elementorLike: true,
+            normalizeSectionTypeKey: (value) => value.trim().toLowerCase(),
+            buildControlMeta: (path, type, label) => ({
+                type,
+                label,
+                group: 'content',
+                responsive: false,
+                stateful: false,
+                dynamic_capable: true,
+            }),
+        });
+
+        expect(state.inspectorTarget?.path).toBe('buttonUrl');
+        expect(state.editableSchemaFieldsForDisplay.map((field) => field.path.join('.'))).toEqual([
+            'buttonText',
+            'buttonLink',
+        ]);
+    });
+
+    it('keeps exact title, subtitle, and image bindings schema-backed for hero sections', () => {
+        const target = buildEditableTargetFromMessagePayload({
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            parameterPath: 'image',
+            componentPath: 'image',
+            props: {
+                title: 'Launch faster',
+                subtitle: 'Move from draft to live site quickly.',
+                image: '/hero.jpg',
+            },
+        });
+
+        const state = buildSelectedSectionInspectorState({
+            selectedSectionDraft: {
+                localId: 'hero-1',
+                type: 'webu_general_hero_01',
+            },
+            selectedSectionEffectiveType: null,
+            selectedSectionEffectiveParsedProps: {
+                title: 'Launch faster',
+                subtitle: 'Move from draft to live site quickly.',
+                image: '/hero.jpg',
+            },
+            selectedSectionSchemaProperties: {
+                title: {},
+                subtitle: {},
+                image: {},
+            },
+            selectedSectionSchemaHtmlTemplate: '',
+            selectedBuilderTarget: target,
+            previewMode: 'desktop',
+            interactionState: 'normal',
+            elementorLike: true,
+            normalizeSectionTypeKey: (value) => value.trim().toLowerCase(),
+            buildControlMeta: (path, type, label) => ({
+                type,
+                label,
+                group: 'content',
+                responsive: false,
+                stateful: false,
+                dynamic_capable: true,
+            }),
+        });
+
+        expect(state.inspectorTarget?.path).toBe('image');
+        expect(state.editableSchemaFieldsForDisplay.map((field) => field.path.join('.'))).toEqual(expect.arrayContaining([
+            'image',
+            'backgroundImage',
+        ]));
+        expect(state.editableSchemaFieldsForDisplay.map((field) => field.path.join('.'))).not.toContain('buttonText');
+        expect(state.resolvedProps?.title).toBe('Launch faster');
+        expect(state.resolvedProps?.subtitle).toBe('Move from draft to live site quickly.');
     });
 });
