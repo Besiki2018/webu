@@ -18,19 +18,19 @@ jobs:
         working-directory: Install
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@2.36.0
         with:
           php-version: '8.4'
           extensions: mbstring, intl, sqlite3, pdo_sqlite, fileinfo, dom
           coverage: none
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: Install/package-lock.json
 
