@@ -14,9 +14,10 @@ import {
     type BuilderEditableTarget,
     type BuilderSidebarMode,
 } from '@/builder/editingState';
+import { applyBuilderUpdatePipeline } from '@/builder/state/updatePipeline';
 import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
 import { isRecord } from '@/builder/state/sectionProps';
-import { duplicateSection, getInsertIndex, moveSection, removeSection } from '@/builder/visual/treeUtils';
+import { duplicateSection, getInsertIndex, moveSection } from '@/builder/visual/treeUtils';
 import { parseVisualDropId, type DropTarget, VISUAL_DROP_PREFIX } from '@/builder/visual/types';
 import { getEntry, hasEntry } from '@/builder/registry/componentRegistry';
 
@@ -24,11 +25,11 @@ type StateUpdater<T> = (value: T | ((current: T) => T)) => void;
 
 interface UseCmsStructureMutationHandlersOptions {
     sectionsDraftRef: MutableRefObject<SectionDraft[]>;
-    builderPreviewDocumentRef: MutableRefObject<Document | null>;
     scheduleStructuralDraftPersistRef: MutableRefObject<() => void>;
     syncPreviewVisibleSections: () => void;
     nextSectionLocalId: () => string;
     selectedSectionLocalId: string | null;
+    selectedBuilderTarget: BuilderEditableTarget | null;
     selectedNestedSectionParentLocalId: string | null;
     isEmbeddedSidebarMode: boolean;
     canvasDropId: string;
@@ -45,10 +46,14 @@ interface UseCmsStructureMutationHandlersOptions {
     ensurePreviewSectionVisibility: (sectionKey: string, label?: string | null) => void;
     extractLibrarySectionKey: (dragId: string) => string | null;
     setSectionsDraft: Dispatch<SetStateAction<SectionDraft[]>>;
-    setSelectedSectionLocalId: StateUpdater<string | null>;
+    applyMutationState: (next: {
+        sectionsDraft: SectionDraft[];
+        selectedSectionLocalId: string | null;
+        selectedBuilderTarget: BuilderEditableTarget | null;
+        mutationId?: string | null;
+    }) => void;
     setSelectedFixedSectionKey: StateUpdater<string | null>;
     setSelectedNestedSection: StateUpdater<CmsNestedSelection | null>;
-    setSelectedBuilderTarget: StateUpdater<BuilderEditableTarget | null>;
     setBuilderSidebarMode: (mode: BuilderSidebarMode) => void;
     setActiveDragId: (value: string | null) => void;
     setBuilderCurrentDropTarget: StateUpdater<DropTarget | null>;
@@ -66,11 +71,11 @@ function parseRecordJson(input: string): Record<string, unknown> | null {
 
 export function useCmsStructureMutationHandlers({
     sectionsDraftRef,
-    builderPreviewDocumentRef,
     scheduleStructuralDraftPersistRef,
     syncPreviewVisibleSections,
     nextSectionLocalId,
     selectedSectionLocalId,
+    selectedBuilderTarget,
     selectedNestedSectionParentLocalId,
     isEmbeddedSidebarMode,
     canvasDropId,
@@ -87,10 +92,9 @@ export function useCmsStructureMutationHandlers({
     ensurePreviewSectionVisibility,
     extractLibrarySectionKey,
     setSectionsDraft,
-    setSelectedSectionLocalId,
+    applyMutationState,
     setSelectedFixedSectionKey,
     setSelectedNestedSection,
-    setSelectedBuilderTarget,
     setBuilderSidebarMode,
     setActiveDragId,
     setBuilderCurrentDropTarget,
@@ -104,6 +108,22 @@ export function useCmsStructureMutationHandlers({
         key,
         label: sectionDisplayLabelByKey.get(normalizeSectionTypeKey(key)) ?? sectionDisplayLabelByKey.get(key) ?? key,
     })), [normalizeSectionTypeKey, sectionDisplayLabelByKey]);
+
+    const applyStructureMutationState = useCallback((
+        sections: SectionDraft[],
+        selection: {
+            sectionLocalId: string | null;
+            target: BuilderEditableTarget | null;
+        },
+    ) => {
+        sectionsDraftRef.current = sections;
+        applyMutationState({
+            sectionsDraft: sections,
+            selectedSectionLocalId: selection.sectionLocalId,
+            selectedBuilderTarget: selection.target,
+        });
+        syncPreviewVisibleSections();
+    }, [applyMutationState, sectionsDraftRef, syncPreviewVisibleSections]);
 
     const buildSectionDefaultProps = useCallback((sectionKey: string) => {
         const normalizedSectionKey = normalizeSectionTypeKey(sectionKey);
@@ -141,7 +161,7 @@ export function useCmsStructureMutationHandlers({
     const addSectionByKey = useCallback((
         sectionKey: string,
         source: 'library' | 'toolbar' = 'toolbar',
-        options?: { insertIndex?: number },
+        options?: { insertIndex?: number; localId?: string | null },
     ) => {
         const sectionDefaults = buildSectionDefaultProps(sectionKey);
         if (!sectionDefaults) {
@@ -149,41 +169,49 @@ export function useCmsStructureMutationHandlers({
         }
 
         const { hydratedDefaultProps, normalizedSectionKey } = sectionDefaults;
-        const localId = nextSectionLocalId();
+        const localId = typeof options?.localId === 'string' && options.localId.trim() !== ''
+            ? options.localId.trim()
+            : nextSectionLocalId();
         const insertIndex = typeof options?.insertIndex === 'number' ? options.insertIndex : null;
-
-        setSectionsDraft((prev) => {
-            const nextItem: SectionDraft = {
-                localId,
-                type: normalizedSectionKey,
-                propsText: formatPropsText(hydratedDefaultProps),
+        const result = applyBuilderUpdatePipeline({
+            sectionsDraft: sectionsDraftRef.current,
+            selectedSectionLocalId,
+            selectedBuilderTarget: null,
+        }, [{
+            kind: 'insert-section',
+            source: source === 'toolbar' ? 'toolbar' : 'drag-drop',
+            sectionType: normalizedSectionKey,
+            props: hydratedDefaultProps,
+            localId,
+            insertIndex,
+        }], {
+            createSection: ({ sectionType, props, localId: insertedLocalId }) => ({
+                localId: typeof insertedLocalId === 'string' && insertedLocalId.trim() !== '' ? insertedLocalId.trim() : nextSectionLocalId(),
+                type: sectionType,
+                propsText: formatPropsText(props ?? {}),
                 propsError: null,
                 bindingMeta: null,
-            };
-
-            if (insertIndex === null || insertIndex < 0 || insertIndex > prev.length) {
-                const next = [...prev, nextItem];
-                sectionsDraftRef.current = next;
-                return next;
-            }
-
-            const next = [...prev];
-            next.splice(insertIndex, 0, nextItem);
-            sectionsDraftRef.current = next;
-            return next;
+            }),
         });
 
-        setSelectedFixedSectionKey(null);
-        setSelectedNestedSection(null);
-        setSelectedSectionLocalId(localId);
-        setSelectedBuilderTarget(buildEditableTargetFromSection({
+        if (!result.ok || !result.changed) {
+            return;
+        }
+
+        const insertedSection = result.state.sectionsDraft.find((section) => section.localId === localId) ?? {
             localId,
             type: normalizedSectionKey,
-            props: hydratedDefaultProps,
             propsText: formatPropsText(hydratedDefaultProps),
             propsError: null,
             bindingMeta: null,
-        }));
+        };
+
+        setSelectedFixedSectionKey(null);
+        setSelectedNestedSection(null);
+        applyStructureMutationState(result.state.sectionsDraft, {
+            sectionLocalId: localId,
+            target: buildEditableTargetFromSection(insertedSection),
+        });
         setBuilderSidebarMode('settings');
 
         const sectionLabel = sectionDisplayLabelByKey.get(normalizedSectionKey)
@@ -199,6 +227,7 @@ export function useCmsStructureMutationHandlers({
 
         scheduleStructuralDraftPersistRef.current();
     }, [
+        applyStructureMutationState,
         buildSectionDefaultProps,
         ensurePreviewSectionVisibility,
         formatPropsText,
@@ -207,13 +236,10 @@ export function useCmsStructureMutationHandlers({
         normalizeSectionTypeKey,
         scheduleStructuralDraftPersistRef,
         sectionDisplayLabelByKey,
-        sectionsDraftRef,
         setBuilderSidebarMode,
-        setSectionsDraft,
-        setSelectedBuilderTarget,
         setSelectedFixedSectionKey,
         setSelectedNestedSection,
-        setSelectedSectionLocalId,
+        selectedSectionLocalId,
         t,
     ]);
 
@@ -221,78 +247,41 @@ export function useCmsStructureMutationHandlers({
         const normalizedLocalId = localId.trim();
         const shouldResetSidebar = selectedSectionLocalId === normalizedLocalId
             || selectedNestedSectionParentLocalId === normalizedLocalId;
-        let removedSectionKey = '';
-        let remainingSameTypeCount = 0;
+        const result = applyBuilderUpdatePipeline({
+            sectionsDraft: sectionsDraftRef.current,
+            selectedSectionLocalId,
+            selectedBuilderTarget,
+        }, [{
+            kind: 'delete-section',
+            source: 'toolbar',
+            sectionLocalId: normalizedLocalId,
+        }]);
 
-        setSectionsDraft((prev) => {
-            const removedDraft = prev.find((item) => item.localId === normalizedLocalId) ?? null;
-            removedSectionKey = removedDraft ? normalizeSectionTypeKey(removedDraft.type) : '';
-            const next = removeSection(prev, normalizedLocalId);
-            remainingSameTypeCount = removedSectionKey === ''
-                ? 0
-                : next.filter((item) => normalizeSectionTypeKey(item.type) === removedSectionKey).length;
-            sectionsDraftRef.current = next;
-            return next;
-        });
+        if (!result.ok || !result.changed) {
+            return;
+        }
 
         setSelectedNestedSection((current) => (
             current?.parentLocalId === normalizedLocalId ? null : current
         ));
-        setSelectedSectionLocalId((current) => (current === normalizedLocalId ? null : current));
-        setSelectedBuilderTarget((current) => (
-            current?.sectionLocalId === normalizedLocalId ? null : current
-        ));
+        applyStructureMutationState(result.state.sectionsDraft, {
+            sectionLocalId: result.state.selectedSectionLocalId,
+            target: result.state.selectedBuilderTarget,
+        });
         if (shouldResetSidebar) {
             setBuilderSidebarMode('elements');
         }
 
-        window.requestAnimationFrame(() => {
-            const doc = builderPreviewDocumentRef.current;
-            if (!doc) {
-                return;
-            }
-
-            const safeLocalId = normalizedLocalId.replace(/"/g, '\\"');
-            const matchedNodes = Array.from(doc.querySelectorAll<HTMLElement>(`[data-webu-section-local-id="${safeLocalId}"]`));
-            if (matchedNodes.length > 0) {
-                matchedNodes.forEach((node) => {
-                    if (node.getAttribute('data-webu-builder-placeholder') === 'true') {
-                        node.remove();
-                        return;
-                    }
-
-                    node.style.display = 'none';
-                    node.style.visibility = 'hidden';
-                    node.style.opacity = '0';
-                    node.setAttribute('data-webu-builder-optimistic-hidden', 'true');
-                });
-            } else if (removedSectionKey !== '' && remainingSameTypeCount === 0) {
-                const safeSectionKey = removedSectionKey.replace(/"/g, '\\"');
-                doc.querySelectorAll<HTMLElement>(`[data-webu-section="${safeSectionKey}"]`).forEach((node) => {
-                    node.style.display = 'none';
-                    node.style.visibility = 'hidden';
-                    node.style.opacity = '0';
-                    node.setAttribute('data-webu-builder-optimistic-hidden', 'true');
-                });
-            }
-
-            syncPreviewVisibleSections();
-        });
-
         scheduleStructuralDraftPersistRef.current();
     }, [
-        builderPreviewDocumentRef,
-        normalizeSectionTypeKey,
+        applyStructureMutationState,
         scheduleStructuralDraftPersistRef,
         sectionsDraftRef,
+        selectedBuilderTarget,
         selectedNestedSectionParentLocalId,
         selectedSectionLocalId,
         setBuilderSidebarMode,
-        setSectionsDraft,
-        setSelectedBuilderTarget,
         setSelectedNestedSection,
-        setSelectedSectionLocalId,
-        syncPreviewVisibleSections,
     ]);
 
     const handleDuplicateSection = useCallback((localId: string) => {
@@ -314,22 +303,23 @@ export function useCmsStructureMutationHandlers({
             const duplicatedSection = sectionsDraftRef.current.find((section) => section.localId === nextSelectedId) ?? null;
             setSelectedFixedSectionKey(null);
             setSelectedNestedSection(null);
-            setSelectedSectionLocalId(nextSelectedId);
-            setSelectedBuilderTarget(buildEditableTargetFromSection(duplicatedSection));
+            applyStructureMutationState(sectionsDraftRef.current, {
+                sectionLocalId: nextSelectedId,
+                target: buildEditableTargetFromSection(duplicatedSection),
+            });
             setBuilderSidebarMode('settings');
         }
 
         scheduleStructuralDraftPersistRef.current();
     }, [
+        applyStructureMutationState,
         nextSectionLocalId,
         scheduleStructuralDraftPersistRef,
         sectionsDraftRef,
         setBuilderSidebarMode,
         setSectionsDraft,
-        setSelectedBuilderTarget,
         setSelectedFixedSectionKey,
         setSelectedNestedSection,
-        setSelectedSectionLocalId,
     ]);
 
     const handleAddSectionInside = useCallback((localId: string, sectionKey: string) => {
@@ -505,10 +495,12 @@ export function useCmsStructureMutationHandlers({
                 return next;
             });
 
-            setSelectedSectionLocalId(localId);
             setSelectedFixedSectionKey(null);
             setSelectedNestedSection(null);
-            setSelectedBuilderTarget(buildEditableTargetFromSection(newSection));
+            applyStructureMutationState(sectionsDraftRef.current, {
+                sectionLocalId: localId,
+                target: buildEditableTargetFromSection(newSection),
+            });
             setBuilderSidebarMode('settings');
             toast.success(t('Section pasted'));
         } catch (error) {
@@ -521,6 +513,7 @@ export function useCmsStructureMutationHandlers({
 
         scheduleStructuralDraftPersistRef.current();
     }, [
+        applyStructureMutationState,
         formatPropsText,
         isFixedLayoutSectionKey,
         nextSectionLocalId,
@@ -530,10 +523,8 @@ export function useCmsStructureMutationHandlers({
         selectedSectionLocalId,
         setBuilderSidebarMode,
         setSectionsDraft,
-        setSelectedBuilderTarget,
         setSelectedFixedSectionKey,
         setSelectedNestedSection,
-        setSelectedSectionLocalId,
         t,
     ]);
 

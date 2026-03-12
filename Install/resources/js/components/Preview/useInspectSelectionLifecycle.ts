@@ -3,13 +3,12 @@
  * Extracts selection logic from InspectPreview for clearer module boundaries.
  */
 import { useCallback, useState, useRef, useEffect, type RefObject } from 'react';
-import { buildElementId } from '@/builder/componentParameterMetadata';
 import {
-    resolveComponentInspectableTarget,
-    resolveElementAtPoint as resolveElementAtPointInIframe,
     resolvePlacementTarget as resolvePlacementTargetInIframe,
+    resolvePreviewTargetAtPoint as resolvePreviewTargetAtPointInIframe,
+    resolvePreviewTargetFromElement,
+    type ResolvedPreviewTarget,
     resolveSectionOnlyFallbackTarget as resolveSectionOnlyFallbackTargetInIframe,
-    resolveSectionTarget as resolveSectionTargetInIframe,
     type InspectPreviewDropPlacement,
 } from './inspectPreviewTargets';
 import type { ElementMention } from '@/types/inspector';
@@ -55,73 +54,99 @@ export function buildElementMentionFromTarget(
     target: Element,
     placement: DropPlacement | null = null,
 ): ElementMention | null {
-    const sectionHost = target.closest<HTMLElement>('[data-webu-section]');
-    if (!sectionHost) return null;
+    const resolution = resolvePreviewTargetFromElement(target);
+    return buildElementMentionFromResolvedTarget(
+        resolution.status === 'resolved' ? resolution.target : null,
+        placement,
+    );
+}
 
-    const resolvedTarget = isInspectableElement(target) ? target : sectionHost;
-    const scopeEl = resolvedTarget.closest<HTMLElement>('[data-webu-field-scope]');
-    const fieldEl = resolvedTarget.closest<HTMLElement>('[data-webu-field], [data-webu-field-url]');
-    const exactParameterName = fieldEl?.getAttribute('data-webu-field')
-        ?? fieldEl?.getAttribute('data-webu-field-url')
-        ?? null;
-    const rawScopePath = scopeEl?.getAttribute('data-webu-field-scope') ?? null;
-    const componentPath = (() => {
-        if (!rawScopePath) return exactParameterName ?? null;
-        if (!exactParameterName || !exactParameterName.startsWith(`${rawScopePath}.`)) return rawScopePath;
-        const scopeSegments = rawScopePath.split('.').filter(Boolean);
-        const exactSegments = exactParameterName.split('.').filter(Boolean);
-        const nextSegment = exactSegments[scopeSegments.length] ?? null;
-        return nextSegment && /^\d+$/.test(nextSegment)
-            ? [...scopeSegments, nextSegment].join('.')
-            : rawScopePath;
-    })();
-    const parameterName = (() => {
-        if (exactParameterName && rawScopePath && exactParameterName !== rawScopePath && !exactParameterName.startsWith(`${rawScopePath}.`)) {
-            return `${rawScopePath}.${exactParameterName}`;
-        }
-        return exactParameterName ?? componentPath;
-    })();
+function buildElementMentionFromResolvedTarget(
+    target: ResolvedPreviewTarget | null,
+    placement: DropPlacement | null = null,
+): ElementMention | null {
+    if (!target) {
+        return null;
+    }
 
-    const sectionKey = sectionHost.getAttribute('data-webu-section');
-    const sectionLocalId = sectionHost.getAttribute('data-webu-section-local-id');
     const textPreview = (
-        resolvedTarget.textContent
-        || resolvedTarget.getAttribute('aria-label')
-        || resolvedTarget.getAttribute('title')
-        || resolvedTarget.getAttribute('alt')
-        || sectionHost.textContent
+        target.node.textContent
+        || target.node.getAttribute('aria-label')
+        || target.node.getAttribute('title')
+        || target.node.getAttribute('alt')
+        || target.section.textContent
         || ''
     )
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, 120);
-    let selector = sectionLocalId
-        ? `[data-webu-section-local-id="${sectionLocalId.replace(/"/g, '\\"')}"]`
-        : sectionKey
-            ? `[data-webu-section="${sectionKey.replace(/"/g, '\\"')}"]`
-            : resolvedTarget.tagName.toLowerCase();
-    if (parameterName && (sectionLocalId || sectionKey)) {
-        const fieldAttribute = exactParameterName
-            ? (fieldEl?.getAttribute('data-webu-field') ? 'data-webu-field' : 'data-webu-field-url')
-            : 'data-webu-field-scope';
-        selector = sectionLocalId
-            ? `[data-webu-section-local-id="${sectionLocalId.replace(/"/g, '\\"')}"] [${fieldAttribute}="${parameterName.replace(/"/g, '\\"')}"]`
-            : `[data-webu-section="${(sectionKey ?? '').replace(/"/g, '\\"')}"] [${fieldAttribute}="${parameterName.replace(/"/g, '\\"')}"]`;
-    }
-    const elementId = sectionKey && parameterName ? buildElementId(sectionKey, parameterName) : null;
 
     return {
-        id: elementId || selector || (target as HTMLElement).id || sectionLocalId || sectionKey || resolvedTarget.tagName.toLowerCase(),
-        tagName: resolvedTarget.tagName.toLowerCase(),
-        selector,
+        id: target.targetId,
+        targetId: target.targetId,
+        tagName: target.node.tagName.toLowerCase(),
+        selector: target.selector,
         textPreview,
-        sectionKey: sectionKey ?? undefined,
-        sectionLocalId: sectionLocalId ?? undefined,
+        sectionKey: target.sectionKey ?? undefined,
+        sectionLocalId: target.sectionLocalId ?? undefined,
         placement,
-        parameterName: parameterName ?? undefined,
-        componentPath: componentPath ?? undefined,
-        elementId: elementId ?? undefined,
+        parameterName: target.kind === 'section' ? undefined : (target.parameterPath ?? undefined),
+        componentPath: target.kind === 'section' ? undefined : (target.componentPath ?? undefined),
+        elementId: target.elementId ?? undefined,
     };
+}
+
+function hasBackingPathValue(value: unknown, path: string | null): boolean {
+    if (!path) {
+        return true;
+    }
+
+    const segments = path.split('.').filter(Boolean);
+    if (segments.length === 0) {
+        return true;
+    }
+
+    let current: unknown = value;
+    for (const segment of segments) {
+        if (Array.isArray(current)) {
+            const index = Number(segment);
+            if (!Number.isInteger(index) || index < 0 || index >= current.length) {
+                return false;
+            }
+
+            current = current[index];
+            continue;
+        }
+
+        if (!current || typeof current !== 'object' || !(segment in (current as Record<string, unknown>))) {
+            return false;
+        }
+
+        current = (current as Record<string, unknown>)[segment];
+    }
+
+    return true;
+}
+
+function hasBackingStructureTarget(
+    target: ResolvedPreviewTarget | null,
+    liveStructureItems: LiveStructureItem[],
+): boolean {
+    if (!target) {
+        return false;
+    }
+
+    const matchingItem = target.sectionLocalId
+        ? liveStructureItems.find((item) => item.localId === target.sectionLocalId) ?? null
+        : target.sectionKey
+            ? liveStructureItems.find((item) => item.sectionKey === target.sectionKey) ?? null
+            : null;
+
+    if (!matchingItem) {
+        return false;
+    }
+
+    return hasBackingPathValue(matchingItem.props, target.parameterPath);
 }
 
 export interface UseInspectSelectionLifecycleOptions {
@@ -134,6 +159,7 @@ export interface UseInspectSelectionLifecycleOptions {
     highlightSectionKey: string | null;
     highlightSectionLocalId: string | null;
     selectedElementMention: ElementMention | null;
+    liveStructureItems: LiveStructureItem[];
     pendingLibraryItem: { key: string; label: string } | null;
     onElementSelect?: (element: ElementMention) => void;
     onLibraryItemPlace?: (sectionKey: string, target: ElementMention | null) => void;
@@ -175,6 +201,7 @@ export function useInspectSelectionLifecycle(
         highlightSectionKey,
         highlightSectionLocalId,
         selectedElementMention,
+        liveStructureItems,
         pendingLibraryItem,
         onElementSelect,
         onLibraryItemPlace,
@@ -320,54 +347,6 @@ export function useInspectSelectionLifecycle(
         setHoveredOverlayFromSection(nextSection, placement);
     }, [setHoveredOverlayFromSection]);
 
-    const resolveElementAtPoint = useCallback((clientX: number, clientY: number) => {
-        return resolveElementAtPointInIframe(getActiveIframe(), scale, clientX, clientY);
-    }, [getActiveIframe, scale]);
-
-    const resolveFreshElementAtPoint = useCallback((clientX: number, clientY: number): HTMLElement | null => {
-        const iframe = getActiveIframe();
-        const doc = iframe?.contentDocument;
-        const win = iframe?.contentWindow;
-        if (!iframe || !doc) {
-            return null;
-        }
-
-        const iframeRect = iframe.getBoundingClientRect();
-        const localX = clientX - iframeRect.left;
-        const localY = clientY - iframeRect.top;
-        if (localX < 0 || localY < 0 || localX > iframeRect.width || localY > iframeRect.height) {
-            return null;
-        }
-
-        const docWidth = Math.max(
-            doc.documentElement?.clientWidth ?? 0,
-            doc.body?.clientWidth ?? 0,
-            win?.innerWidth ?? 0,
-        );
-        const docHeight = Math.max(
-            doc.documentElement?.clientHeight ?? 0,
-            doc.body?.clientHeight ?? 0,
-            win?.innerHeight ?? 0,
-        );
-        const scaleX = docWidth > 0 ? iframeRect.width / docWidth : scale;
-        const scaleY = docHeight > 0 ? iframeRect.height / docHeight : scale;
-        const docX = scaleX > 0 ? localX / scaleX : localX;
-        const docY = scaleY > 0 ? localY / scaleY : localY;
-
-        if (typeof doc.elementsFromPoint === 'function') {
-            const stack = doc.elementsFromPoint(docX, docY);
-            for (const candidate of stack) {
-                const resolvedTarget = resolveComponentInspectableTarget(isInspectableElement(candidate) ? candidate : null);
-                if (resolvedTarget) {
-                    return resolvedTarget;
-                }
-            }
-        }
-
-        const direct = doc.elementFromPoint(docX, docY);
-        return resolveComponentInspectableTarget(isInspectableElement(direct) ? direct : null);
-    }, [getActiveIframe, scale]);
-
     const resolvePlacementTarget = useCallback((target: EventTarget | null, clientX: number, clientY: number) => {
         return resolvePlacementTargetInIframe(getActiveIframe(), scale, target, clientX, clientY);
     }, [getActiveIframe, scale]);
@@ -426,12 +405,25 @@ export function useInspectSelectionLifecycle(
 
     const handleInspectPointerMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         if (mode !== 'inspect' || isBuilding) return;
-        const hoverTarget = resolveElementAtPoint(event.clientX, event.clientY)
-            ?? resolveFreshElementAtPoint(event.clientX, event.clientY)
-            ?? resolveSectionOnlyFallbackTarget({ target: event.target, clientX: event.clientX, clientY: event.clientY });
-        const hoveredSection = hoverTarget?.closest<HTMLElement>('[data-webu-section]') ?? hoverTarget;
+        const pointResolution = resolvePreviewTargetAtPointInIframe(getActiveIframe(), scale, {
+            target: event.target,
+            clientX: event.clientX,
+            clientY: event.clientY,
+        });
+
+        if (pointResolution.status === 'missing-backing-node') {
+            inspectLifecycleLog('ignored-hover-target-missing-backing-node', {
+                clientX: event.clientX,
+                clientY: event.clientY,
+            });
+            return;
+        }
+
+        const hoveredSection = pointResolution.status === 'resolved'
+            ? pointResolution.target?.section ?? null
+            : resolveSectionOnlyFallbackTarget({ target: event.target, clientX: event.clientX, clientY: event.clientY });
         updateHoveredSection(hoveredSection);
-    }, [isBuilding, mode, resolveElementAtPoint, resolveFreshElementAtPoint, resolveSectionOnlyFallbackTarget, updateHoveredSection]);
+    }, [getActiveIframe, isBuilding, mode, resolveSectionOnlyFallbackTarget, scale, updateHoveredSection]);
 
     const handleInspectPointerLeave = useCallback(() => {
         if (mode !== 'inspect') return;
@@ -441,34 +433,49 @@ export function useInspectSelectionLifecycle(
     const handleInspectClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         if (mode !== 'inspect' || isBuilding) return;
         event.preventDefault();
-        const elementAtPoint = resolveElementAtPoint(event.clientX, event.clientY)
-            ?? resolveFreshElementAtPoint(event.clientX, event.clientY);
-        const section = elementAtPoint ? null : resolveSectionOnlyFallbackTarget({
+        const pointResolution = resolvePreviewTargetAtPointInIframe(getActiveIframe(), scale, {
             target: event.target,
             clientX: event.clientX,
             clientY: event.clientY,
         });
-        const selectedSection = elementAtPoint?.closest<HTMLElement>('[data-webu-section]') ?? section;
-        const mention = selectedSection ? buildSectionElementMention(selectedSection) : null;
+
+        if (pointResolution.status === 'missing-backing-node') {
+            inspectLifecycleLog('ignored-click-target-missing-backing-node', {
+                clientX: event.clientX,
+                clientY: event.clientY,
+            });
+            return;
+        }
+
+        const resolvedTarget = pointResolution.status === 'resolved'
+            ? pointResolution.target
+            : null;
+
+        if (resolvedTarget && !hasBackingStructureTarget(resolvedTarget, liveStructureItems)) {
+            inspectLifecycleLog('ignored-click-target-without-live-structure-node', {
+                targetId: resolvedTarget.targetId,
+                sectionLocalId: resolvedTarget.sectionLocalId,
+                parameterPath: resolvedTarget.parameterPath,
+            });
+            return;
+        }
+
+        const selectedSection = resolvedTarget?.section
+            ?? resolveSectionOnlyFallbackTarget({
+                target: event.target,
+                clientX: event.clientX,
+                clientY: event.clientY,
+            });
+        const mention = buildElementMentionFromResolvedTarget(resolvedTarget)
+            ?? (selectedSection ? buildSectionElementMention(selectedSection) : null);
         inspectLifecycleLog('handleInspectClick', {
             clientX: event.clientX,
             clientY: event.clientY,
-            elementAtPoint: elementAtPoint instanceof Element
-                ? {
-                    tag: elementAtPoint.tagName,
-                    field: elementAtPoint.getAttribute('data-webu-field'),
-                    scope: elementAtPoint.getAttribute('data-webu-field-scope'),
-                    section: elementAtPoint.getAttribute('data-webu-section'),
-                    localId: elementAtPoint.closest('[data-webu-section]')?.getAttribute('data-webu-section-local-id') ?? null,
-                }
-                : null,
-            section: section instanceof Element
-                ? {
-                    tag: section.tagName,
-                    section: section.getAttribute('data-webu-section'),
-                    localId: section.getAttribute('data-webu-section-local-id'),
-                }
-                : null,
+            resolutionStatus: pointResolution.status,
+            resolutionReason: pointResolution.reason,
+            targetId: resolvedTarget?.targetId ?? null,
+            sectionLocalId: resolvedTarget?.sectionLocalId ?? selectedSection?.getAttribute('data-webu-section-local-id') ?? null,
+            parameterPath: resolvedTarget?.parameterPath ?? null,
             mention,
         });
         if (!mention) return;
@@ -477,7 +484,7 @@ export function useInspectSelectionLifecycle(
             return overlaysMatch(current, nextOverlay) ? current : nextOverlay;
         });
         onElementSelect?.(mention);
-    }, [buildSectionElementMention, isBuilding, measureSectionOverlay, mode, onElementSelect, overlaysMatch, resolveElementAtPoint, resolveFreshElementAtPoint, resolveSectionOnlyFallbackTarget]);
+    }, [buildSectionElementMention, getActiveIframe, isBuilding, liveStructureItems, measureSectionOverlay, mode, onElementSelect, overlaysMatch, resolveSectionOnlyFallbackTarget, scale]);
 
     useEffect(() => {
         if (!pendingLibraryItem) clearHoveredSection();
@@ -496,11 +503,25 @@ export function useInspectSelectionLifecycle(
             const targetElement = isInspectableElement(target) ? target : (target as Node).parentElement;
             if (!targetElement) return;
             const point = resolveParentClientPoint(e.clientX, e.clientY);
-            const hoverTarget = (point ? resolveElementAtPoint(point.clientX, point.clientY) : null)
-                ?? (point ? resolveFreshElementAtPoint(point.clientX, point.clientY) : null)
-                ?? resolveComponentInspectableTarget(targetElement)
-                ?? resolveSectionOnlyFallbackTarget({ target: targetElement, clientX: point?.clientX, clientY: point?.clientY });
-            const hoveredSection = hoverTarget?.closest<HTMLElement>('[data-webu-section]') ?? hoverTarget;
+            const pointResolution = point
+                ? resolvePreviewTargetAtPointInIframe(getActiveIframe(), scale, {
+                    target: targetElement,
+                    clientX: point.clientX,
+                    clientY: point.clientY,
+                })
+                : resolvePreviewTargetFromElement(targetElement);
+
+            if (pointResolution.status === 'missing-backing-node') {
+                inspectLifecycleLog('ignored-iframe-hover-target-missing-backing-node', {
+                    clientX: e.clientX,
+                    clientY: e.clientY,
+                });
+                return;
+            }
+
+            const hoveredSection = pointResolution.status === 'resolved'
+                ? pointResolution.target?.section ?? null
+                : resolveSectionOnlyFallbackTarget({ target: targetElement, clientX: point?.clientX, clientY: point?.clientY });
             updateHoveredSection(hoveredSection);
         };
         const onIframeMouseLeave = () => clearHoveredSection();
@@ -508,27 +529,49 @@ export function useInspectSelectionLifecycle(
             const target = e.target as Node | null;
             if (!target || !iframeDoc.contains(target)) return;
             const targetElement = isInspectableElement(target) ? target : (target as Node).parentElement;
+            if (!targetElement) return;
             const section = targetElement?.closest<HTMLElement>('[data-webu-section]') ?? null;
             if (!section) return;
             e.preventDefault();
             e.stopPropagation();
             const point = resolveParentClientPoint(e.clientX, e.clientY);
-            const resolvedTarget = (point ? resolveElementAtPoint(point.clientX, point.clientY) : null)
-                ?? (point ? resolveFreshElementAtPoint(point.clientX, point.clientY) : null)
-                ?? resolveComponentInspectableTarget(targetElement)
+            const pointResolution = point
+                ? resolvePreviewTargetAtPointInIframe(getActiveIframe(), scale, {
+                    target: targetElement,
+                    clientX: point.clientX,
+                    clientY: point.clientY,
+                })
+                : resolvePreviewTargetFromElement(targetElement);
+
+            if (pointResolution.status === 'missing-backing-node') {
+                inspectLifecycleLog('ignored-iframe-click-target-missing-backing-node', {
+                    tag: targetElement.tagName,
+                });
+                return;
+            }
+
+            const resolvedTarget = pointResolution.status === 'resolved'
+                ? pointResolution.target
+                : null;
+
+            if (resolvedTarget && !hasBackingStructureTarget(resolvedTarget, liveStructureItems)) {
+                inspectLifecycleLog('ignored-iframe-click-target-without-live-structure-node', {
+                    targetId: resolvedTarget.targetId,
+                });
+                return;
+            }
+
+            const selectedSection = resolvedTarget?.section
                 ?? resolveSectionOnlyFallbackTarget({ target: targetElement, clientX: point?.clientX, clientY: point?.clientY });
-            if (!resolvedTarget) return;
-            const selectedSection = resolvedTarget.closest<HTMLElement>('[data-webu-section]') ?? resolvedTarget;
-            const mention = buildSectionElementMention(selectedSection);
+            if (!selectedSection) {
+                return;
+            }
+            const mention = buildElementMentionFromResolvedTarget(resolvedTarget) ?? buildSectionElementMention(selectedSection);
             inspectLifecycleLog('onIframeClick', {
                 targetTag: targetElement?.tagName ?? null,
-                resolvedTarget: {
-                    tag: resolvedTarget.tagName,
-                    field: resolvedTarget.getAttribute('data-webu-field'),
-                    scope: resolvedTarget.getAttribute('data-webu-field-scope'),
-                    section: resolvedTarget.getAttribute('data-webu-section'),
-                    localId: resolvedTarget.closest('[data-webu-section]')?.getAttribute('data-webu-section-local-id') ?? null,
-                },
+                resolutionStatus: pointResolution.status,
+                resolutionReason: pointResolution.reason,
+                targetId: resolvedTarget?.targetId ?? null,
                 mention,
             });
             if (mention) {
@@ -548,8 +591,8 @@ export function useInspectSelectionLifecycle(
     }, [
         mode, iframeReady, pendingLibraryItem,
         updateHoveredSection, clearHoveredSection, buildSectionElementMention, measureSectionOverlay,
-        onElementSelect, overlaysMatch, resolveElementAtPoint, resolveParentClientPoint,
-        resolveFreshElementAtPoint, resolveSectionOnlyFallbackTarget, getActiveIframe,
+        onElementSelect, overlaysMatch, resolveParentClientPoint,
+        resolveSectionOnlyFallbackTarget, getActiveIframe, liveStructureItems, scale,
     ]);
 
     return {

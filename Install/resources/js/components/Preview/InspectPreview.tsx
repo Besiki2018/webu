@@ -110,7 +110,7 @@ interface LiveStructureItem {
     props: Record<string, unknown>;
 }
 
-interface InspectPreviewProps {
+export interface InspectPreviewProps {
     previewUrl?: string | null;
     refreshTrigger?: number;
     isBuilding?: boolean;
@@ -136,6 +136,7 @@ interface InspectPreviewProps {
     selectedElementMention?: ElementMention | null;
     pendingLibraryItem?: { key: string; label: string } | null;
     onLibraryItemPlace?: (sectionKey: string, target: ElementMention | null) => void;
+    onPreviewReadyChange?: (ready: boolean) => void;
 }
 
 /** Minimal loader during build (Lovable-style). */
@@ -188,6 +189,7 @@ export function InspectPreview({
     selectedElementMention = null,
     pendingLibraryItem = null,
     onLibraryItemPlace,
+    onPreviewReadyChange,
 }: InspectPreviewProps) {
     const { t } = useTranslation();
     const tt = useCallback((key: string, fallback: string) => {
@@ -197,6 +199,8 @@ export function InspectPreview({
     const containerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<HTMLDivElement>(null);
     const frameRef = useRef<HTMLDivElement>(null);
+    // TODO(builder-v2): drop the preview iframe and render the builder canvas in the same React
+    // runtime as the inspector. Hit-testing, overlays, and live mutations should read store state directly.
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const hitLayerRef = useRef<HTMLDivElement | null>(null);
     const wasBuilding = useRef(false);
@@ -237,12 +241,13 @@ export function InspectPreview({
 
     const deviceWidth = DEVICE_VIEWPORT[viewport].width;
     const deviceHeight = DEVICE_VIEWPORT[viewport].height;
+    const minimumCanvasWidth = viewport === 'desktop' ? DESKTOP_MIN_WIDTH : deviceWidth;
     const scale =
         stageSize.w > 0 && stageSize.h > 0
             ? Math.min(stageSize.w / deviceWidth, stageSize.h / deviceHeight, 1)
             : 1;
-    const scaledWidth = Math.max(deviceWidth * scale, Math.min(deviceWidth, stageSize.w || deviceWidth));
-    const scaledHeight = Math.max(deviceHeight * scale, Math.min(deviceHeight, stageSize.h || deviceHeight));
+    const scaledWidth = Math.round(deviceWidth * scale);
+    const scaledHeight = Math.round(deviceHeight * scale);
 
     const selectionLifecycle = useInspectSelectionLifecycle({
         iframeRef,
@@ -254,6 +259,7 @@ export function InspectPreview({
         highlightSectionKey: highlightSectionKey ?? null,
         highlightSectionLocalId: highlightSectionLocalId ?? null,
         selectedElementMention: selectedElementMention ?? null,
+        liveStructureItems,
         pendingLibraryItem: pendingLibraryItem ?? null,
         onElementSelect,
         onLibraryItemPlace,
@@ -365,6 +371,10 @@ export function InspectPreview({
         return () => iframe.removeEventListener('load', handleLoad);
     }, [iframeSrc]);
 
+    useEffect(() => {
+        onPreviewReadyChange?.(iframeReady);
+    }, [iframeReady, onPreviewReadyChange]);
+
     // Invalidate DOM map cache when preview iframe DOM changes (e.g. after drop or edit)
     useEffect(() => {
         if (!iframeReady) return;
@@ -466,12 +476,21 @@ export function InspectPreview({
         if (!style) {
             style = iframeDoc.createElement('style');
             style.id = 'webu-chat-preview-highlight-style';
-            style.textContent = `
+            iframeDoc.head?.appendChild(style);
+        }
+        style.textContent = `
 html,
 body {
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
   min-height: 100%;
+  overflow-x: hidden;
 }
 body {
+  width: 100%;
+  min-width: ${minimumCanvasWidth}px;
+  max-width: none;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -481,11 +500,17 @@ body > .main_content,
 body > [data-webu-role="page-root"],
 body > [data-webu-role="page-shell"] {
   flex: 1 0 auto;
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
 }
 .main_content,
 main[data-webu-role="page-root"],
 [data-webu-role="page-shell"] {
   display: flex;
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
   flex: 1 0 auto;
   flex-direction: column;
   min-height: 0;
@@ -502,6 +527,11 @@ body > [data-webu-section*="footer"],
   flex-shrink: 0;
 }
 [data-webu-section] {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  flex: 0 0 auto;
   transition: outline 120ms ease;
 }
 [data-webu-section][data-webu-chat-hovered="true"] {
@@ -573,8 +603,6 @@ html[data-webu-chat-inspect="true"] [role="button"] {
   pointer-events: none !important;
 }
 `;
-            iframeDoc.head?.appendChild(style);
-        }
 
         const docEl = iframeDoc.documentElement;
         if (mode === 'inspect') {
@@ -615,7 +643,7 @@ html[data-webu-chat-inspect="true"] [role="button"] {
             return;
         }
         setSelectedOverlay(null);
-    }, [highlightSectionKey, highlightSectionLocalId, iframeReady, measureSectionOverlay, mode, overlaysMatch, pendingLibraryItem, refreshTrigger, resolveSelectedPreviewTarget, selectedElementMention, tt]);
+    }, [highlightSectionKey, highlightSectionLocalId, iframeReady, measureSectionOverlay, minimumCanvasWidth, mode, overlaysMatch, pendingLibraryItem, refreshTrigger, resolveSelectedPreviewTarget, selectedElementMention, tt]);
 
     useEffect(() => {
         const iframeDoc = iframeRef.current?.contentDocument;
@@ -761,7 +789,7 @@ html[data-webu-chat-inspect="true"] [role="button"] {
             window.cancelAnimationFrame(rafId);
             observer.disconnect();
         };
-    }, [iframeReady, liveStructureItems, mode, refreshTrigger]);
+    }, [iframeReady, liveStructureItems, mode]);
 
     useEffect(() => {
         if (!pendingLibraryItem) {
@@ -993,6 +1021,7 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                     <div className="workspace-preview-scale-container">
                         <div
                             className={`workspace-preview-scale-shell workspace-preview-scale-shell--${viewport}`}
+                            data-testid="preview-scale-shell"
                             style={{
                                 width: scaledWidth,
                                 height: scaledHeight,
@@ -1001,9 +1030,9 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                             <div
                             data-testid="preview-scale-wrapper"
                             className="workspace-preview-scale-wrapper"
-                            style={{
-                                width: deviceWidth,
-                                height: deviceHeight,
+                                style={{
+                                    width: deviceWidth,
+                                    height: deviceHeight,
                                 transform: `scale(${scale})`,
                                 transformOrigin: 'top left',
                             }}

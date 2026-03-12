@@ -51,6 +51,7 @@ export interface BuilderInsertSectionOperation {
     source: BuilderUpdateSource;
     sectionType: string;
     afterSectionId?: string | null;
+    insertIndex?: number | null;
     props?: Record<string, unknown>;
     localId?: string | null;
 }
@@ -735,9 +736,14 @@ function applyInsertSectionOperation(
     const afterSectionId = typeof operation.afterSectionId === 'string' && operation.afterSectionId.trim() !== ''
         ? operation.afterSectionId.trim()
         : null;
+    const requestedInsertIndex = Number.isInteger(operation.insertIndex)
+        ? Number(operation.insertIndex)
+        : null;
     const insertIndex = afterSectionId
         ? Math.max(0, nextSections.findIndex((section) => section.localId === afterSectionId) + 1)
-        : nextSections.length;
+        : requestedInsertIndex !== null
+            ? Math.max(0, Math.min(requestedInsertIndex, nextSections.length))
+            : nextSections.length;
     nextSections.splice(insertIndex, 0, nextSection);
 
     return {

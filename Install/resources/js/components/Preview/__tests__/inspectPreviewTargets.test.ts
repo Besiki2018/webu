@@ -1,5 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
+    resolvePreviewTargetAtPoint,
+    resolvePreviewTargetFromElement,
     resolveComponentInspectableTarget,
     resolveElementAtPoint,
     resolveSectionOnlyFallbackTarget,
@@ -74,6 +76,24 @@ describe('inspectPreviewTargets', () => {
 
             expect(resolveComponentInspectableTarget(a)).toBe(a);
             expect(a.getAttribute('data-webu-field-url')).toBe('ctaLink');
+        });
+    });
+
+    describe('resolvePreviewTargetFromElement', () => {
+        it('returns canonical section target id for blank section area', () => {
+            const doc = document.implementation.createHTMLDocument('');
+            const section = doc.createElement('section');
+            section.setAttribute('data-webu-section', 'webu_general_hero_01');
+            section.setAttribute('data-webu-section-local-id', 'hero-1');
+            const blank = doc.createElement('div');
+            blank.textContent = 'Background';
+            section.appendChild(blank);
+            doc.body.appendChild(section);
+
+            const resolution = resolvePreviewTargetFromElement(blank);
+            expect(resolution.status).toBe('resolved');
+            expect(resolution.target?.targetId).toBe('hero-1::section');
+            expect(resolution.target?.kind).toBe('section');
         });
     });
 
@@ -301,6 +321,139 @@ describe('inspectPreviewTargets', () => {
             });
 
             expect(result).toBe(section);
+        });
+    });
+
+    describe('resolvePreviewTargetAtPoint', () => {
+        let iframe: HTMLIFrameElement;
+        let iframeDoc: Document;
+        let elementsFromPointMock: (x: number, y: number) => Element[];
+
+        beforeEach(() => {
+            iframe = document.createElement('iframe');
+            document.body.appendChild(iframe);
+            iframeDoc = document.implementation.createHTMLDocument('');
+            elementsFromPointMock = () => [];
+            Object.defineProperty(iframe, 'contentDocument', { value: iframeDoc, configurable: true });
+            Object.defineProperty(iframe, 'contentWindow', {
+                value: { document: iframeDoc },
+                configurable: true,
+            });
+            Object.defineProperty(iframeDoc, 'elementFromPoint', {
+                value: () => null,
+                configurable: true,
+            });
+            Object.defineProperty(iframeDoc, 'elementsFromPoint', {
+                value: (x: number, y: number) => elementsFromPointMock(x, y),
+                configurable: true,
+            });
+            iframe.getBoundingClientRect = () => ({
+                left: 0,
+                top: 0,
+                width: 800,
+                height: 600,
+                right: 800,
+                bottom: 600,
+                x: 0,
+                y: 0,
+                toJSON: () => ({}),
+            });
+        });
+
+        it('returns mapped field target with stable target id', () => {
+            const section = iframeDoc.createElement('section');
+            section.setAttribute('data-webu-section', 'webu_general_hero_01');
+            section.setAttribute('data-webu-section-local-id', 'hero-1');
+            const title = iframeDoc.createElement('h1');
+            title.setAttribute('data-webu-field', 'title');
+            title.textContent = 'Launch faster';
+            section.appendChild(title);
+            iframeDoc.body.appendChild(section);
+
+            elementsFromPointMock = () => [title, section];
+
+            const resolution = resolvePreviewTargetAtPoint(iframe, 1, {
+                target: title,
+                clientX: 100,
+                clientY: 100,
+            });
+
+            expect(resolution.status).toBe('resolved');
+            expect(resolution.reason).toBe('mapped-element');
+            expect(resolution.target?.targetId).toBe('hero-1::title');
+            expect(resolution.target?.parameterPath).toBe('title');
+        });
+
+        it('falls back to section target for blank area clicks inside a section', () => {
+            const section = iframeDoc.createElement('section');
+            section.setAttribute('data-webu-section', 'webu_general_hero_01');
+            section.setAttribute('data-webu-section-local-id', 'hero-1');
+            const blankArea = iframeDoc.createElement('div');
+            blankArea.textContent = 'Background';
+            const title = iframeDoc.createElement('h1');
+            title.setAttribute('data-webu-field', 'title');
+            title.textContent = 'Launch faster';
+            section.appendChild(blankArea);
+            section.appendChild(title);
+            iframeDoc.body.appendChild(section);
+
+            elementsFromPointMock = () => [blankArea, section];
+
+            const resolution = resolvePreviewTargetAtPoint(iframe, 1, {
+                target: blankArea,
+                clientX: 120,
+                clientY: 120,
+            });
+
+            expect(resolution.status).toBe('resolved');
+            expect(resolution.reason).toBe('section-fallback');
+            expect(resolution.target?.targetId).toBe('hero-1::section');
+            expect(resolution.target?.kind).toBe('section');
+        });
+
+        it('returns root canvas fallback only when the page has a single top-level section', () => {
+            const section = iframeDoc.createElement('section');
+            section.setAttribute('data-webu-section', 'webu_general_hero_01');
+            section.setAttribute('data-webu-section-local-id', 'hero-1');
+            iframeDoc.body.appendChild(section);
+
+            elementsFromPointMock = () => [];
+            Object.defineProperty(iframeDoc, 'elementFromPoint', {
+                configurable: true,
+                value: () => iframeDoc.body,
+            });
+
+            const resolution = resolvePreviewTargetAtPoint(iframe, 1, {
+                target: iframeDoc.body,
+                clientX: 10,
+                clientY: 10,
+            });
+
+            expect(resolution.status).toBe('resolved');
+            expect(resolution.reason).toBe('root-canvas-fallback');
+            expect(resolution.target?.targetId).toBe('hero-1::section');
+        });
+
+        it('flags editable DOM nodes that have no backing mapped node', () => {
+            const section = iframeDoc.createElement('section');
+            section.setAttribute('data-webu-section', 'webu_general_hero_01');
+            section.setAttribute('data-webu-section-local-id', 'hero-1');
+            const orphan = iframeDoc.createElement('h1');
+            orphan.setAttribute('data-webu-field', 'ghostTitle');
+            orphan.textContent = 'Orphan';
+            section.appendChild(orphan);
+            iframeDoc.body.appendChild(section);
+
+            elementsFromPointMock = () => [orphan, section];
+
+            const resolution = resolvePreviewTargetAtPoint(iframe, 1, {
+                target: orphan,
+                clientX: 50,
+                clientY: 50,
+            });
+
+            expect(resolution.status).toBe('missing-backing-node');
+            expect(resolution.target).toBeNull();
         });
     });
 });

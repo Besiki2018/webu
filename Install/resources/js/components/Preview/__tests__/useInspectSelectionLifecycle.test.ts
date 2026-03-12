@@ -17,6 +17,8 @@ describe('buildElementMentionFromTarget', () => {
         expect(mention?.sectionLocalId).toBe('hero-1');
         expect(mention?.textPreview).toContain('Launch');
         expect(mention?.parameterName).toBeUndefined();
+        expect(mention?.targetId).toBe('hero-1::section');
+        expect(mention?.id).toBe('hero-1::section');
     });
 
     it('builds mention from field element with parameter path', () => {
@@ -34,6 +36,8 @@ describe('buildElementMentionFromTarget', () => {
         expect(mention?.parameterName).toBe('title');
         expect(mention?.elementId).toBeTruthy();
         expect(mention?.elementId).toContain('title');
+        expect(mention?.targetId).toBe('hero-1::title');
+        expect(mention?.id).toBe('hero-1::title');
     });
 
     it('returns null for element without section', () => {

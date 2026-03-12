@@ -181,8 +181,7 @@ export function filterInspectorSchemaFields<T extends InspectorSchemaField>(
             .filter(Boolean),
     );
     const hasIndexedScope = /\.\d+(?:\.|$)/.test(scopePath) || Array.from(explicitTargetPaths).some((path) => /\.\d+(?:\.|$)/.test(path));
-
-    return previewFiltered.filter((field) => {
+    const strictMatches = previewFiltered.filter((field) => {
         const fieldPath = normalizeInspectorFieldPath(field.path);
         if (explicitTargetPaths.has(fieldPath)) {
             return true;
@@ -201,7 +200,23 @@ export function filterInspectorSchemaFields<T extends InspectorSchemaField>(
             return false;
         }
 
-        const fieldFamily = deriveFieldFamily(fieldPath);
+        return false;
+    });
+
+    if (strictMatches.length > 0) {
+        return strictMatches;
+    }
+
+    if (hasIndexedScope || explicitTargetPaths.size > 0 || targetPath !== '' || targetComponentPath !== '') {
+        return [];
+    }
+
+    if (relatedFamilies.size === 0) {
+        return [];
+    }
+
+    return previewFiltered.filter((field) => {
+        const fieldFamily = deriveFieldFamily(normalizeInspectorFieldPath(field.path));
         return fieldFamily !== '' && relatedFamilies.has(fieldFamily);
     });
 }

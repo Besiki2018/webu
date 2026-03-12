@@ -37,7 +37,11 @@ interface UseCmsEmbeddedBuilderMutationHandlersOptions {
     isFooterSectionKey: (key: unknown) => boolean;
     createBuilderSectionDraft: (input: { sectionType: string; props?: Record<string, unknown>; localId?: string | null }) => SectionDraft | null;
     applyMutationState: (state: BuilderMutationStateLike) => void;
-    addSectionByKey: (sectionKey: string, source?: 'library' | 'toolbar', options?: { insertIndex?: number }) => void;
+    addSectionByKey: (
+        sectionKey: string,
+        source?: 'library' | 'toolbar',
+        options?: { insertIndex?: number; localId?: string | null },
+    ) => void;
     handleAddSectionInside: (parentLocalId: string, sectionKey: string) => void;
     handleRemoveSection: (localId: string) => void;
     t: (key: string) => string;
@@ -201,15 +205,17 @@ export function useCmsEmbeddedBuilderMutationHandlers({
             }
         }
 
-        addSectionByKey(nextSectionKey, 'library', typeof insertIndex === 'number' ? { insertIndex } : undefined);
-        scheduleStructuralDraftPersistRef.current();
+        addSectionByKey(nextSectionKey, 'library', {
+            insertIndex,
+            localId: payload.sectionLocalId ?? null,
+        });
         emitEmbeddedBuilderMutationResult(emit, {
             requestId,
             mutation: 'add-section',
             success: true,
             changed: true,
         });
-    }, [addSectionByKey, handleAddSectionInside, isEmbeddedMode, isFooterSectionKey, isHeaderSectionKey, normalizeSectionTypeKey, pageEditorMode, scheduleStructuralDraftPersistRef, sectionsDraftRef, setPageEditorMode, t]);
+    }, [addSectionByKey, handleAddSectionInside, isEmbeddedMode, isFooterSectionKey, isHeaderSectionKey, normalizeSectionTypeKey, pageEditorMode, sectionsDraftRef, setPageEditorMode, t]);
 
     const handleEmbeddedBuilderRemoveSection = useCallback((payload: EmbeddedBuilderRemoveSectionPayload, emit: EmitEmbeddedBuilderMessage) => {
         if (isEmbeddedMode && pageEditorMode !== 'builder') {

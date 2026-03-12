@@ -43,6 +43,7 @@ function buildHarness(overrides: {
     sectionsDraft?: SectionDraft[];
     selectedSectionLocalId?: string | null;
     selectedNestedSectionParentLocalId?: string | null;
+    selectedBuilderTarget?: BuilderEditableTarget | null;
 } = {}) {
     let nextGeneratedId = 1;
     let sectionsDraft = overrides.sectionsDraft ?? [];
@@ -50,12 +51,7 @@ function buildHarness(overrides: {
     const selectedSectionState = createStateUpdater<string | null>(overrides.selectedSectionLocalId ?? null);
     const fixedSectionState = createStateUpdater<string | null>(null);
     const nestedSelectionState = createStateUpdater<CmsNestedSelection | null>(null);
-    const selectedBuilderTargetState = createStateUpdater<BuilderEditableTarget | null>(null);
-    const requestAnimationFrameSpy = vi.fn((callback: FrameRequestCallback) => {
-        callback(0);
-        return 1;
-    });
-    window.requestAnimationFrame = requestAnimationFrameSpy;
+    const selectedBuilderTargetState = createStateUpdater<BuilderEditableTarget | null>(overrides.selectedBuilderTarget ?? null);
 
     const setSectionsDraft = vi.fn((value: SectionDraft[] | ((current: SectionDraft[]) => SectionDraft[])) => {
         sectionsDraft = typeof value === 'function'
@@ -65,13 +61,24 @@ function buildHarness(overrides: {
     });
 
     const scheduleStructuralDraftPersist = vi.fn();
+    const applyMutationState = vi.fn((next: {
+        sectionsDraft: SectionDraft[];
+        selectedSectionLocalId: string | null;
+        selectedBuilderTarget: BuilderEditableTarget | null;
+    }) => {
+        sectionsDraft = next.sectionsDraft;
+        sectionsDraftRef.current = next.sectionsDraft;
+        selectedSectionState.setter(next.selectedSectionLocalId);
+        selectedBuilderTargetState.setter(next.selectedBuilderTarget);
+    });
+    const syncPreviewVisibleSections = vi.fn();
     const options = {
         sectionsDraftRef,
-        builderPreviewDocumentRef: { current: null as Document | null },
         scheduleStructuralDraftPersistRef: { current: scheduleStructuralDraftPersist },
-        syncPreviewVisibleSections: vi.fn(),
+        syncPreviewVisibleSections,
         nextSectionLocalId: vi.fn(() => `generated-${nextGeneratedId++}`),
         selectedSectionLocalId: overrides.selectedSectionLocalId ?? null,
+        selectedBuilderTarget: overrides.selectedBuilderTarget ?? null,
         selectedNestedSectionParentLocalId: overrides.selectedNestedSectionParentLocalId ?? null,
         isEmbeddedSidebarMode: false,
         canvasDropId: 'canvas-drop',
@@ -104,10 +111,9 @@ function buildHarness(overrides: {
         ensurePreviewSectionVisibility: vi.fn(),
         extractLibrarySectionKey: (dragId: string) => dragId.startsWith('library:') ? dragId.slice('library:'.length) : null,
         setSectionsDraft,
-        setSelectedSectionLocalId: selectedSectionState.setter,
+        applyMutationState,
         setSelectedFixedSectionKey: fixedSectionState.setter,
         setSelectedNestedSection: nestedSelectionState.setter,
-        setSelectedBuilderTarget: selectedBuilderTargetState.setter,
         setBuilderSidebarMode: vi.fn(),
         setActiveDragId: vi.fn(),
         setBuilderCurrentDropTarget: vi.fn(),
@@ -121,7 +127,8 @@ function buildHarness(overrides: {
         getSelectedFixedSectionKey: () => fixedSectionState.getCurrent(),
         getSelectedNestedSection: () => nestedSelectionState.getCurrent(),
         getSelectedBuilderTarget: () => selectedBuilderTargetState.getCurrent(),
-        requestAnimationFrameSpy,
+        applyMutationState,
+        syncPreviewVisibleSections,
         scheduleStructuralDraftPersist,
     };
 }
@@ -156,6 +163,7 @@ describe('useCmsStructureMutationHandlers', () => {
             sectionKey: 'webu_general_hero_01',
         }));
         expect(harness.options.setBuilderSidebarMode).toHaveBeenCalledWith('settings');
+        expect(harness.applyMutationState).toHaveBeenCalledTimes(1);
         expect(harness.scheduleStructuralDraftPersist).toHaveBeenCalledTimes(1);
         expect(toast.success).toHaveBeenCalledWith('Component added to page canvas');
     });
@@ -175,8 +183,39 @@ describe('useCmsStructureMutationHandlers', () => {
         expect(harness.getSelectedSectionLocalId()).toBeNull();
         expect(harness.getSelectedNestedSection()).toBeNull();
         expect(harness.options.setBuilderSidebarMode).toHaveBeenCalledWith('elements');
-        expect(harness.requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
+        expect(harness.syncPreviewVisibleSections).toHaveBeenCalledTimes(1);
         expect(harness.scheduleStructuralDraftPersist).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves the current selection when deleting a different section', () => {
+        const selectedTarget: BuilderEditableTarget = {
+            targetId: 'hero-2::section',
+            sectionLocalId: 'hero-2',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: null,
+            elementId: null,
+            selector: '[data-webu-section-local-id="hero-2"]',
+            textPreview: 'Hero 2',
+            props: { headline: 'Hero 2' },
+        };
+        const harness = buildHarness({
+            sectionsDraft: [makeSection('hero-1'), makeSection('hero-2')],
+            selectedSectionLocalId: 'hero-2',
+            selectedBuilderTarget: selectedTarget,
+        });
+        const { result } = renderHook(() => useCmsStructureMutationHandlers(harness.options));
+
+        act(() => {
+            result.current.handleRemoveSection('hero-1');
+        });
+
+        expect(harness.getSectionsDraft().map((section) => section.localId)).toEqual(['hero-2']);
+        expect(harness.getSelectedSectionLocalId()).toBe('hero-2');
+        expect(harness.getSelectedBuilderTarget()).toEqual(expect.objectContaining({
+            sectionLocalId: 'hero-2',
+        }));
     });
 
     it('adds a nested section inside a layout section', () => {

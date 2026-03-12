@@ -17,6 +17,7 @@ export interface SelectedSectionEditableFieldsProps {
     effectiveProps: Record<string, unknown> | null;
     editableFieldCount: number;
     displayFieldCount: number;
+    usesSafeFallbackInspector: boolean;
     selectedSectionUsesEcommerceProductsBinding: boolean;
     selectedSectionUsesEcommerceProductDetailBinding: boolean;
     selectedNestedSection: SelectedNestedSectionLike | null;
@@ -34,6 +35,7 @@ export function SelectedSectionEditableFields({
     effectiveProps,
     editableFieldCount,
     displayFieldCount,
+    usesSafeFallbackInspector,
     selectedSectionUsesEcommerceProductsBinding,
     selectedSectionUsesEcommerceProductDetailBinding,
     selectedNestedSection,
@@ -56,6 +58,16 @@ export function SelectedSectionEditableFields({
     }
 
     if (editableFieldCount === 0) {
+        if (usesSafeFallbackInspector) {
+            return (
+                <div className={compact ? 'grid gap-2' : 'grid gap-3'}>
+                    <p className="text-xs text-muted-foreground">
+                        {t('Structured inspector is not available for this component yet.')}
+                    </p>
+                </div>
+            );
+        }
+
         if (selectedSectionUsesEcommerceProductsBinding || selectedSectionUsesEcommerceProductDetailBinding) {
             return (
                 <div className={compact ? 'grid gap-2' : 'grid gap-3'}>

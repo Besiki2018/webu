@@ -1,9 +1,10 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { toast } from 'sonner';
+
 import { useChatEmbeddedBuilderBridge } from '@/builder/cms/useChatEmbeddedBuilderBridge';
-import { buildEditableTargetFromMessagePayload, buildSectionScopedEditableTarget, editableTargetToMessagePayload } from '@/builder/editingState';
 import type { PendingBuilderStructureMutation } from '@/builder/cms/chatBuilderStructureMutations';
+import type { BuilderBridgeMessage } from '@/lib/builderBridge';
 
 vi.mock('sonner', () => ({
     toast: {
@@ -14,9 +15,11 @@ vi.mock('sonner', () => ({
 
 function buildOptions(overrides: Partial<Parameters<typeof useChatEmbeddedBuilderBridge>[0]> = {}) {
     return {
+        projectId: 'project-1',
         viewMode: 'inspect' as const,
         isVisualBuilderOpen: true,
         isBuilderSidebarReady: false,
+        isBuilderPreviewReady: false,
         isBuilderStructureOpen: true,
         builderPaneMode: 'settings' as const,
         previewViewport: 'desktop' as const,
@@ -24,7 +27,6 @@ function buildOptions(overrides: Partial<Parameters<typeof useChatEmbeddedBuilde
         selectedBuilderTarget: null,
         selectedBuilderSectionLocalId: null,
         selectedPreviewSectionKey: null,
-        selectedElement: null,
         activeBuilderPageIdentity: { pageId: 11, pageSlug: 'home', pageTitle: 'Home' },
         builderStructureItems: [{
             localId: 'hero-1',
@@ -35,7 +37,7 @@ function buildOptions(overrides: Partial<Parameters<typeof useChatEmbeddedBuilde
         }],
         pendingBuilderStructureMutation: null as PendingBuilderStructureMutation | null,
         builderSidebarFrameRef: { current: { contentWindow: null } as unknown as HTMLIFrameElement },
-        builderSidebarCommandQueueRef: { current: [] as Array<Record<string, unknown>> },
+        builderSidebarCommandQueueRef: { current: [] as BuilderBridgeMessage[] },
         pendingBuilderChangeSetRequestIdRef: { current: null as string | null },
         lastBuilderReadySignatureRef: { current: null as string | null },
         lastBuilderSnapshotSignatureRef: { current: null as string | null },
@@ -46,9 +48,8 @@ function buildOptions(overrides: Partial<Parameters<typeof useChatEmbeddedBuilde
         setPreviewViewport: vi.fn(),
         setPreviewInteractionState: vi.fn(),
         setIsBuilderStructureOpen: vi.fn(),
-        setSelectedBuilderSectionLocalId: vi.fn(),
-        setSelectedPreviewSectionKey: vi.fn(),
-        setSelectedBuilderTarget: vi.fn(),
+        selectBuilderTarget: vi.fn(),
+        clearBuilderSelection: vi.fn(),
         setBuilderPaneMode: vi.fn(),
         setActiveLibraryItem: vi.fn(),
         setIsSavingBuilderDraft: vi.fn(),
@@ -57,7 +58,7 @@ function buildOptions(overrides: Partial<Parameters<typeof useChatEmbeddedBuilde
         setBuilderStructureItems: vi.fn(),
         setBuilderCodePages: vi.fn(),
         setPendingBuilderStructureMutation: vi.fn(),
-        setIsBuilderSidebarReady: vi.fn(),
+        markBuilderSidebarReady: vi.fn(),
         t: (key: string) => key,
         ...overrides,
     };
@@ -68,98 +69,30 @@ describe('useChatEmbeddedBuilderBridge', () => {
         vi.clearAllMocks();
     });
 
-    it('ignores stale selected-section bridge events', async () => {
+    it('queues outgoing bridge commands until preview and sidebar are both ready', () => {
         const options = buildOptions();
+        const { result } = renderHook(() => useChatEmbeddedBuilderBridge(options));
 
-        renderHook(() => useChatEmbeddedBuilderBridge(options));
-        options.latestBuilderStateCursorRef.current = {
-            pageId: 11,
-            pageSlug: 'home',
-            stateVersion: 8,
-            revisionVersion: 12,
-        };
-
-        window.dispatchEvent(new MessageEvent('message', {
-            origin: window.location.origin,
-            data: {
-                source: 'webu-cms-builder',
-                type: 'builder:selected-section',
-                pageId: 11,
-                pageSlug: 'home',
-                stateVersion: 7,
-                revisionVersion: 12,
-                sectionLocalId: 'hero-1',
-                sectionKey: 'webu_general_hero_01',
-            },
-        }));
-
-        await waitFor(() => {
-            expect(options.setSelectedBuilderSectionLocalId).not.toHaveBeenCalled();
-            expect(options.setSelectedPreviewSectionKey).not.toHaveBeenCalled();
+        result.current.postBuilderCommand({
+            type: 'builder:set-sidebar-mode',
+            mode: 'settings',
         });
+
+        expect(options.builderSidebarCommandQueueRef.current.length).toBeGreaterThan(0);
+        expect(options.builderSidebarCommandQueueRef.current).toContainEqual(expect.objectContaining({
+            type: 'BUILDER_SYNC_STATE',
+            source: 'chat',
+            projectId: 'project-1',
+            payload: expect.objectContaining({
+                sidebarMode: 'settings',
+            }),
+        }));
     });
 
-    it('ignores stale selected-target bridge events', async () => {
-        const options = buildOptions();
-
-        renderHook(() => useChatEmbeddedBuilderBridge(options));
-        options.latestBuilderStateCursorRef.current = {
-            pageId: 11,
-            pageSlug: 'home',
-            stateVersion: 5,
-            revisionVersion: 7,
-        };
-
-        window.dispatchEvent(new MessageEvent('message', {
-            origin: window.location.origin,
-            data: {
-                source: 'webu-cms-builder',
-                type: 'builder:selected-target',
-                pageId: 11,
-                pageSlug: 'home',
-                stateVersion: 4,
-                revisionVersion: 7,
-                sectionLocalId: 'hero-1',
-                sectionKey: 'webu_general_hero_01',
-                componentType: 'webu_general_hero_01',
-                componentName: 'Hero',
-                parameterPath: 'headline',
-                elementId: 'HeroSection.headline',
-                selector: '[data-webu-field="headline"]',
-                textPreview: 'Hello',
-                props: { headline: 'Hello' },
-                viewport: 'desktop',
-                interactionState: 'normal',
-            },
-        }));
-
-        await waitFor(() => {
-            expect(options.setSelectedBuilderTarget).not.toHaveBeenCalled();
-            expect(options.setBuilderPaneMode).not.toHaveBeenCalled();
-        });
-    });
-
-    it('normalizes mirrored same-section selections back to section scope', async () => {
-        const selectedTarget = buildEditableTargetFromMessagePayload({
-            pageId: 11,
-            pageSlug: 'home',
-            pageTitle: 'Home',
-            sectionLocalId: 'hero-1',
-            sectionKey: 'webu_general_hero_01',
-            componentType: 'webu_general_hero_01',
-            componentName: 'Hero',
-            parameterPath: 'headline',
-            componentPath: 'headline',
-            elementId: 'HeroSection.headline',
-            builderId: 'hero-1::headline',
-            props: { headline: 'Hello' },
-            currentBreakpoint: 'desktop',
-            currentInteractionState: 'normal',
-        });
+    it('maps section-level select messages into canonical builder selection state', async () => {
         const options = buildOptions({
-            selectedBuilderTarget: selectedTarget,
-            selectedBuilderSectionLocalId: 'hero-1',
-            selectedPreviewSectionKey: 'webu_general_hero_01',
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
         });
 
         renderHook(() => useChatEmbeddedBuilderBridge(options));
@@ -167,149 +100,65 @@ describe('useChatEmbeddedBuilderBridge', () => {
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
             data: {
-                source: 'webu-cms-builder',
-                type: 'builder:selected-section',
+                type: 'BUILDER_SELECT_TARGET',
+                source: 'sidebar',
+                projectId: 'project-1',
+                requestId: 'req-select-1',
+                timestamp: Date.now(),
+                version: 1,
                 pageId: 11,
                 pageSlug: 'home',
-                sectionLocalId: 'hero-1',
-                sectionKey: 'webu_general_hero_01',
+                pageTitle: 'Home',
+                payload: {
+                    target: {
+                        sectionLocalId: 'hero-1',
+                        sectionKey: 'webu_general_hero_01',
+                        componentType: 'webu_general_hero_01',
+                        componentName: 'Hero',
+                        textPreview: 'Hello',
+                        props: { headline: 'Hello' },
+                        currentBreakpoint: 'desktop',
+                        currentInteractionState: 'normal',
+                    },
+                },
             },
         }));
 
         await waitFor(() => {
-            expect(options.setSelectedBuilderSectionLocalId).not.toHaveBeenCalled();
-            expect(options.setSelectedPreviewSectionKey).not.toHaveBeenCalled();
-            expect(options.setSelectedBuilderTarget).toHaveBeenCalledWith(expect.objectContaining({
+            expect(options.selectBuilderTarget).toHaveBeenCalledWith(expect.objectContaining({
                 sectionLocalId: 'hero-1',
                 sectionKey: 'webu_general_hero_01',
                 path: null,
                 componentPath: null,
-                elementId: null,
             }));
+            expect(options.setBuilderPaneMode).toHaveBeenCalledWith('settings');
         });
     });
 
-    it('ignores identical selected-target bridge events to avoid selection feedback loops', async () => {
-        const selectedTarget = buildSectionScopedEditableTarget({
-            pageId: 11,
-            pageSlug: 'home',
-            pageTitle: 'Home',
+    it('restores the previous selection when a pending mutation fails', async () => {
+        const selectionSnapshot = {
             sectionLocalId: 'hero-1',
             sectionKey: 'webu_general_hero_01',
-            componentType: 'webu_general_hero_01',
-            componentName: 'Hero',
-            textPreview: 'Hello',
-            props: { headline: 'Hello' },
-            currentBreakpoint: 'desktop',
-            currentInteractionState: 'normal',
-        });
-        const mirroredPayload = editableTargetToMessagePayload(selectedTarget);
-        const options = buildOptions({
-            selectedBuilderTarget: selectedTarget,
-            selectedBuilderSectionLocalId: 'hero-1',
-            selectedPreviewSectionKey: 'webu_general_hero_01',
-        });
-
-        renderHook(() => useChatEmbeddedBuilderBridge(options));
-
-        window.dispatchEvent(new MessageEvent('message', {
-            origin: window.location.origin,
-            data: {
-                source: 'webu-cms-builder',
-                type: 'builder:selected-target',
-                ...mirroredPayload,
-                viewport: 'desktop',
-                interactionState: 'normal',
-            },
-        }));
-
-        await waitFor(() => {
-            expect(options.setSelectedBuilderSectionLocalId).not.toHaveBeenCalled();
-            expect(options.setSelectedPreviewSectionKey).not.toHaveBeenCalled();
-            expect(options.setSelectedBuilderTarget).not.toHaveBeenCalled();
-        });
-    });
-
-    it('does not resend selected-target commands when only selected props change while typing', async () => {
-        const postMessage = vi.fn();
-        const initialTarget = buildEditableTargetFromMessagePayload({
-            pageId: 11,
-            pageSlug: 'home',
-            pageTitle: 'Home',
-            sectionLocalId: 'hero-1',
-            sectionKey: 'webu_general_hero_01',
-            componentType: 'webu_general_hero_01',
-            componentName: 'Hero',
-            parameterPath: 'headline',
-            componentPath: 'headline',
-            elementId: 'HeroSection.headline',
-            selector: '[data-webu-field="headline"]',
-            textPreview: 'Hello',
-            builderId: 'hero-1::headline',
-            props: { headline: 'Hello' },
-            currentBreakpoint: 'desktop',
-            currentInteractionState: 'normal',
-        });
-        const initialOptions = buildOptions({
-            isBuilderSidebarReady: true,
-            selectedBuilderTarget: initialTarget,
-            selectedBuilderSectionLocalId: 'hero-1',
-            selectedPreviewSectionKey: 'webu_general_hero_01',
-            builderSidebarFrameRef: {
-                current: {
-                    contentWindow: { postMessage },
-                } as unknown as HTMLIFrameElement,
-            },
-        });
-
-        const { rerender } = renderHook((props: ReturnType<typeof buildOptions>) => useChatEmbeddedBuilderBridge(props), {
-            initialProps: initialOptions,
-        });
-
-        await waitFor(() => {
-            const selectionCalls = postMessage.mock.calls.filter(([payload]) => payload?.type === 'builder:set-selected-target');
-            expect(selectionCalls).toHaveLength(1);
-        });
-
-        const updatedTarget = buildEditableTargetFromMessagePayload({
-            ...editableTargetToMessagePayload(initialTarget),
-            props: { headline: 'Hello again' },
-            textPreview: 'Hello again',
-        });
-
-        rerender({
-            ...initialOptions,
-            selectedBuilderTarget: updatedTarget,
-        });
-
-        await waitFor(() => {
-            const selectionCalls = postMessage.mock.calls.filter(([payload]) => payload?.type === 'builder:set-selected-target');
-            expect(selectionCalls).toHaveLength(1);
-        });
-    });
-
-    it('restores selection when a remove mutation fails', async () => {
-        const target = buildEditableTargetFromMessagePayload({
-            sectionLocalId: 'hero-1',
-            sectionKey: 'webu_general_hero_01',
-            componentType: 'webu_general_hero_01',
-            componentName: 'Hero',
-            parameterPath: 'headline',
-            elementId: 'HeroSection.headline',
-            props: { headline: 'Hello' },
-        });
-        const pendingMutation: PendingBuilderStructureMutation = {
-            requestId: 'req-remove-1',
-            mutation: 'remove-section',
-            previewItems: [],
-            selectionSnapshot: {
+            target: {
+                targetId: 'hero-1::section',
                 sectionLocalId: 'hero-1',
                 sectionKey: 'webu_general_hero_01',
-                target,
+                componentType: 'webu_general_hero_01',
+                componentName: 'Hero',
+                path: null,
+                elementId: null,
+                selector: '[data-webu-section-local-id="hero-1"]',
+                textPreview: 'Hero',
+                props: { headline: 'Hello' },
             },
         };
         const options = buildOptions({
-            pendingBuilderStructureMutation: pendingMutation,
+            pendingBuilderStructureMutation: {
+                requestId: 'req-remove-1',
+                mutation: 'remove-section',
+                previewItems: null,
+                selectionSnapshot,
+            },
         });
 
         renderHook(() => useChatEmbeddedBuilderBridge(options));
@@ -317,64 +166,28 @@ describe('useChatEmbeddedBuilderBridge', () => {
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
             data: {
-                source: 'webu-cms-builder',
-                type: 'builder:mutation-result',
+                type: 'BUILDER_ACK',
+                source: 'sidebar',
+                projectId: 'project-1',
+                requestId: 'req-remove-1',
+                timestamp: Date.now(),
+                version: 1,
                 pageId: 11,
                 pageSlug: 'home',
-                requestId: 'req-remove-1',
-                mutation: 'remove-section',
-                success: false,
-                changed: false,
-                error: 'Remove failed',
+                pageTitle: 'Home',
+                payload: {
+                    ackType: 'BUILDER_DELETE_NODE',
+                    success: false,
+                    changed: false,
+                    error: 'Builder update failed',
+                },
             },
         }));
 
         await waitFor(() => {
             expect(options.setPendingBuilderStructureMutation).toHaveBeenCalledWith(null);
-            expect(options.setSelectedBuilderSectionLocalId).toHaveBeenCalledWith('hero-1');
-            expect(options.setSelectedPreviewSectionKey).toHaveBeenCalledWith('webu_general_hero_01');
-            expect(options.setSelectedBuilderTarget).toHaveBeenCalledWith(target);
-            expect(toast.error).toHaveBeenCalledWith('Remove failed');
-        });
-    });
-
-    it('keeps structure panel state controlled by chat when builder reports a different state', async () => {
-        const postMessage = vi.fn();
-        const options = buildOptions({
-            isBuilderSidebarReady: true,
-            isBuilderStructureOpen: false,
-            builderSidebarFrameRef: {
-                current: {
-                    contentWindow: { postMessage },
-                } as unknown as HTMLIFrameElement,
-            },
-        });
-
-        renderHook(() => useChatEmbeddedBuilderBridge(options));
-
-        window.dispatchEvent(new MessageEvent('message', {
-            origin: window.location.origin,
-            data: {
-                source: 'webu-cms-builder',
-                type: 'builder:state',
-                pageId: 11,
-                pageSlug: 'home',
-                viewport: 'desktop',
-                interactionState: 'normal',
-                structureOpen: true,
-            },
-        }));
-
-        await waitFor(() => {
-            expect(options.setIsBuilderStructureOpen).not.toHaveBeenCalled();
-            expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
-                source: 'webu-chat-builder',
-                type: 'builder:set-structure-open',
-                open: false,
-                pageId: 11,
-                pageSlug: 'home',
-                pageTitle: 'Home',
-            }), window.location.origin);
+            expect(options.selectBuilderTarget).toHaveBeenCalledWith(selectionSnapshot.target);
+            expect(toast.error).toHaveBeenCalled();
         });
     });
 });

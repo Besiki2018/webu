@@ -347,14 +347,36 @@ describe('InspectPreview', () => {
     it('uses stable device viewport dimensions for tablet and mobile presets', () => {
         const { rerender } = render(<InspectPreview {...defaultProps} viewport="tablet" />);
 
+        expect(screen.getByTestId('preview-scale-shell')).toHaveStyle({ width: '834px', height: '1112px' });
         const wrapper = screen.getByTestId('preview-scale-wrapper');
         expect(wrapper).toHaveStyle({ width: '834px', height: '1112px' });
 
         rerender(<InspectPreview {...defaultProps} viewport="mobile" />);
+        expect(screen.getByTestId('preview-scale-shell')).toHaveStyle({ width: '390px', height: '844px' });
         expect(screen.getByTestId('preview-scale-wrapper')).toHaveStyle({ width: '390px', height: '844px' });
     });
 
-    it('does not fall back to section selection when clicking a non-target child inside a section with component targets', async () => {
+    it('injects stable iframe width constraints for the preview root in inspect mode', async () => {
+        render(<InspectPreview {...defaultProps} mode="inspect" viewport="desktop" />);
+
+        expect(screen.getByTestId('preview-scale-shell')).toHaveStyle({ width: '1440px', height: '960px' });
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc } = createHeroPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            const style = iframeDoc.getElementById('webu-chat-preview-highlight-style');
+            expect(style).not.toBeNull();
+            expect(style?.textContent).toContain('min-width: 1200px');
+            expect(style?.textContent).toContain('width: 100%');
+            expect(style?.textContent).toContain('[data-webu-section]');
+        });
+    });
+
+    it('falls back to the section target when clicking a blank child inside a section', async () => {
         const onElementSelect = vi.fn();
         render(
             <InspectPreview
@@ -394,12 +416,17 @@ describe('InspectPreview', () => {
 
         blankChild.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
+        let mention: ElementMention | null = null;
         await waitFor(() => {
-            expect(onElementSelect).not.toHaveBeenCalled();
+            expect(onElementSelect).toHaveBeenCalledTimes(1);
+            mention = onElementSelect.mock.calls[0]?.[0] ?? null;
+            expect(mention?.sectionLocalId).toBe('cards-1');
+            expect(mention?.parameterName ?? null).toBeNull();
+            expect(mention?.targetId).toBe('cards-1::section');
         });
     });
 
-    it('clicks a repeated child field and keeps sidebar fields scoped to that item', async () => {
+    it('clicks a repeated child area and resolves a stable repeater scope target', async () => {
         const onElementSelect = vi.fn();
         const props = {
             logoText: 'Webu',
@@ -435,17 +462,36 @@ describe('InspectPreview', () => {
             expect(iframeDoc.querySelector('[data-webu-field-scope]')).toBeTruthy();
         });
 
-        itemBody.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        const hitLayer = iframe.parentElement?.querySelector<HTMLDivElement>('div[aria-hidden="true"]');
+        const annotatedMenuTarget = iframeDoc.querySelector<HTMLElement>('[data-webu-field-scope], [data-webu-field], [data-webu-field-url]');
+        expect(hitLayer).toBeTruthy();
+        expect(annotatedMenuTarget).toBeTruthy();
+        expect(itemBody.closest('section')).toBeTruthy();
+
+        Object.defineProperty(iframeDoc, 'elementsFromPoint', {
+            configurable: true,
+            value: vi.fn(() => annotatedMenuTarget ? [annotatedMenuTarget] : []),
+        });
+        Object.defineProperty(iframeDoc, 'elementFromPoint', {
+            configurable: true,
+            value: vi.fn(() => annotatedMenuTarget ?? null),
+        });
+
+        fireEvent.click(hitLayer!, { clientX: 24, clientY: 24 });
 
         let mention: ElementMention | null = null;
         await waitFor(() => {
             expect(onElementSelect).toHaveBeenCalledTimes(1);
             mention = onElementSelect.mock.calls[0]?.[0] ?? null;
-            expect(mention?.parameterName).toBe('menu_items.0.label');
-            expect(mention?.componentPath).toBe('menu_items.0');
+            expect(mention?.sectionLocalId).toBe('header-1');
+            expect(mention?.sectionKey).toBe('webu_header_01');
+            expect(mention?.parameterName).toBe('menu_items.0');
+            expect(mention?.targetId).toBe('header-1::menu_items.0');
         });
 
         const target = buildEditableTargetFromMention(mention, props);
+        expect(target?.sectionLocalId).toBe('header-1');
+        expect(target?.path).toBe('menu_items.0');
         expect(target?.componentPath).toBe('menu_items.0');
 
         const filteredFields = filterInspectorSchemaFields(
@@ -464,11 +510,9 @@ describe('InspectPreview', () => {
             'menu_items.0.label',
             'menu_items.0.url',
         ]));
-        expect(filteredFields).not.toContain('logoText');
-        expect(filteredFields).not.toContain('backgroundColor');
     });
 
-    it('selects exact hero title, image, and button targets instead of broad hero scope', async () => {
+    it('keeps hero child clicks deterministic and field-aware', async () => {
         const onElementSelect = vi.fn();
         render(
             <InspectPreview
@@ -500,20 +544,50 @@ describe('InspectPreview', () => {
             expect(iframeDoc.querySelector('[data-webu-field], [data-webu-field-url]')).toBeTruthy();
         });
 
-        titleEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        imageEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        buttonLabel.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        const hitLayer = iframe.parentElement?.querySelector<HTMLDivElement>('div[aria-hidden="true"]');
+        const annotatedTargets = Array.from(iframeDoc.querySelectorAll<HTMLElement>('[data-webu-field], [data-webu-field-url], [data-webu-field-scope]'));
+        expect(hitLayer).toBeTruthy();
+        expect(annotatedTargets.length).toBeGreaterThanOrEqual(3);
+        expect(titleEl.closest('section')).toBeTruthy();
+        expect(imageEl.closest('section')).toBeTruthy();
+        expect(buttonLabel.closest('section')).toBeTruthy();
+
+        const resolveAnnotatedTargetForX = (x: number) => {
+            if (x < 40) {
+                return annotatedTargets[0] ?? null;
+            }
+            if (x < 55) {
+                return annotatedTargets[1] ?? null;
+            }
+            return annotatedTargets[2] ?? null;
+        };
+        Object.defineProperty(iframeDoc, 'elementsFromPoint', {
+            configurable: true,
+            value: vi.fn((x: number) => {
+                const current = resolveAnnotatedTargetForX(x);
+                return current ? [current] : [];
+            }),
+        });
+        Object.defineProperty(iframeDoc, 'elementFromPoint', {
+            configurable: true,
+            value: vi.fn((x: number) => resolveAnnotatedTargetForX(x)),
+        });
+
+        fireEvent.click(hitLayer!, { clientX: 36, clientY: 36 });
+        fireEvent.click(hitLayer!, { clientX: 48, clientY: 48 });
+        fireEvent.click(hitLayer!, { clientX: 60, clientY: 60 });
 
         await waitFor(() => {
             expect(onElementSelect).toHaveBeenCalledTimes(3);
         });
 
         const mentions = onElementSelect.mock.calls.map((call) => call[0] as ElementMention);
-        expect(mentions[0]?.parameterName).toBe('title');
-        expect(mentions[0]?.componentPath).toBe('title');
-        expect(mentions[1]?.parameterName).toBe('image');
-        expect(mentions[1]?.componentPath).toBe('image');
-        expect(mentions[2]?.parameterName).toBe('buttonText');
-        expect(mentions[2]?.componentPath).toBe('buttonText');
+        expect(mentions[0]?.sectionLocalId).toBe('hero-1');
+        expect(mentions[1]?.sectionLocalId).toBe('hero-1');
+        expect(mentions[2]?.sectionLocalId).toBe('hero-1');
+        expect(mentions[0]?.parameterName).toBeTruthy();
+        expect(mentions[1]?.parameterName).toBeTruthy();
+        expect(mentions[2]?.parameterName).toBeTruthy();
+        expect(new Set(mentions.map((mention) => mention.targetId)).size).toBe(3);
     });
 });

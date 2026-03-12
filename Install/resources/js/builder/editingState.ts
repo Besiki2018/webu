@@ -107,6 +107,35 @@ export function buildTargetId(sectionLocalId: string | null, sectionKey: string 
     return [sectionLocalId || sectionKey || 'builder-target', path || 'section'].join('::');
 }
 
+export function getBuilderTargetStableNodeId(target: BuilderEditableTarget | null): string | null {
+    return target?.targetId
+        ?? target?.builderId
+        ?? target?.instanceId
+        ?? target?.elementId
+        ?? target?.sectionLocalId
+        ?? null;
+}
+
+export function getBuilderTargetSchemaKey(target: BuilderEditableTarget | null): string | null {
+    return target?.componentType
+        ?? target?.sectionKey
+        ?? null;
+}
+
+export function getBuilderTargetPropPaths(target: BuilderEditableTarget | null): string[] {
+    if (!target) {
+        return [];
+    }
+
+    return uniqueStringList([
+        target.path,
+        target.componentPath ?? null,
+        ...(target.allowedUpdates?.fieldPaths ?? []),
+        ...(target.allowedUpdates?.sectionFieldPaths ?? []),
+        ...(target.editableFields ?? []),
+    ]);
+}
+
 function splitFieldPath(path: string | null | undefined): string[] {
     return (path ?? '')
         .split('.')

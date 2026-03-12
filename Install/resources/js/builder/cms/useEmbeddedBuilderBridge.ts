@@ -1,11 +1,7 @@
 import { useEffect, useRef } from 'react';
 import {
     hasBuilderBridgePageIdentity,
-    parseBuilderBridgeChatCommand,
     payloadTargetsBuilderBridgePage,
-    postBuilderBridgeMessage,
-    type BuilderBridgeChatCommand,
-    type BuilderBridgeCmsEvent,
     type BuilderBridgeInteractionState,
     type BuilderBridgePageIdentity,
     type BuilderBridgeSidebarMode,
@@ -13,10 +9,22 @@ import {
 } from '@/builder/cms/embeddedBuilderBridgeContract';
 import {
     buildBuilderSelectionMessageSignature,
+    type BuilderSelectionMessagePayload,
     type BuilderEditableTarget,
 } from '@/builder/editingState';
 import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
 import { buildCanonicalBridgeSelectedTargetPayload } from '@/builder/cms/canonicalSelectionPayload';
+import {
+    buildBuilderAckMessage,
+    buildBuilderReadyMessage,
+    buildBuilderSelectTargetMessage,
+    buildBuilderSyncStateMessage,
+    builderBridgeEnvelopeTargetsProject,
+    inspectBuilderBridgeEnvelope,
+    logBuilderBridgeDiagnostic,
+    postBuilderBridgeEnvelope,
+    type BuilderBridgeMessage,
+} from '@/lib/builderBridge';
 
 interface BuilderLibrarySnapshotItem {
     key: string;
@@ -24,12 +32,32 @@ interface BuilderLibrarySnapshotItem {
     category?: string | null;
 }
 
-export type EmbeddedBuilderIncomingPayload = BuilderBridgeChatCommand;
-export type EmbeddedBuilderApplyChangeSetPayload = Extract<BuilderBridgeChatCommand, { type: 'builder:apply-change-set' }>;
-export type EmbeddedBuilderSelectedTargetPayload = Extract<BuilderBridgeChatCommand, { type: 'builder:set-selected-target' }>;
-export type EmbeddedBuilderAddSectionPayload = Extract<BuilderBridgeChatCommand, { type: 'builder:add-section-by-key' }>;
-export type EmbeddedBuilderRemoveSectionPayload = Extract<BuilderBridgeChatCommand, { type: 'builder:remove-section' }>;
-export type EmbeddedBuilderMoveSectionPayload = Extract<BuilderBridgeChatCommand, { type: 'builder:move-section' }>;
+export type EmbeddedBuilderIncomingPayload = BuilderBridgeMessage;
+export interface EmbeddedBuilderApplyChangeSetPayload {
+    requestId: string;
+    changeSet: Record<string, unknown>;
+}
+export interface EmbeddedBuilderSelectedTargetPayload extends BuilderSelectionMessagePayload {}
+export interface EmbeddedBuilderAddSectionPayload {
+    requestId: string;
+    sectionKey: string;
+    sectionLocalId?: string | null;
+    afterSectionLocalId?: string | null;
+    targetSectionKey?: string | null;
+    placement?: 'before' | 'after' | 'inside' | null;
+}
+export interface EmbeddedBuilderRemoveSectionPayload {
+    requestId: string;
+    sectionLocalId?: string | null;
+    sectionIndex?: number | null;
+    sectionKey?: string | null;
+}
+export interface EmbeddedBuilderMoveSectionPayload {
+    requestId: string;
+    sectionLocalId: string;
+    targetSectionLocalId: string;
+    position: 'before' | 'after';
+}
 export type EmitEmbeddedBuilderMessage = (message: Record<string, unknown>) => void;
 
 export interface BuilderSelectedSectionPayload {
@@ -43,6 +71,7 @@ export interface BuilderSelectedSectionKeyPayload {
 }
 
 export interface UseEmbeddedBuilderBridgeOptions {
+    projectId: string;
     isEmbeddedMode: boolean;
     isEmbeddedVisualBuilder: boolean;
     isEmbeddedSidebarMode: boolean;
@@ -76,8 +105,6 @@ export interface UseEmbeddedBuilderBridgeOptions {
     onApplyChangeSet: (payload: EmbeddedBuilderApplyChangeSetPayload, emit: EmitEmbeddedBuilderMessage) => void;
     onSetSelectedTarget: (payload: EmbeddedBuilderSelectedTargetPayload) => void;
     onSetStructureOpen: (open: boolean) => void;
-    onSetSelectedSection: (payload: BuilderSelectedSectionPayload) => void;
-    onSetSelectedSectionKey: (payload: BuilderSelectedSectionKeyPayload) => void;
     onSaveDraft: (emit: EmitEmbeddedBuilderMessage) => void;
     onAddSectionByKey: (payload: EmbeddedBuilderAddSectionPayload, emit: EmitEmbeddedBuilderMessage) => void;
     onRemoveSection: (payload: EmbeddedBuilderRemoveSectionPayload, emit: EmitEmbeddedBuilderMessage) => void;
@@ -89,6 +116,7 @@ function readTrimmedString(value: unknown): string | null {
 }
 
 export function useEmbeddedBuilderBridge({
+    projectId,
     isEmbeddedMode,
     isEmbeddedVisualBuilder,
     isEmbeddedSidebarMode,
@@ -122,22 +150,160 @@ export function useEmbeddedBuilderBridge({
     onApplyChangeSet,
     onSetSelectedTarget,
     onSetStructureOpen,
-    onSetSelectedSection,
-    onSetSelectedSectionKey,
     onSaveDraft,
     onAddSectionByKey,
     onRemoveSection,
     onMoveSection,
 }: UseEmbeddedBuilderBridgeOptions): void {
     const lastSelectedTargetEventSignatureRef = useRef<string | null>(null);
+    const targetOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const logSidebarBridge = (input: {
+        phase: 'send' | 'receive' | 'ignore' | 'drop';
+        target?: string | null;
+        message?: BuilderBridgeMessage | null;
+        rawType?: string | null;
+        requestId?: string | null;
+        reason?: string | null;
+    }) => {
+        logBuilderBridgeDiagnostic({
+            actor: 'sidebar',
+            ...input,
+        });
+    };
 
-    useEffect(() => {
-        if (!isEmbeddedVisualBuilder || typeof window === 'undefined' || window.parent === window) {
+    const emitEnvelope = (message: BuilderBridgeMessage) => {
+        if (typeof window === 'undefined' || window.parent === window) {
             return;
         }
 
-        postBuilderBridgeMessage(window.parent, window.location.origin, 'webu-cms-builder', {
-            type: 'builder:state',
+        logSidebarBridge({
+            phase: 'send',
+            target: 'chat',
+            message,
+        });
+        postBuilderBridgeEnvelope(window.parent, targetOrigin, message);
+    };
+
+    const emit: EmitEmbeddedBuilderMessage = (message) => {
+        const type = readTrimmedString(message.type);
+        if (!type) {
+            logSidebarBridge({
+                phase: 'drop',
+                target: 'chat',
+                reason: 'missing-legacy-message-type',
+            });
+            return;
+        }
+
+        const baseInput = {
+            source: 'sidebar' as const,
+            projectId,
+            page: selectedPage,
+            requestId: readTrimmedString(message.requestId),
+        };
+        const stateMeta = {
+            stateVersion,
+            structureHash,
+            revisionId,
+            revisionVersion,
+        };
+
+        if (type === 'builder:mutation-result') {
+            const mutation = message.mutation === 'apply-change-set'
+                || message.mutation === 'add-section'
+                || message.mutation === 'remove-section'
+                || message.mutation === 'move-section'
+                ? message.mutation
+                : null;
+            const success = typeof message.success === 'boolean' ? message.success : null;
+            if (!mutation || success === null) {
+                logSidebarBridge({
+                    phase: 'drop',
+                    target: 'chat',
+                    rawType: type,
+                    requestId: baseInput.requestId,
+                    reason: 'invalid-mutation-result-payload',
+                });
+                return;
+            }
+
+            const ackType = mutation === 'apply-change-set'
+                ? 'BUILDER_PATCH_PROPS'
+                : mutation === 'add-section'
+                    ? 'BUILDER_INSERT_NODE'
+                    : mutation === 'remove-section'
+                        ? 'BUILDER_DELETE_NODE'
+                        : 'BUILDER_MOVE_NODE';
+
+            emitEnvelope(buildBuilderAckMessage({
+                ...stateMeta,
+                ackType,
+                success,
+                changed: typeof message.changed === 'boolean' ? message.changed : null,
+                error: typeof message.error === 'string' ? message.error : null,
+                mutation,
+            }, baseInput));
+            return;
+        }
+
+        if (type === 'builder:draft-save-state') {
+            const isSaving = typeof message.isSaving === 'boolean' ? message.isSaving : null;
+            if (isSaving === null) {
+                logSidebarBridge({
+                    phase: 'drop',
+                    target: 'chat',
+                    rawType: type,
+                    requestId: baseInput.requestId,
+                    reason: 'invalid-draft-save-state',
+                });
+                return;
+            }
+
+            emitEnvelope(buildBuilderSyncStateMessage({
+                ...stateMeta,
+                draftSaveState: {
+                    isSaving,
+                    success: typeof message.success === 'boolean' ? message.success : null,
+                    message: typeof message.message === 'string' ? message.message : null,
+                },
+            }, baseInput));
+            return;
+        }
+
+        if (type === 'builder:preview-refresh') {
+            emitEnvelope(buildBuilderSyncStateMessage({
+                ...stateMeta,
+                previewRefresh: true,
+            }, baseInput));
+            return;
+        }
+
+        logSidebarBridge({
+            phase: 'drop',
+            target: 'chat',
+            rawType: type,
+            requestId: baseInput.requestId,
+            reason: 'unsupported-legacy-emit-message',
+        });
+    };
+
+    const emitCurrentReady = (requestId?: string | null) => {
+        emitEnvelope(buildBuilderReadyMessage({
+            channel: 'sidebar',
+            stateVersion,
+            structureHash,
+            revisionId,
+            revisionVersion,
+        }, {
+            source: 'sidebar',
+            projectId,
+            page: selectedPage,
+            requestId: requestId ?? null,
+        }));
+    };
+
+    const emitCurrentVisualState = (requestId?: string | null) => {
+        emitEnvelope(buildBuilderSyncStateMessage({
             viewport: builderViewport,
             structureOpen: !isStructurePanelCollapsed,
             interactionState: builderInteractionState,
@@ -145,180 +311,15 @@ export function useEmbeddedBuilderBridge({
             structureHash,
             revisionId,
             revisionVersion,
-        }, selectedPage);
-    }, [
-        builderInteractionState,
-        builderViewport,
-        isEmbeddedVisualBuilder,
-        isStructurePanelCollapsed,
-        revisionId,
-        revisionVersion,
-        selectedPage,
-        stateVersion,
-        structureHash,
-    ]);
+        }, {
+            source: 'sidebar',
+            projectId,
+            page: selectedPage,
+            requestId: requestId ?? null,
+        }));
+    };
 
-    useEffect(() => {
-        if (!isEmbeddedMode || typeof window === 'undefined') {
-            return;
-        }
-
-        const targetOrigin = window.location.origin;
-        const emit: EmitEmbeddedBuilderMessage = (message) => {
-            if (window.parent === window) {
-                return;
-            }
-
-            postBuilderBridgeMessage(window.parent, targetOrigin, 'webu-cms-builder', {
-                ...message,
-                stateVersion,
-                structureHash,
-                revisionId,
-                revisionVersion,
-            }, selectedPage);
-        };
-
-        const handleEmbeddedBuilderMessage = (event: MessageEvent) => {
-            if (event.origin !== targetOrigin) {
-                return;
-            }
-
-            const payload = parseBuilderBridgeChatCommand(event.data);
-            if (!payload) {
-                return;
-            }
-
-            if (payload.type === 'builder:set-viewport') {
-                onSetViewport(payload.viewport);
-                return;
-            }
-
-            if (payload.type === 'builder:set-interaction-state') {
-                onSetInteractionState(payload.interactionState);
-                return;
-            }
-
-            if (payload.type === 'builder:refresh-preview') {
-                onRefreshPreview();
-                return;
-            }
-
-            if (payload.type === 'builder:set-sidebar-mode') {
-                onSetSidebarMode(payload.mode);
-                return;
-            }
-
-            if (payload.type === 'builder:ping') {
-                emit({
-                    type: 'builder:ready',
-                    stateVersion,
-                    structureHash,
-                    revisionId,
-                    revisionVersion,
-                });
-                return;
-            }
-
-            if (!payloadTargetsBuilderBridgePage(payload, selectedPage)) {
-                return;
-            }
-
-            if (payload.type === 'builder:clear-selected-section') {
-                onClearSelectedSection();
-                return;
-            }
-
-            if (payload.type === 'builder:set-initial-sections') {
-                if (!hasBuilderBridgePageIdentity(selectedPage)) {
-                    onSetInitialSections(payload.sections);
-                }
-                return;
-            }
-
-            if (payload.type === 'builder:apply-change-set') {
-                onApplyChangeSet(payload, emit);
-                return;
-            }
-
-            if (payload.type === 'builder:set-selected-target') {
-                onSetSelectedTarget(payload);
-                return;
-            }
-
-            if (payload.type === 'builder:set-structure-open') {
-                onSetStructureOpen(payload.open);
-                return;
-            }
-
-            if (payload.type === 'builder:set-selected-section') {
-                onSetSelectedSection({
-                    sectionLocalId: payload.sectionLocalId,
-                    parameterPath: readTrimmedString(payload.parameterPath),
-                });
-                return;
-            }
-
-            if (payload.type === 'builder:set-selected-section-key') {
-                const nextSectionKey = readTrimmedString(payload.sectionKey);
-                if (nextSectionKey) {
-                    onSetSelectedSectionKey({
-                        sectionKey: nextSectionKey,
-                        parameterPath: readTrimmedString(payload.parameterPath),
-                    });
-                }
-                return;
-            }
-
-            if (payload.type === 'builder:save-draft') {
-                onSaveDraft(emit);
-                return;
-            }
-
-            if (payload.type === 'builder:add-section-by-key') {
-                onAddSectionByKey(payload, emit);
-                return;
-            }
-
-            if (payload.type === 'builder:remove-section') {
-                onRemoveSection(payload, emit);
-                return;
-            }
-
-            if (payload.type === 'builder:move-section') {
-                onMoveSection(payload, emit);
-            }
-        };
-
-        window.addEventListener('message', handleEmbeddedBuilderMessage);
-
-        return () => {
-            window.removeEventListener('message', handleEmbeddedBuilderMessage);
-        };
-    }, [
-        isEmbeddedMode,
-        onAddSectionByKey,
-        onApplyChangeSet,
-        onClearSelectedSection,
-        onMoveSection,
-        onRefreshPreview,
-        onRemoveSection,
-        onSaveDraft,
-        onSetInitialSections,
-        onSetInteractionState,
-        onSetSelectedSection,
-        onSetSelectedSectionKey,
-        onSetSelectedTarget,
-        onSetSidebarMode,
-        onSetStructureOpen,
-        onSetViewport,
-        revisionId,
-        revisionVersion,
-        selectedPage,
-        stateVersion,
-        structureHash,
-    ]);
-
-    useEffect(() => {
+    const emitCurrentSelectedTarget = (requestId?: string | null, force = false) => {
         if (!isEmbeddedVisualBuilder || typeof window === 'undefined' || window.parent === window) {
             return;
         }
@@ -346,7 +347,7 @@ export function useEmbeddedBuilderBridge({
             currentInteractionState: selectedTargetInteractionState,
         });
         const selectedTargetSignature = JSON.stringify({
-            type: 'builder:selected-target',
+            type: 'BUILDER_SELECT_TARGET',
             pageId: selectedPage.pageId ?? null,
             pageSlug: selectedPage.pageSlug ?? null,
             pageTitle: selectedPage.pageTitle ?? null,
@@ -362,40 +363,19 @@ export function useEmbeddedBuilderBridge({
                 : 'null',
         });
 
-        if (lastSelectedTargetEventSignatureRef.current !== selectedTargetSignature) {
+        if (force || lastSelectedTargetEventSignatureRef.current !== selectedTargetSignature) {
             lastSelectedTargetEventSignatureRef.current = selectedTargetSignature;
-            postBuilderBridgeMessage(window.parent, window.location.origin, 'webu-cms-builder', {
-                type: 'builder:selected-target',
-                ...(selectedTargetPayload ?? {}),
-                stateVersion,
-                structureHash,
-                revisionId,
-                revisionVersion,
-            }, selectedPage);
+            emitEnvelope(buildBuilderSelectTargetMessage(selectedTargetPayload, {
+                source: 'sidebar',
+                projectId,
+                page: selectedPage,
+                requestId: requestId ?? null,
+            }));
         }
-    }, [
-        isEmbeddedVisualBuilder,
-        lastSelectedTargetEventSignatureRef,
-        buildSectionPreviewText,
-        getBuilderSectionExplicitProps,
-        normalizeSectionTypeKey,
-        revisionId,
-        revisionVersion,
-        selectedPage,
-        selectedBuilderTarget,
-        selectedFixedSectionKey,
-        selectedSectionDraft,
-        selectedSectionLocalId,
-        sectionDisplayLabelByKey,
-        t,
-        selectedTargetInteractionState,
-        selectedTargetViewport,
-        stateVersion,
-        structureHash,
-    ]);
+    };
 
-    useEffect(() => {
-        if (!isEmbeddedSidebarMode || typeof window === 'undefined' || window.parent === window) {
+    const emitCurrentStructureSnapshot = (requestId?: string | null) => {
+        if (!isEmbeddedSidebarMode) {
             return;
         }
 
@@ -415,31 +395,22 @@ export function useEmbeddedBuilderBridge({
             };
         });
 
-        postBuilderBridgeMessage(window.parent, window.location.origin, 'webu-cms-builder', {
-            type: 'builder:structure-snapshot',
-            sections,
+        emitEnvelope(buildBuilderSyncStateMessage({
             stateVersion,
             structureHash,
             revisionId,
             revisionVersion,
-        }, selectedPage);
-    }, [
-        buildSectionPreviewText,
-        getBuilderSectionExplicitProps,
-        isEmbeddedSidebarMode,
-        normalizeSectionTypeKey,
-        revisionId,
-        revisionVersion,
-        sectionDisplayLabelByKey,
-        sectionsDraft,
-        selectedPage,
-        stateVersion,
-        structureHash,
-        t,
-    ]);
+            structureSections: sections,
+        }, {
+            source: 'sidebar',
+            projectId,
+            page: selectedPage,
+            requestId: requestId ?? null,
+        }));
+    };
 
-    useEffect(() => {
-        if (!isEmbeddedSidebarMode || typeof window === 'undefined' || window.parent === window) {
+    const emitCurrentLibrarySnapshot = (requestId?: string | null) => {
+        if (!isEmbeddedSidebarMode) {
             return;
         }
 
@@ -453,23 +424,245 @@ export function useEmbeddedBuilderBridge({
             };
         });
 
-        postBuilderBridgeMessage(window.parent, window.location.origin, 'webu-cms-builder', {
-            type: 'builder:library-snapshot',
-            items,
+        emitEnvelope(buildBuilderSyncStateMessage({
             stateVersion,
             structureHash,
             revisionId,
             revisionVersion,
-        }, selectedPage);
+            libraryItems: items,
+        }, {
+            source: 'sidebar',
+            projectId,
+            page: selectedPage,
+            requestId: requestId ?? null,
+        }));
+    };
+
+    useEffect(() => {
+        if (!isEmbeddedVisualBuilder || typeof window === 'undefined' || window.parent === window) {
+            return;
+        }
+
+        emitCurrentVisualState();
     }, [
-        builderSectionLibrary,
-        isEmbeddedSidebarMode,
-        normalizeSectionTypeKey,
-        revisionId,
-        revisionVersion,
-        sectionDisplayLabelByKey,
+        builderInteractionState,
+        builderViewport,
+        emitCurrentVisualState,
+        isEmbeddedVisualBuilder,
+        isStructurePanelCollapsed,
+    ]);
+
+    useEffect(() => {
+        if (!isEmbeddedMode || typeof window === 'undefined') {
+            return;
+        }
+
+        const handleEmbeddedBuilderMessage = (event: MessageEvent) => {
+            if (event.origin !== targetOrigin) {
+                logSidebarBridge({
+                    phase: 'ignore',
+                    target: 'sidebar',
+                    reason: 'origin-mismatch',
+                });
+                return;
+            }
+
+            const parsedEnvelope = inspectBuilderBridgeEnvelope(event.data);
+            const payload = parsedEnvelope.message;
+            if (!payload) {
+                logSidebarBridge({
+                    phase: 'ignore',
+                    target: 'sidebar',
+                    reason: parsedEnvelope.error ?? 'invalid-envelope',
+                });
+                return;
+            }
+
+            if (payload.source !== 'chat') {
+                logSidebarBridge({
+                    phase: 'ignore',
+                    target: 'sidebar',
+                    message: payload,
+                    reason: 'unexpected-source',
+                });
+                return;
+            }
+
+            if (!builderBridgeEnvelopeTargetsProject(payload, projectId)) {
+                logSidebarBridge({
+                    phase: 'ignore',
+                    target: 'sidebar',
+                    message: payload,
+                    reason: 'project-mismatch',
+                });
+                return;
+            }
+
+            if (payload.type === 'BUILDER_REQUEST_STATE') {
+                logSidebarBridge({
+                    phase: 'receive',
+                    target: 'sidebar',
+                    message: payload,
+                });
+                emitCurrentReady(payload.requestId);
+                emitCurrentVisualState(payload.requestId);
+                emitCurrentSelectedTarget(payload.requestId, true);
+                emitCurrentStructureSnapshot(payload.requestId);
+                emitCurrentLibrarySnapshot(payload.requestId);
+                return;
+            }
+
+            if (!payloadTargetsBuilderBridgePage(payload, selectedPage)) {
+                logSidebarBridge({
+                    phase: 'ignore',
+                    target: 'sidebar',
+                    message: payload,
+                    reason: 'page-mismatch',
+                });
+                return;
+            }
+
+            logSidebarBridge({
+                phase: 'receive',
+                target: 'sidebar',
+                message: payload,
+            });
+
+            if (payload.type === 'BUILDER_SYNC_STATE') {
+                if (payload.payload.viewport) {
+                    onSetViewport(payload.payload.viewport);
+                }
+                if (payload.payload.interactionState) {
+                    onSetInteractionState(payload.payload.interactionState);
+                }
+                if (payload.payload.sidebarMode) {
+                    onSetSidebarMode(payload.payload.sidebarMode);
+                }
+                if (typeof payload.payload.structureOpen === 'boolean') {
+                    onSetStructureOpen(payload.payload.structureOpen);
+                }
+                if (payload.payload.selectedTarget) {
+                    onSetSelectedTarget(payload.payload.selectedTarget);
+                }
+                return;
+            }
+
+            if (payload.type === 'BUILDER_REFRESH_PREVIEW') {
+                onRefreshPreview();
+                return;
+            }
+
+            if (payload.type === 'BUILDER_CLEAR_SELECTION') {
+                onClearSelectedSection();
+                return;
+            }
+
+            if (payload.type === 'BUILDER_SELECT_TARGET') {
+                if (payload.payload.target) {
+                    onSetSelectedTarget(payload.payload.target);
+                } else {
+                    onClearSelectedSection();
+                }
+                return;
+            }
+
+            if (payload.type === 'BUILDER_PATCH_PROPS') {
+                onApplyChangeSet({
+                    requestId: payload.requestId,
+                    changeSet: payload.payload.changeSet,
+                }, emit);
+                return;
+            }
+
+            if (payload.type === 'BUILDER_SAVE_DRAFT') {
+                onSaveDraft(emit);
+                return;
+            }
+
+            if (payload.type === 'BUILDER_INSERT_NODE') {
+                if (Array.isArray(payload.payload.sections) && !hasBuilderBridgePageIdentity(selectedPage)) {
+                    onSetInitialSections(payload.payload.sections);
+                    return;
+                }
+
+                if (payload.payload.sectionKey) {
+                    onAddSectionByKey({
+                        requestId: payload.requestId,
+                        sectionKey: payload.payload.sectionKey,
+                        sectionLocalId: payload.payload.sectionLocalId ?? null,
+                        afterSectionLocalId: payload.payload.afterSectionLocalId ?? null,
+                        targetSectionKey: payload.payload.targetSectionKey ?? null,
+                        placement: payload.payload.placement ?? null,
+                    }, emit);
+                }
+                return;
+            }
+
+            if (payload.type === 'BUILDER_DELETE_NODE') {
+                onRemoveSection({
+                    requestId: payload.requestId,
+                    sectionLocalId: payload.payload.sectionLocalId ?? null,
+                    sectionIndex: payload.payload.sectionIndex ?? null,
+                    sectionKey: payload.payload.sectionKey ?? null,
+                }, emit);
+                return;
+            }
+
+            if (payload.type === 'BUILDER_MOVE_NODE') {
+                onMoveSection({
+                    requestId: payload.requestId,
+                    sectionLocalId: payload.payload.sectionLocalId,
+                    targetSectionLocalId: payload.payload.targetSectionLocalId,
+                    position: payload.payload.position,
+                }, emit);
+            }
+        };
+
+        window.addEventListener('message', handleEmbeddedBuilderMessage);
+
+        return () => {
+            window.removeEventListener('message', handleEmbeddedBuilderMessage);
+        };
+    }, [
+        isEmbeddedMode,
+        onAddSectionByKey,
+        onApplyChangeSet,
+        onClearSelectedSection,
+        onMoveSection,
+        onRefreshPreview,
+        onRemoveSection,
+        onSaveDraft,
+        onSetInitialSections,
+        onSetInteractionState,
+        onSetSelectedTarget,
+        onSetSidebarMode,
+        onSetStructureOpen,
+        onSetViewport,
+        emitCurrentLibrarySnapshot,
+        emitCurrentReady,
+        emitCurrentSelectedTarget,
+        emitCurrentStructureSnapshot,
+        emitCurrentVisualState,
+        projectId,
         selectedPage,
-        stateVersion,
-        structureHash,
+        targetOrigin,
+    ]);
+
+    useEffect(() => {
+        emitCurrentSelectedTarget();
+    }, [
+        emitCurrentSelectedTarget,
+    ]);
+
+    useEffect(() => {
+        emitCurrentStructureSnapshot();
+    }, [
+        emitCurrentStructureSnapshot,
+    ]);
+
+    useEffect(() => {
+        emitCurrentLibrarySnapshot();
+    }, [
+        emitCurrentLibrarySnapshot,
     ]);
 }

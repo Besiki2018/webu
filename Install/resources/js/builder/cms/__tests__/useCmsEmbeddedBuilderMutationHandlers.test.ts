@@ -1,0 +1,81 @@
+import { act, renderHook } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+import { useCmsEmbeddedBuilderMutationHandlers } from '@/builder/cms/useCmsEmbeddedBuilderMutationHandlers';
+import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
+
+function makeSection(localId: string, type = 'webu_general_hero_01'): SectionDraft {
+    return {
+        localId,
+        type,
+        propsText: JSON.stringify({ headline: localId }),
+        propsError: null,
+        bindingMeta: null,
+    };
+}
+
+function buildOptions(overrides: Partial<Parameters<typeof useCmsEmbeddedBuilderMutationHandlers>[0]> = {}) {
+    return {
+        isEmbeddedMode: true,
+        pageEditorMode: 'builder',
+        selectedPageId: 11,
+        selectedSectionLocalId: null,
+        selectedBuilderTarget: null,
+        sectionsDraftRef: {
+            current: [makeSection('hero-1'), makeSection('hero-2')],
+        },
+        saveDraftRevisionInternalRef: {
+            current: vi.fn(async () => 1),
+        },
+        scheduleStructuralDraftPersistRef: {
+            current: vi.fn(),
+        },
+        setPageEditorMode: vi.fn(),
+        setSectionsDraft: vi.fn(),
+        setSelectedSectionLocalId: vi.fn(),
+        setSelectedNestedSection: vi.fn(),
+        setSelectedFixedSectionKey: vi.fn(),
+        setBuilderSidebarMode: vi.fn(),
+        normalizeSectionTypeKey: (key: string) => key.trim().toLowerCase(),
+        isHeaderSectionKey: vi.fn(() => false),
+        isFooterSectionKey: vi.fn(() => false),
+        createBuilderSectionDraft: vi.fn(),
+        applyMutationState: vi.fn(),
+        addSectionByKey: vi.fn(),
+        handleAddSectionInside: vi.fn(),
+        handleRemoveSection: vi.fn(),
+        t: (key: string) => key,
+        ...overrides,
+    };
+}
+
+describe('useCmsEmbeddedBuilderMutationHandlers', () => {
+    it('forwards stable local ids to addSectionByKey without double-scheduling structural persistence', () => {
+        const options = buildOptions();
+        const emit = vi.fn();
+        const { result } = renderHook(() => useCmsEmbeddedBuilderMutationHandlers(options));
+
+        act(() => {
+            result.current.handleEmbeddedBuilderAddSection({
+                requestId: 'req-add-1',
+                sectionKey: 'webu_general_text_01',
+                sectionLocalId: 'builder-section-1',
+                afterSectionLocalId: 'hero-1',
+                placement: 'after',
+            }, emit);
+        });
+
+        expect(options.addSectionByKey).toHaveBeenCalledWith('webu_general_text_01', 'library', {
+            insertIndex: 1,
+            localId: 'builder-section-1',
+        });
+        expect(options.scheduleStructuralDraftPersistRef.current).not.toHaveBeenCalled();
+        expect(emit).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'builder:mutation-result',
+            requestId: 'req-add-1',
+            mutation: 'add-section',
+            success: true,
+            changed: true,
+        }));
+    });
+});

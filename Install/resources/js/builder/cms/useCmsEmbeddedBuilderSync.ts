@@ -8,8 +8,6 @@ type EmbeddedBuilderBridgeBaseOptions = Omit<
     | 'onSetInitialSections'
     | 'onApplyChangeSet'
     | 'onSetSelectedTarget'
-    | 'onSetSelectedSection'
-    | 'onSetSelectedSectionKey'
     | 'onSaveDraft'
     | 'onAddSectionByKey'
     | 'onRemoveSection'
@@ -31,8 +29,6 @@ export function useCmsEmbeddedBuilderSync({
         handleEmbeddedBuilderClearSelection,
         handleEmbeddedBuilderInitialSections,
         handleEmbeddedBuilderSelectedTarget,
-        handleEmbeddedBuilderSelectedSection,
-        handleEmbeddedBuilderSelectedSectionKey,
     } = useCmsEmbeddedBuilderSelectionHandlers(selection);
 
     const {
@@ -49,8 +45,6 @@ export function useCmsEmbeddedBuilderSync({
         onSetInitialSections: handleEmbeddedBuilderInitialSections,
         onApplyChangeSet: handleEmbeddedBuilderChangeSet,
         onSetSelectedTarget: handleEmbeddedBuilderSelectedTarget,
-        onSetSelectedSection: handleEmbeddedBuilderSelectedSection,
-        onSetSelectedSectionKey: handleEmbeddedBuilderSelectedSectionKey,
         onSaveDraft: handleEmbeddedBuilderSaveDraft,
         onAddSectionByKey: handleEmbeddedBuilderAddSection,
         onRemoveSection: handleEmbeddedBuilderRemoveSection,

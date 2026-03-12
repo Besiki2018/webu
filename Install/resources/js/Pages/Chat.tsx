@@ -37,7 +37,6 @@ import {
     extractPreviewLayoutOverrides,
     getBuilderSyncableChangeSet,
     resolveChangeSetScopeLabel,
-    type PreviewLayoutOverrides,
 } from '@/lib/agentChangeSet';
 import { resolveBuilderWidgetIcon } from '@/lib/resolveBuilderWidgetIcon';
 import { getShortDisplayName } from '@/builder/componentRegistry';
@@ -46,7 +45,6 @@ import {
     buildSectionPreviewText,
     parseSectionProps as parseBuilderSectionProps,
 } from '@/builder/state/sectionProps';
-import { resetBuilderEditingStore, useBuilderEditingStore } from '@/builder/state/builderEditingStore';
 import {
     type BuilderEditableTarget,
     editableTargetToMention,
@@ -62,9 +60,7 @@ import { runDesignUpgrade, type ContentSectionType } from '@/builder/ai/designUp
 import {
     buildDetailedAssistantMessage,
     getInitialViewMode,
-    getStructurePanelStorageKey,
     isConversationalMessage,
-    readPersistedStructurePanelState,
     reorderStructureCollection,
     type ChatViewMode,
 } from '@/builder/chat/chatPageUtils';
@@ -80,20 +76,22 @@ import {
 import {
     builderBridgePagesMatch,
     createBuilderBridgeRequestId,
-    normalizeBuilderBridgePageIdentity,
 } from '@/builder/cms/embeddedBuilderBridgeContract';
 import {
     getWorkspaceBuilderPageIdentity,
     type WorkspaceBuilderCodePage as BuilderCodePage,
     type WorkspaceBuilderStructureItem as BuilderStructureItem,
 } from '@/builder/cms/workspaceBuilderSync';
+import { BuilderSidebarFrame } from '@/builder/chat/BuilderSidebarFrame';
+import { BuilderPreviewFrame } from '@/builder/chat/BuilderPreviewFrame';
 import { useGeneratedCodePreview } from '@/builder/chat/useGeneratedCodePreview';
 import {
+    buildOptimisticInsertedStructureItems,
     buildOptimisticRemovedStructureItems,
     createPendingBuilderSelectionSnapshot,
     type PendingBuilderStructureMutation,
 } from '@/builder/cms/chatBuilderStructureMutations';
-import { useChatEmbeddedBuilderBridge } from '@/builder/cms/useChatEmbeddedBuilderBridge';
+import { useBuilderWorkspace, type BuilderLibraryItem } from '@/builder/chat/useBuilderWorkspace';
 import { buildCanonicalBridgeSelectedTargetPayload } from '@/builder/cms/canonicalSelectionPayload';
 
 const FileTree = lazy(async () => ({ default: (await import('@/components/Code/FileTree')).FileTree }));
@@ -279,19 +277,6 @@ type StructureDropIndicator = {
     position: 'before' | 'after';
 };
 
-interface BuilderLibraryItem {
-    key: string;
-    label: string;
-    category: string;
-    category_label?: string;
-}
-
-interface BuilderLibraryGroup {
-    category: string;
-    categoryLabel: string;
-    items: BuilderLibraryItem[];
-}
-
 interface GeneratedPageSection {
     type: string;
     props: Record<string, unknown>;
@@ -378,32 +363,8 @@ export default function Chat({
     const [isRegeneratingCode, setIsRegeneratingCode] = useState(false);
     const codeEditorRef = useRef<CodeEditorHandle>(null);
     const [previewRefreshTrigger, setPreviewRefreshTrigger] = useState(() => Date.now());
-    /** When set, preview URL gets these query params so header/footer design changes apply immediately without save */
-    const [previewLayoutOverrides, setPreviewLayoutOverrides] = useState<PreviewLayoutOverrides | null>(null);
     const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
-    const builderEditingState = useBuilderEditingStore();
-    const previewViewport = builderEditingState.currentBreakpoint;
-    const setPreviewViewport = builderEditingState.setCurrentBreakpoint;
-    const previewInteractionState = builderEditingState.currentInteractionState;
-    const setPreviewInteractionState = builderEditingState.setCurrentInteractionState;
-    const selectedBuilderSectionLocalId = builderEditingState.selectedSectionLocalId;
-    const setSelectedBuilderSectionLocalId = builderEditingState.setSelectedSectionLocalId;
-    const selectedBuilderTarget = builderEditingState.selectedBuilderTarget;
-    const setSelectedBuilderTarget = builderEditingState.setSelectedBuilderTarget;
-    const builderPaneMode = builderEditingState.builderMode;
-    const setBuilderPaneMode = builderEditingState.setBuilderMode;
     const scrollEndRef = useRef<HTMLDivElement>(null);
-    const builderSidebarFrameRef = useRef<HTMLIFrameElement | null>(null);
-    const builderSidebarCommandQueueRef = useRef<Record<string, unknown>[]>([]);
-    const pendingBuilderChangeSetRequestIdRef = useRef<string | null>(null);
-    const lastBuilderReadySignatureRef = useRef<string | null>(null);
-    const lastBuilderSnapshotSignatureRef = useRef<string | null>(null);
-    const latestBuilderStateCursorRef = useRef<{
-        pageId: number | null;
-        pageSlug: string | null;
-        stateVersion: number | null;
-        revisionVersion: number | null;
-    } | null>(null);
     const initialSent = useRef(false);
     const [typingAssistantMessageIds, setTypingAssistantMessageIds] = useState<string[]>([]);
     const typingBaselineCapturedRef = useRef(false);
@@ -411,13 +372,6 @@ export default function Chat({
     const [failedMessages, setFailedMessages] = useState<Array<{message: string; timestamp: number}>>([]);
     const [initialLoading, setInitialLoading] = useState(true);
     const [publishModalOpen, setPublishModalOpen] = useState(false);
-    const [isSidebarVisible, setIsSidebarVisible] = useState(true);
-    const isVisualBuilderOpen = viewMode === 'inspect';
-    const [isBuilderStructureOpen, setIsBuilderStructureOpen] = useState(() => (
-        readPersistedStructurePanelState(project.id, false).open
-    ));
-    const [selectedPreviewSectionKey, setSelectedPreviewSectionKey] = useState<string | null>(null);
-    const [pendingBuilderStructureMutation, setPendingBuilderStructureMutation] = useState<PendingBuilderStructureMutation | null>(null);
 
     const {
         generatedVirtualFiles,
@@ -430,41 +384,6 @@ export default function Chat({
         structureSnapshotPageRef,
         GENERATED_PAGE_PATH_PREFIX,
     } = useGeneratedCodePreview({ generatedPages, generatedPage }, viewMode);
-
-    const activeBuilderPageIdentity = useMemo(() => (
-        activeBuilderCodePage
-            ? getWorkspaceBuilderPageIdentity(activeBuilderCodePage)
-            : normalizeBuilderBridgePageIdentity(structureSnapshotPageRef.current)
-    ), [activeBuilderCodePage, structureSnapshotPageRef]);
-    const visibleBuilderStructureItems = pendingBuilderStructureMutation?.previewItems ?? builderStructureItems;
-    const effectiveSelectedBuilderSectionLocalId = selectedBuilderTarget?.sectionLocalId ?? selectedBuilderSectionLocalId;
-    const effectiveSelectedPreviewSectionKey = selectedBuilderTarget?.sectionKey ?? selectedPreviewSectionKey;
-
-    useEffect(() => {
-        setExpandedStructureItemIds((current) => current.filter((localId) => (
-            builderStructureItems.some((item) => item.localId === localId)
-        )));
-    }, [builderStructureItems]);
-
-    useEffect(() => {
-        if (!effectiveSelectedBuilderSectionLocalId) {
-            return;
-        }
-
-        setExpandedStructureItemIds((current) => (
-            current.includes(effectiveSelectedBuilderSectionLocalId)
-                ? current
-                : [...current, effectiveSelectedBuilderSectionLocalId]
-        ));
-    }, [effectiveSelectedBuilderSectionLocalId]);
-
-    const toggleStructureItemExpanded = useCallback((localId: string) => {
-        setExpandedStructureItemIds((current) => (
-            current.includes(localId)
-                ? current.filter((itemId) => itemId !== localId)
-                : [...current, localId]
-        ));
-    }, []);
 
     useEffect(() => {
         if (viewMode !== 'code') {
@@ -485,74 +404,13 @@ export default function Chat({
         }
     }, [generatedVirtualFilePaths, generatedVirtualFiles, selectedFile, viewMode]);
 
-    const [builderLibraryItems, setBuilderLibraryItems] = useState<BuilderLibraryItem[]>(() => seededBuilderLibraryItems);
-    const [activeLibraryItem, setActiveLibraryItem] = useState<BuilderLibraryItem | null>(null);
-    const [isBuilderSidebarReady, setIsBuilderSidebarReady] = useState(false);
-    const [isSavingBuilderDraft, setIsSavingBuilderDraft] = useState(false);
     const structureDropdownRef = useRef<HTMLDivElement | null>(null);
     const structurePanelCloseTimeoutRef = useRef<number | null>(null);
-    const preferPersistedStructureStateRef = useRef(true);
     const [expandedStructureItemIds, setExpandedStructureItemIds] = useState<string[]>([]);
     const [draggingStructureItemId, setDraggingStructureItemId] = useState<string | null>(null);
     const [structureDropIndicator, setStructureDropIndicator] = useState<StructureDropIndicator | null>(null);
-    /** When true, next builder:selected-section should not switch sidebar to settings (keep component list visible after drop). */
-    const justPlacedSectionRef = useRef(false);
 
-    useEffect(() => {
-        resetBuilderEditingStore();
-
-        return () => {
-            resetBuilderEditingStore();
-        };
-    }, [project.id]);
-
-    // Element selection state for inspect mode
-    const [selectedElement, setSelectedElement] = useState<ElementMention | null>(null);
     const [pendingEdits, setPendingEdits] = useState<PendingEdit[]>([]);
-    const selectedElementMention = useMemo(
-        () => editableTargetToMention(selectedBuilderTarget) ?? selectedElement,
-        [selectedBuilderTarget, selectedElement],
-    );
-
-    useEffect(() => {
-        if (!selectedBuilderTarget) {
-            if (selectedElement !== null) {
-                setSelectedElement(null);
-            }
-            return;
-        }
-    }, [selectedBuilderTarget, selectedElement]);
-
-    useEffect(() => {
-        if (seededBuilderLibraryItems.length === 0) {
-            return;
-        }
-
-        setBuilderLibraryItems((current) => {
-            if (current.length >= seededBuilderLibraryItems.length) {
-                return current;
-            }
-
-            const merged = new Map<string, BuilderLibraryItem>();
-            seededBuilderLibraryItems.forEach((item) => {
-                const key = item.key.trim();
-                if (key !== '') {
-                    merged.set(key, item);
-                }
-            });
-            current.forEach((item) => {
-                const key = item.key.trim();
-                if (key !== '') {
-                    merged.set(key, {
-                        ...merged.get(key),
-                        ...item,
-                    });
-                }
-            });
-
-            return Array.from(merged.values());
-        });
-    }, [seededBuilderLibraryItems]);
 
     // Theme designer state
     const [isSavingTheme, setIsSavingTheme] = useState(false);
@@ -765,48 +623,92 @@ export default function Chat({
     }, [agentHighlightLocalId]);
 
     const effectivePreviewUrl = visualPreviewUrl || progress.previewUrl || null;
-    const effectivePreviewUrlWithOverrides = useMemo(() => {
-        const base = effectivePreviewUrl;
-        if (!base || !previewLayoutOverrides) return base;
-        const header = previewLayoutOverrides.header_variant?.trim();
-        const footer = previewLayoutOverrides.footer_variant?.trim();
-        if (!header && !footer) return base;
-        const sep = base.includes('?') ? '&' : '?';
-        const params = new URLSearchParams();
-        if (header) params.set('header_variant', header);
-        if (footer) params.set('footer_variant', footer);
-        return `${base}${sep}${params.toString()}`;
-    }, [effectivePreviewUrl, previewLayoutOverrides]);
+    // TODO(builder-v2): keep Chat as the tool/chat shell only. When the sidebar and preview
+    // stop living in iframes, move bridge/readiness orchestration into a dedicated builder workspace.
+    const {
+        previewViewport,
+        setPreviewViewport,
+        previewInteractionState,
+        setPreviewInteractionState,
+        selectedBuilderTarget,
+        selectBuilderTarget,
+        clearBuilderSelection,
+        isBuilderSidebarReady,
+        markBuilderSidebarReady,
+        isBuilderPreviewReady,
+        markBuilderPreviewReady,
+        builderPaneMode,
+        setBuilderPaneMode,
+        isSidebarVisible,
+        isVisualBuilderOpen,
+        isBuilderStructureOpen,
+        pendingBuilderStructureMutation,
+        setPendingBuilderStructureMutation,
+        builderLibraryItems,
+        groupedBuilderLibraryItems,
+        activeLibraryItem,
+        setActiveLibraryItem,
+        isSavingBuilderDraft,
+        setIsSavingBuilderDraft,
+        selectedElementMention,
+        activeBuilderPageIdentity,
+        visibleBuilderStructureItems,
+        effectiveSelectedBuilderSectionLocalId,
+        effectiveSelectedPreviewSectionKey,
+        applyPreviewLayoutOverrides,
+        effectivePreviewUrlWithOverrides,
+        visualBuilderSidebarUrl,
+        builderSidebarFrameRef,
+        postBuilderCommand,
+        syncBuilderChangeSet,
+        setStructurePanelOpen,
+        handleBuilderSidebarFrameLoad,
+        openVisualBuilder,
+        handleVisualBuilderToggle,
+        handleWorkspaceModeChange,
+        handleSidebarToggle,
+        preferPersistedStructureStateRef,
+        justPlacedSectionRef,
+    } = useBuilderWorkspace({
+        projectId: project.id,
+        viewMode,
+        setViewMode,
+        seededBuilderLibraryItems,
+        activeBuilderCodePage,
+        builderStructureItems,
+        setBuilderStructureItems,
+        setBuilderCodePages,
+        structureSnapshotPageRef,
+        effectivePreviewUrl,
+        setPreviewRefreshTrigger,
+        t,
+    });
 
-    const applyPreviewLayoutOverrides = useCallback((overrides: PreviewLayoutOverrides | null) => {
-        if (!overrides) {
+    useEffect(() => {
+        setExpandedStructureItemIds((current) => current.filter((localId) => (
+            builderStructureItems.some((item) => item.localId === localId)
+        )));
+    }, [builderStructureItems]);
+
+    useEffect(() => {
+        if (!effectiveSelectedBuilderSectionLocalId) {
             return;
         }
 
-        setPreviewLayoutOverrides((prev) => {
-            const next = {
-                header_variant: overrides.header_variant ?? prev?.header_variant,
-                footer_variant: overrides.footer_variant ?? prev?.footer_variant,
-            };
+        setExpandedStructureItemIds((current) => (
+            current.includes(effectiveSelectedBuilderSectionLocalId)
+                ? current
+                : [...current, effectiveSelectedBuilderSectionLocalId]
+        ));
+    }, [effectiveSelectedBuilderSectionLocalId]);
 
-            return next.header_variant || next.footer_variant ? next : null;
-        });
+    const toggleStructureItemExpanded = useCallback((localId: string) => {
+        setExpandedStructureItemIds((current) => (
+            current.includes(localId)
+                ? current.filter((itemId) => itemId !== localId)
+                : [...current, localId]
+        ));
     }, []);
-
-    useEffect(() => {
-        if (viewMode !== 'inspect' || typeof window === 'undefined') return;
-        const handler = (event: MessageEvent) => {
-            const data = event.data;
-            if (!data || typeof data !== 'object' || data.type !== 'webu-builder-preview-layout-override') return;
-            applyPreviewLayoutOverrides({
-                header_variant: typeof data.header_variant === 'string' ? data.header_variant.trim() : undefined,
-                footer_variant: typeof data.footer_variant === 'string' ? data.footer_variant.trim() : undefined,
-            });
-            setPreviewRefreshTrigger(Date.now());
-        };
-        window.addEventListener('message', handler);
-        return () => window.removeEventListener('message', handler);
-    }, [applyPreviewLayoutOverrides, viewMode]);
 
     const visualBuilderLabel = t('Visual');
     const previewStatusLabel = isBuildingPreview
@@ -1476,7 +1378,6 @@ export default function Chat({
     }, []);
 
     const previewTarget = project.subdomain ? `https://${project.subdomain}.${baseDomain}` : effectivePreviewUrl;
-    const visualBuilderSidebarUrl = `/project/${project.id}/cms?tab=editor&embedded=sidebar`;
     const toolbarTabs: Array<{ key: ViewMode; label: string; icon: LucideIcon }> = [
         { key: 'preview', label: t('Preview'), icon: Globe },
         { key: 'inspect', label: visualBuilderLabel, icon: Cloud },
@@ -1529,57 +1430,6 @@ export default function Chat({
     const creditUsagePercent = credits.isUnlimited || credits.monthlyLimit <= 0
         ? 100
         : Math.max(6, Math.min(100, (credits.remaining / credits.monthlyLimit) * 100));
-    const groupedBuilderLibraryItems = useMemo<BuilderLibraryGroup[]>(() => {
-        const uniqueItems = new Map<string, BuilderLibraryItem>();
-
-        builderLibraryItems.forEach((item) => {
-            const normalizedKey = item.key.trim();
-            if (normalizedKey === '' || uniqueItems.has(normalizedKey)) {
-                return;
-            }
-
-            const category = item.category.trim() || 'general';
-            uniqueItems.set(normalizedKey, {
-                key: normalizedKey,
-                label: item.label.trim() || normalizedKey,
-                category,
-                category_label: item.category_label?.trim(),
-            });
-        });
-
-        const categoryOrder = ['general', 'ecommerce', 'business', 'content', 'booking', 'layout'];
-        const grouped = new Map<string, BuilderLibraryItem[]>();
-
-        Array.from(uniqueItems.values())
-            .sort((left, right) => {
-                const leftOrder = categoryOrder.indexOf(left.category);
-                const rightOrder = categoryOrder.indexOf(right.category);
-                if (leftOrder !== -1 || rightOrder !== -1) {
-                    const a = leftOrder === -1 ? 99 : leftOrder;
-                    const b = rightOrder === -1 ? 99 : rightOrder;
-                    if (a !== b) return a - b;
-                }
-                const categoryCompare = left.category.localeCompare(right.category, undefined, { sensitivity: 'base' });
-                if (categoryCompare !== 0) return categoryCompare;
-                return left.label.localeCompare(right.label, undefined, { sensitivity: 'base' });
-            })
-            .forEach((item) => {
-                const bucket = grouped.get(item.category) ?? [];
-                bucket.push(item);
-                grouped.set(item.category, bucket);
-            });
-
-        return Array.from(grouped.entries()).map(([category, items]) => {
-            const categoryKey = `builder.category.${category}`;
-            const translated = t(categoryKey);
-            return {
-                category,
-                categoryLabel: translated !== categoryKey ? translated : (items[0]?.category_label ?? category),
-                items,
-            };
-        });
-    }, [builderLibraryItems, t]);
-
     const handleShareWorkspace = useCallback(async () => {
         const shareUrl = previewTarget ?? (typeof window !== 'undefined' ? `${window.location.origin}/app/${project.id}` : `/app/${project.id}`);
 
@@ -1613,94 +1463,6 @@ export default function Chat({
         window.location.assign('/billing/plans');
     }, []);
 
-    const {
-        postBuilderCommand,
-        syncBuilderChangeSet,
-        setStructurePanelOpen,
-        handleBuilderSidebarFrameLoad,
-    } = useChatEmbeddedBuilderBridge({
-        viewMode,
-        isVisualBuilderOpen,
-        isBuilderSidebarReady,
-        isBuilderStructureOpen,
-        builderPaneMode,
-        previewViewport,
-        previewInteractionState,
-        selectedBuilderTarget,
-        selectedBuilderSectionLocalId: effectiveSelectedBuilderSectionLocalId,
-        selectedPreviewSectionKey: effectiveSelectedPreviewSectionKey,
-        selectedElement: selectedElementMention,
-        activeBuilderPageIdentity,
-        builderStructureItems,
-        pendingBuilderStructureMutation,
-        builderSidebarFrameRef,
-        builderSidebarCommandQueueRef,
-        pendingBuilderChangeSetRequestIdRef,
-        lastBuilderReadySignatureRef,
-        lastBuilderSnapshotSignatureRef,
-        latestBuilderStateCursorRef,
-        structureSnapshotPageRef,
-        preferPersistedStructureStateRef,
-        justPlacedSectionRef,
-        setPreviewViewport,
-        setPreviewInteractionState,
-        setIsBuilderStructureOpen,
-        setSelectedBuilderSectionLocalId,
-        setSelectedPreviewSectionKey,
-        setSelectedBuilderTarget,
-        setBuilderPaneMode,
-        setActiveLibraryItem,
-        setIsSavingBuilderDraft,
-        setPreviewRefreshTrigger,
-        setBuilderLibraryItems,
-        setBuilderStructureItems,
-        setBuilderCodePages,
-        setPendingBuilderStructureMutation,
-        setIsBuilderSidebarReady,
-        t,
-    });
-
-    const openVisualBuilder = useCallback(() => {
-        setIsSidebarVisible(true);
-        setIsBuilderSidebarReady(false);
-        setBuilderPaneMode('elements');
-        setActiveLibraryItem(null);
-        setSelectedElement(null);
-        setSelectedBuilderTarget(null);
-        setSelectedPreviewSectionKey(null);
-        setSelectedBuilderSectionLocalId(null);
-        setViewMode('inspect');
-        postBuilderCommand({
-            type: 'builder:set-sidebar-mode',
-            mode: 'elements',
-        });
-        postBuilderCommand({
-            type: 'builder:clear-selected-section',
-        });
-    }, [postBuilderCommand]);
-
-    const handleVisualBuilderToggle = useCallback(() => {
-        if (viewMode === 'inspect') {
-            setViewMode('preview');
-            setBuilderPaneMode('elements');
-            setActiveLibraryItem(null);
-            setSelectedElement(null);
-            setSelectedBuilderTarget(null);
-            setSelectedPreviewSectionKey(null);
-            setSelectedBuilderSectionLocalId(null);
-            postBuilderCommand({
-                type: 'builder:set-sidebar-mode',
-                mode: 'elements',
-            });
-            postBuilderCommand({
-                type: 'builder:clear-selected-section',
-            });
-            return;
-        }
-
-        openVisualBuilder();
-    }, [openVisualBuilder, postBuilderCommand, viewMode]);
-
     // Element selection handler for inspect mode
     const handleElementSelect = useCallback((element: ElementMention) => {
         inspectLog('handleElementSelect', element);
@@ -1722,11 +1484,7 @@ export default function Chat({
                 pageTitle: activeBuilderPageIdentity.pageTitle,
             }
             : null;
-        const nextMention = editableTargetToMention(pageAwareTarget) ?? element;
-        setSelectedElement(nextMention);
-        setSelectedBuilderTarget(pageAwareTarget);
-        setSelectedBuilderSectionLocalId(resolvedLocalId);
-        setSelectedPreviewSectionKey(resolvedSectionKey);
+        selectBuilderTarget(pageAwareTarget);
 
         if (viewMode !== 'inspect') {
             return;
@@ -1758,7 +1516,7 @@ export default function Chat({
                 ...nextSelectionPayload,
             });
         }
-    }, [activeBuilderPageIdentity.pageId, activeBuilderPageIdentity.pageSlug, activeBuilderPageIdentity.pageTitle, builderStructureItems, postBuilderCommand, previewInteractionState, previewViewport, viewMode]);
+    }, [activeBuilderPageIdentity.pageId, activeBuilderPageIdentity.pageSlug, activeBuilderPageIdentity.pageTitle, builderStructureItems, postBuilderCommand, previewInteractionState, previewViewport, selectBuilderTarget, viewMode]);
 
     // Handler for inline edits from inspect mode
     const handleElementEdit = useCallback((edit: PendingEdit) => {
@@ -1813,30 +1571,10 @@ export default function Chat({
         setPendingEdits(prev => prev.filter(e => e.id !== id));
     }, []);
 
-    useEffect(() => {
-        if (typeof window === 'undefined') {
-            return;
-        }
-
-        try {
-            window.localStorage.setItem(
-                getStructurePanelStorageKey(project.id),
-                JSON.stringify({
-                    open: isBuilderStructureOpen,
-                })
-            );
-        } catch {
-            // Ignore storage quota / private mode failures.
-        }
-    }, [isBuilderStructureOpen, project.id]);
-
     const handleBuilderShowElements = useCallback(() => {
         setBuilderPaneMode('elements');
         setActiveLibraryItem(null);
-        setSelectedElement(null);
-        setSelectedBuilderTarget(null);
-        setSelectedPreviewSectionKey(null);
-        setSelectedBuilderSectionLocalId(null);
+        clearBuilderSelection();
         postBuilderCommand({
             type: 'builder:set-sidebar-mode',
             mode: 'elements',
@@ -1844,7 +1582,7 @@ export default function Chat({
         postBuilderCommand({
             type: 'builder:clear-selected-section',
         });
-    }, [postBuilderCommand]);
+    }, [clearBuilderSelection, postBuilderCommand]);
 
     const handleLibraryItemActivate = useCallback((item: BuilderLibraryItem) => {
         setBuilderPaneMode('elements');
@@ -1857,11 +1595,23 @@ export default function Chat({
         }
 
         const requestId = createBuilderBridgeRequestId('builder-add-section');
+        const sectionLocalId = createBuilderBridgeRequestId('builder-section');
+        const normalizedSectionKey = sectionKey.trim().toLowerCase();
+        const matchingLibraryItem = builderLibraryItems.find((item) => item.key.trim().toLowerCase() === normalizedSectionKey) ?? null;
         inspectLog('handleLibraryItemPlace', { sectionKey, target: target ? { sectionLocalId: target.sectionLocalId, placement: target.placement } : null });
         setPendingBuilderStructureMutation({
             requestId,
             mutation: 'add-section',
-            previewItems: null,
+            previewItems: buildOptimisticInsertedStructureItems(builderStructureItems, {
+                localId: sectionLocalId,
+                sectionKey,
+                label: matchingLibraryItem?.label ?? sectionKey,
+                previewText: '',
+                props: {},
+            }, {
+                afterSectionLocalId: target?.sectionLocalId ?? null,
+                placement: target?.placement ?? null,
+            }),
             selectionSnapshot: createPendingBuilderSelectionSnapshot({
                 sectionLocalId: effectiveSelectedBuilderSectionLocalId,
                 sectionKey: effectiveSelectedPreviewSectionKey,
@@ -1872,6 +1622,7 @@ export default function Chat({
             type: 'builder:add-section-by-key',
             requestId,
             sectionKey,
+            sectionLocalId,
             afterSectionLocalId: target?.sectionLocalId ?? null,
             targetSectionKey: target?.sectionKey ?? null,
             placement: target?.placement ?? null,
@@ -1884,7 +1635,7 @@ export default function Chat({
                 justPlacedSectionRef.current = false;
             }, 600);
         }
-    }, [effectiveSelectedBuilderSectionLocalId, effectiveSelectedPreviewSectionKey, pendingBuilderStructureMutation, postBuilderCommand, selectedBuilderTarget]);
+    }, [builderLibraryItems, builderStructureItems, effectiveSelectedBuilderSectionLocalId, effectiveSelectedPreviewSectionKey, pendingBuilderStructureMutation, postBuilderCommand, selectedBuilderTarget]);
 
     const handleBuilderViewportChange = useCallback((viewport: PreviewViewport) => {
         setPreviewViewport(viewport);
@@ -1995,36 +1746,6 @@ export default function Chat({
         };
     }, [cancelStructurePanelClose, isBuilderStructureOpen, setStructurePanelOpen]);
 
-    const handleWorkspaceModeChange = useCallback((nextMode: ViewMode) => {
-        if (nextMode === 'inspect' && viewMode === 'inspect') {
-            setViewMode('preview');
-            setBuilderPaneMode('elements');
-            setActiveLibraryItem(null);
-            setSelectedElement(null);
-            setSelectedBuilderTarget(null);
-            setSelectedPreviewSectionKey(null);
-            setSelectedBuilderSectionLocalId(null);
-            postBuilderCommand({
-                type: 'builder:set-sidebar-mode',
-                mode: 'elements',
-            });
-            postBuilderCommand({
-                type: 'builder:clear-selected-section',
-            });
-            return;
-        }
-
-        setViewMode(nextMode);
-    }, [postBuilderCommand, viewMode]);
-
-    const handleSidebarToggle = useCallback(() => {
-        if (viewMode === 'inspect') {
-            return;
-        }
-
-        setIsSidebarVisible((prev) => !prev);
-    }, [viewMode]);
-
     const handleStructureSectionSelect = useCallback((item: BuilderStructureItem) => {
         const selection = buildStructureItemSelection(item);
         const nextTarget = {
@@ -2041,10 +1762,7 @@ export default function Chat({
         ));
         setActiveLibraryItem(null);
         setBuilderPaneMode('settings');
-        setSelectedElement(nextMention);
-        setSelectedBuilderTarget(nextTarget);
-        setSelectedBuilderSectionLocalId(item.localId);
-        setSelectedPreviewSectionKey(item.sectionKey);
+        selectBuilderTarget(nextTarget);
         postBuilderCommand({
             type: 'builder:set-sidebar-mode',
             mode: 'settings',
@@ -2060,6 +1778,7 @@ export default function Chat({
         postBuilderCommand,
         setActiveLibraryItem,
         setBuilderPaneMode,
+        selectBuilderTarget,
     ]);
 
     const handleStructureItemReorder = useCallback((
@@ -2537,9 +2256,7 @@ export default function Chat({
                                                                                         }),
                                                                                     });
                                                                                     if (effectiveSelectedBuilderSectionLocalId === localId) {
-                                                                                        setSelectedBuilderSectionLocalId(null);
-                                                                                        setSelectedPreviewSectionKey(null);
-                                                                                        setSelectedBuilderTarget(null);
+                                                                                        clearBuilderSelection();
                                                                                     }
                                                                                     postBuilderCommand({
                                                                                         type: 'builder:remove-section',
@@ -2623,9 +2340,9 @@ export default function Chat({
                     </div>
                 </nav>
 
-                <div className="flex min-h-0 flex-1 overflow-hidden">
+                <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
                     {isSidebarVisible && (
-                                <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col">
+                                <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col md:w-auto">
                                     {startError && (
                                         <div className="mx-6 mt-4 flex shrink-0 items-center justify-between gap-3 rounded-[16px] border border-amber-300/50 bg-amber-50 px-4 py-3">
                                             <p className="text-sm text-amber-950">
@@ -2740,13 +2457,12 @@ export default function Chat({
                                                                     <span>{t('Components')}</span>
                                                                 </button>
                                                             </div>
-
-                                                            <iframe
-                                                                ref={builderSidebarFrameRef}
+                                                            {/* TODO(builder-v2): remove the embedded sidebar iframe and mount the
+                                                                builder library/inspector directly in the unified React runtime. */}
+                                                            <BuilderSidebarFrame
+                                                                frameRef={builderSidebarFrameRef}
                                                                 src={visualBuilderSidebarUrl}
                                                                 title={t('Visual Builder Sidebar')}
-                                                                className="workspace-builder-frame workspace-builder-frame--sidebar"
-                                                                sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-downloads"
                                                                 onLoad={handleBuilderSidebarFrameLoad}
                                                             />
                                                         </div>
@@ -2866,10 +2582,7 @@ export default function Chat({
                                                     disabled={isLoading}
                                                     selectedElement={selectedElementMention}
                                                     onClearElement={() => {
-                                                        setSelectedElement(null);
-                                                        setSelectedBuilderTarget(null);
-                                                        setSelectedPreviewSectionKey(null);
-                                                        setSelectedBuilderSectionLocalId(null);
+                                                        clearBuilderSelection();
                                                         postBuilderCommand({
                                                             type: 'builder:set-sidebar-mode',
                                                             mode: 'elements',
@@ -2910,11 +2623,11 @@ export default function Chat({
 
                             <div
                                 className={cn(
-                                    'workspace-preview-panel flex min-w-0 flex-1 flex-col overflow-hidden',
+                                    'workspace-preview-panel flex min-w-0 basis-0 flex-1 flex-col overflow-hidden',
                                     isSidebarVisible && 'workspace-preview-panel--sidebar-open'
                                 )}
                             >
-                                <div className="relative flex-1 min-h-0 overflow-hidden">
+                                <div className="relative flex-1 min-h-0 min-w-0 overflow-hidden">
                                     {viewMode === 'settings' ? (
                                         <div className="h-full p-4">
                                             <div className="workspace-surface h-full">
@@ -2975,16 +2688,15 @@ export default function Chat({
                                         </div>
                                     ) : (
                                         <Suspense fallback={lazyPanelFallback}>
-                                            <InspectPreview
+                                            {/* TODO(builder-v2): replace the preview iframe with a same-runtime canvas so
+                                                selection, mutations, and layout sizing come from the shared builder store. */}
+                                            <BuilderPreviewFrame
+                                                InspectPreviewComponent={InspectPreview}
                                                 projectId={project.id}
-                                                mode={viewMode as 'preview' | 'inspect' | 'design'}
-                                                viewport={previewViewport}
-                                                previewUrl={viewMode === 'inspect'
-                ? (() => {
-                    const u = effectivePreviewUrlWithOverrides ?? effectivePreviewUrl;
-                    return u ? `${u}${u.includes('?') ? '&' : '?'}builder=1` : null;
-                })()
-                : effectivePreviewUrl}
+                                                viewMode={viewMode as 'preview' | 'inspect' | 'design'}
+                                                previewViewport={previewViewport}
+                                                effectivePreviewUrl={effectivePreviewUrl}
+                                                effectivePreviewUrlWithOverrides={effectivePreviewUrlWithOverrides}
                                                 refreshTrigger={previewRefreshTrigger}
                                                 isBuilding={isBuildingPreview}
                                                 captureThumbnailTrigger={captureThumbnailTrigger}
@@ -3003,6 +2715,7 @@ export default function Chat({
                                                 selectedElementMention={viewMode === 'inspect' ? selectedElementMention : null}
                                                 pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
                                                 onLibraryItemPlace={handleLibraryItemPlace}
+                                                onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
                                                 themeDesignerSlot={
                                                     <Suspense fallback={lazyPanelFallback}>
                                                         <ThemeDesigner

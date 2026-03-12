@@ -30,10 +30,14 @@ describe('builderEditingStore', () => {
 
         const next = useBuilderEditingStore.getState();
         expect(next.selectedSectionLocalId).toBe('hero-1');
+        expect(next.selectedNodeId).toBe('hero-1::title::0');
         expect(next.selectedElementId).toBe('HeroSection.title');
         expect(next.selectedComponentType).toBe('webu_general_hero_01');
         expect(next.selectedComponentName).toBe('HeroSection');
+        expect(next.selectedSchemaKey).toBe('webu_general_hero_01');
         expect(next.selectedPath).toBe('title');
+        expect(next.selectedPropPaths).toContain('title');
+        expect(next.selectedPropPaths).toContain('subtitle');
         expect(next.selectedComponentProps).toEqual({ title: 'Welcome' });
     });
 
@@ -123,5 +127,38 @@ describe('builderEditingStore', () => {
         expect(afterRefresh.selectedBuilderTarget).not.toBe(beforeRefresh.selectedBuilderTarget);
         expect(afterRefresh.selectedBuilderTarget?.props).toEqual({ headline: 'Welcome again' });
         expect(afterRefresh.selectedComponentProps).toEqual({ headline: 'Welcome again' });
+    });
+
+    it('clears stale hover state when applyMutationState removes the hovered section', () => {
+        const store = useBuilderEditingStore.getState();
+        store.setHoveredBuilderTarget({
+            targetId: 'hero-1::section',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: null,
+            elementId: null,
+            selector: '[data-webu-section-local-id="hero-1"]',
+            textPreview: 'Hero',
+            props: { headline: 'Hero' },
+        });
+
+        store.applyMutationState({
+            sectionsDraft: [{
+                localId: 'hero-2',
+                type: 'webu_general_text_01',
+                propsText: JSON.stringify({ body: 'Hello' }),
+                propsError: null,
+                bindingMeta: null,
+            }],
+            selectedSectionLocalId: null,
+            selectedBuilderTarget: null,
+        });
+
+        const next = useBuilderEditingStore.getState();
+        expect(next.hoveredBuilderTarget).toBeNull();
+        expect(next.hoveredTargetId).toBeNull();
+        expect(next.hoveredElementId).toBeNull();
     });
 });

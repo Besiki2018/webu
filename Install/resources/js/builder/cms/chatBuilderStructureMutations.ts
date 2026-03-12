@@ -32,3 +32,34 @@ export function buildOptimisticRemovedStructureItems(
 ): BuilderStructureItem[] {
     return items.filter((item) => item.localId !== sectionLocalId);
 }
+
+export function buildOptimisticInsertedStructureItems(
+    items: BuilderStructureItem[],
+    nextItem: BuilderStructureItem,
+    options?: {
+        afterSectionLocalId?: string | null;
+        placement?: 'before' | 'after' | 'inside' | null;
+    },
+): BuilderStructureItem[] {
+    const nextItems = [...items];
+    const placement = options?.placement ?? null;
+    const anchorLocalId = options?.afterSectionLocalId?.trim() ?? '';
+    if (placement === 'inside') {
+        return nextItems;
+    }
+
+    if (anchorLocalId === '') {
+        nextItems.push(nextItem);
+        return nextItems;
+    }
+
+    const anchorIndex = nextItems.findIndex((item) => item.localId === anchorLocalId);
+    if (anchorIndex === -1) {
+        nextItems.push(nextItem);
+        return nextItems;
+    }
+
+    const insertIndex = placement === 'before' ? anchorIndex : anchorIndex + 1;
+    nextItems.splice(insertIndex, 0, nextItem);
+    return nextItems;
+}

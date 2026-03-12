@@ -144,8 +144,11 @@ import { usePreviewRefreshSchedule } from '@/builder/cms/usePreviewRefreshSchedu
 import {
     buildBuilderBridgeStructureHash,
     normalizeBuilderBridgePageIdentity,
-    postBuilderBridgeMessage,
 } from '@/builder/cms/embeddedBuilderBridgeContract';
+import {
+    buildBuilderRefreshPreviewMessage,
+    postBuilderBridgeEnvelope,
+} from '@/lib/builderBridge';
 import { resolveCmsPageHydrationContent } from '@/builder/cms/pageHydration';
 import { useCmsCanvasInteractionHandlers } from '@/builder/cms/useCmsCanvasInteractionHandlers';
 import { useCmsEmbeddedBuilderSync } from '@/builder/cms/useCmsEmbeddedBuilderSync';
@@ -773,12 +776,15 @@ interface StorefrontPageTemplatePreset {
 type DraftSaveOptions = {
     silent: boolean;
     refreshAfterSave: boolean;
+    notifyParentPreviewRefresh: boolean;
 };
 
-function normalizeDraftSaveOptions(options?: { silent?: boolean; refreshAfterSave?: boolean }): DraftSaveOptions {
+function normalizeDraftSaveOptions(options?: { silent?: boolean; refreshAfterSave?: boolean; notifyParentPreviewRefresh?: boolean }): DraftSaveOptions {
+    const refreshAfterSave = options?.refreshAfterSave ?? true;
     return {
         silent: options?.silent ?? false,
-        refreshAfterSave: options?.refreshAfterSave ?? true,
+        refreshAfterSave,
+        notifyParentPreviewRefresh: options?.notifyParentPreviewRefresh ?? refreshAfterSave,
     };
 }
 
@@ -790,6 +796,7 @@ function mergeDraftSaveOptions(base: DraftSaveOptions | null, next: DraftSaveOpt
     return {
         silent: base.silent && next.silent,
         refreshAfterSave: base.refreshAfterSave || next.refreshAfterSave,
+        notifyParentPreviewRefresh: base.notifyParentPreviewRefresh || next.notifyParentPreviewRefresh,
     };
 }
 
@@ -7757,6 +7764,8 @@ export default function Cms({
         const params = new URLSearchParams(page.url.slice(queryIndex + 1));
         return params.get('embedded');
     }, [page.url]);
+    // TODO(builder-v2): remove embedded sidebar/preview modes once the visual builder runs in one
+    // React runtime. Cms should stop acting as an iframe-hosted inspector transport layer.
     const isEmbeddedMode = embeddedMode === '1' || embeddedMode === 'sidebar' || embeddedMode === 'preview';
     const isEmbeddedSidebarMode = embeddedMode === 'sidebar';
     const isEmbeddedPreviewMode = embeddedMode === 'preview';
@@ -8061,7 +8070,11 @@ export default function Cms({
     const draftSaveInFlightRef = useRef(false);
     const pendingDraftSaveOptionsRef = useRef<DraftSaveOptions | null>(null);
     const pagesForMemoryRef = useRef<PageSummary[]>([]);
-    const saveDraftRevisionInternalRef = useRef<(options?: { silent?: boolean; refreshAfterSave?: boolean }) => Promise<number | null>>(async () => null);
+    const saveDraftRevisionInternalRef = useRef<(options?: {
+        silent?: boolean;
+        refreshAfterSave?: boolean;
+        notifyParentPreviewRefresh?: boolean;
+    }) => Promise<number | null>>(async () => null);
     const scheduleImmediatePreviewRefreshRef = useRef<() => void>(() => {});
     const scheduleAutoSavePreviewRefreshRef = useRef<() => void>(() => {});
     const scheduleStructuralDraftPersistRef = useRef<() => void>(() => {});
@@ -25010,11 +25023,11 @@ ${showRules}
         handleBuilderDragEnd,
     } = useCmsStructureMutationHandlers({
         sectionsDraftRef,
-        builderPreviewDocumentRef,
         scheduleStructuralDraftPersistRef,
         syncPreviewVisibleSections,
         nextSectionLocalId,
         selectedSectionLocalId,
+        selectedBuilderTarget,
         selectedNestedSectionParentLocalId: selectedNestedSection?.parentLocalId ?? null,
         isEmbeddedSidebarMode,
         canvasDropId: CMS_BUILDER_CANVAS_DROP_ID,
@@ -25031,10 +25044,9 @@ ${showRules}
         ensurePreviewSectionVisibility,
         extractLibrarySectionKey,
         setSectionsDraft,
-        setSelectedSectionLocalId,
+        applyMutationState,
         setSelectedFixedSectionKey,
         setSelectedNestedSection,
-        setSelectedBuilderTarget,
         setBuilderSidebarMode,
         setActiveDragId,
         setBuilderCurrentDropTarget,
@@ -25476,6 +25488,10 @@ ${showRules}
         editableSchemaFields: selectedSectionEditableSchemaFields,
         editableSchemaFieldsForDisplay: selectedSectionEditableSchemaFieldsForDisplay,
         inspectorTarget: selectedSectionInspectorTarget,
+        schemaKey: selectedSectionInspectorSchemaKey,
+        inspectorPropPaths: selectedSectionInspectorPropPaths,
+        nodeId: selectedSectionInspectorNodeId,
+        usesSafeFallbackInspector: selectedSectionUsesSafeFallbackInspector,
         usesEcommerceProductsBinding: selectedSectionUsesEcommerceProductsBinding,
         usesEcommerceProductDetailBinding: selectedSectionUsesEcommerceProductDetailBinding,
     } = useMemo(() => buildSelectedSectionInspectorState({
@@ -25494,7 +25510,6 @@ ${showRules}
         interactionState: builderPreviewInteractionState,
         elementorLike: CMS_BUILDER_ELEMENTOR_LIKE_PARAMS,
         normalizeSectionTypeKey,
-        collectFallbackSchemaFields: collectSchemaPrimitiveFields,
         buildControlMeta: buildCanonicalControlMetadataForSchemaField,
     }), [
         builderPreviewInteractionState,
@@ -25505,6 +25520,34 @@ ${showRules}
         selectedSectionEffectiveType,
         selectedSectionSchemaHtmlTemplate,
         selectedSectionSchemaProperties,
+    ]);
+    const selectedSectionInspectorDebugPropPaths = useMemo(() => {
+        const propPaths = selectedSectionInspectorPropPaths.length > 0
+            ? selectedSectionInspectorPropPaths
+            : selectedSectionEditableSchemaFieldsForDisplay.map((field) => field.path.join('.'));
+
+        return propPaths.join('|');
+    }, [selectedSectionEditableSchemaFieldsForDisplay, selectedSectionInspectorPropPaths]);
+    useEffect(() => {
+        if (!import.meta.env.DEV || !selectedSectionDraft) {
+            return;
+        }
+
+        const componentKey = normalizeSectionTypeKey(selectedSectionEffectiveType || selectedSectionDraft.type);
+        const propPaths = selectedSectionInspectorDebugPropPaths.split('|').filter(Boolean);
+
+        console.debug('[builder:inspector-selection]', {
+            nodeId: selectedSectionInspectorNodeId ?? selectedSectionDraft.localId,
+            componentKey,
+            schemaKey: selectedSectionInspectorSchemaKey,
+            propPaths,
+        });
+    }, [
+        selectedSectionDraft,
+        selectedSectionEffectiveType,
+        selectedSectionInspectorDebugPropPaths,
+        selectedSectionInspectorNodeId,
+        selectedSectionInspectorSchemaKey,
     ]);
     const selectedSectionControlGroupAuditRows = useMemo(
         () => buildCanonicalControlGroupAuditRows(selectedSectionEditableSchemaFieldsForDisplay),
@@ -26024,7 +26067,7 @@ ${showRules}
     });
 
     const performDraftRevisionSave = useCallback(async (options: DraftSaveOptions): Promise<number | null> => {
-        const { silent, refreshAfterSave } = options;
+        const { silent, refreshAfterSave, notifyParentPreviewRefresh } = options;
 
         if (selectedPageId === null) {
             if (!silent) {
@@ -26082,17 +26125,16 @@ ${showRules}
                 setBuilderPreviewRefreshToken(Date.now());
             }
 
-            // When embedded (e.g. Chat inspect tab), always notify parent so the canvas preview
-            // updates after save — including after structural persist (add/remove section).
-            // This way the dropped component appears without manual refresh.
-            if (isEmbeddedMode && typeof window !== 'undefined' && window.parent !== window) {
-                postBuilderBridgeMessage(
-                    window.parent,
-                    window.location.origin,
-                    'webu-cms-builder',
-                    { type: 'builder:preview-refresh' },
-                    selectedPageBridgeIdentity,
-                );
+            // Embedded preview refresh is now opt-in so structural mutations can stay state-driven
+            // without forcing the parent canvas iframe to reload.
+            if (notifyParentPreviewRefresh && isEmbeddedMode && typeof window !== 'undefined' && window.parent !== window) {
+                postBuilderBridgeEnvelope(window.parent, window.location.origin, buildBuilderRefreshPreviewMessage({
+                    reason: 'draft-save',
+                }, {
+                    source: 'sidebar',
+                    projectId: project.id,
+                    page: selectedPageBridgeIdentity,
+                }));
             }
 
             if (!silent && !hasPendingFollowUp) {
@@ -26146,7 +26188,11 @@ ${showRules}
     }, [activeContentLocale, buildContentJsonPayload, effectivePageEditorMode, emitCmsBuilderTelemetry, handleSaveBuilderGlobalLayout, isEmbeddedMode, loadPageDetail, loadPages, selectedPageId, selectedPageSummary?.slug, site.id, site.name, t]);
 
     const saveDraftRevisionInternal = useCallback(async (
-        options?: { silent?: boolean; refreshAfterSave?: boolean }
+        options?: {
+            silent?: boolean;
+            refreshAfterSave?: boolean;
+            notifyParentPreviewRefresh?: boolean;
+        }
     ): Promise<number | null> => {
         const normalizedOptions = normalizeDraftSaveOptions(options);
 
@@ -26216,7 +26262,11 @@ ${showRules}
             return;
         }
         structuralDraftPersistScheduler.schedule(() => {
-                void saveDraftRevisionInternalRef.current({ silent: true, refreshAfterSave: false });
+                void saveDraftRevisionInternalRef.current({
+                    silent: true,
+                    refreshAfterSave: false,
+                    notifyParentPreviewRefresh: false,
+                });
         });
     }, [activeTab, effectivePageEditorMode, selectedPageId, structuralDraftPersistScheduler]);
 
@@ -28780,6 +28830,7 @@ ${showRules}
                 effectiveProps={effectiveProps}
                 editableFieldCount={selectedSectionEditableSchemaFields.length}
                 displayFieldCount={selectedSectionEditableSchemaFieldsForDisplay.length}
+                usesSafeFallbackInspector={selectedSectionUsesSafeFallbackInspector}
                 selectedSectionUsesEcommerceProductsBinding={selectedSectionUsesEcommerceProductsBinding}
                 selectedSectionUsesEcommerceProductDetailBinding={selectedSectionUsesEcommerceProductDetailBinding}
                 selectedNestedSection={isNested && selectedNestedSection ? selectedNestedSection : null}
@@ -28876,6 +28927,7 @@ ${showRules}
             t,
         },
         bridge: {
+            projectId: project.id,
             isEmbeddedMode,
             isEmbeddedVisualBuilder,
             isEmbeddedSidebarMode,

@@ -40,6 +40,8 @@ export interface InspectorElement {
 export interface ElementMention {
     /** Unique identifier matching InspectorElement.id */
     id: string;
+    /** Stable builder target id derived from section + parameter path */
+    targetId?: string | null;
     /** HTML tag name */
     tagName: string;
     /** CSS selector for identifying the element */

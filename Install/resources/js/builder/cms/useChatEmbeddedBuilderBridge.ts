@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import { toast } from 'sonner';
-import type { ElementMention } from '@/types/inspector';
 import {
-    attachBuilderBridgePageIdentity,
     createBuilderBridgeRequestId,
     normalizeBuilderBridgePageIdentity,
-    parseBuilderBridgeCmsEvent,
     payloadTargetsBuilderBridgePage,
-    postBuilderBridgeMessage,
     type BuilderBridgeInteractionState,
     type BuilderBridgePageIdentity,
     type BuilderBridgeSidebarMode,
@@ -38,6 +34,23 @@ import { buildSectionPreviewText, parseSectionProps as parseBuilderSectionProps,
 import type { ChangeSet } from '@/hooks/useAiSiteEditor';
 import type { PreviewViewport } from '@/components/Preview/PreviewViewportMenu';
 import { buildCanonicalBridgeSelectedTargetPayload } from '@/builder/cms/canonicalSelectionPayload';
+import {
+    buildBuilderClearSelectionMessage,
+    buildBuilderDeleteNodeMessage,
+    buildBuilderInsertNodeMessage,
+    buildBuilderMoveNodeMessage,
+    buildBuilderPatchPropsMessage,
+    buildBuilderRequestStateMessage,
+    buildBuilderRefreshPreviewMessage,
+    buildBuilderSelectTargetMessage,
+    buildBuilderSyncStateMessage,
+    buildBuilderSaveDraftMessage,
+    builderBridgeEnvelopeTargetsProject,
+    inspectBuilderBridgeEnvelope,
+    logBuilderBridgeDiagnostic,
+    postBuilderBridgeEnvelope,
+    type BuilderBridgeMessage,
+} from '@/lib/builderBridge';
 
 type ViewMode = 'preview' | 'inspect' | 'code' | 'design' | 'settings';
 type StateUpdater<T> = (value: T | ((current: T) => T)) => void;
@@ -49,9 +62,11 @@ interface BuilderLibraryItem {
 }
 
 interface UseChatEmbeddedBuilderBridgeOptions {
+    projectId: string;
     viewMode: ViewMode;
     isVisualBuilderOpen: boolean;
     isBuilderSidebarReady: boolean;
+    isBuilderPreviewReady: boolean;
     isBuilderStructureOpen: boolean;
     builderPaneMode: BuilderBridgeSidebarMode | 'design-system';
     previewViewport: PreviewViewport;
@@ -59,12 +74,11 @@ interface UseChatEmbeddedBuilderBridgeOptions {
     selectedBuilderTarget: BuilderEditableTarget | null;
     selectedBuilderSectionLocalId: string | null;
     selectedPreviewSectionKey: string | null;
-    selectedElement: ElementMention | null;
     activeBuilderPageIdentity: BuilderBridgePageIdentity;
     builderStructureItems: BuilderStructureItem[];
     pendingBuilderStructureMutation: PendingBuilderStructureMutation | null;
     builderSidebarFrameRef: MutableRefObject<HTMLIFrameElement | null>;
-    builderSidebarCommandQueueRef: MutableRefObject<Array<Record<string, unknown>>>;
+    builderSidebarCommandQueueRef: MutableRefObject<BuilderBridgeMessage[]>;
     pendingBuilderChangeSetRequestIdRef: MutableRefObject<string | null>;
     lastBuilderReadySignatureRef: MutableRefObject<string | null>;
     lastBuilderSnapshotSignatureRef: MutableRefObject<string | null>;
@@ -75,9 +89,8 @@ interface UseChatEmbeddedBuilderBridgeOptions {
     setPreviewViewport: (viewport: PreviewViewport) => void;
     setPreviewInteractionState: (state: BuilderBridgeInteractionState) => void;
     setIsBuilderStructureOpen: StateUpdater<boolean>;
-    setSelectedBuilderSectionLocalId: StateUpdater<string | null>;
-    setSelectedPreviewSectionKey: StateUpdater<string | null>;
-    setSelectedBuilderTarget: StateUpdater<BuilderEditableTarget | null>;
+    selectBuilderTarget: (target: BuilderEditableTarget | null) => void;
+    clearBuilderSelection: () => void;
     setBuilderPaneMode: (mode: BuilderBridgeSidebarMode) => void;
     setActiveLibraryItem: (item: BuilderLibraryItem | null) => void;
     setIsSavingBuilderDraft: (saving: boolean) => void;
@@ -86,7 +99,7 @@ interface UseChatEmbeddedBuilderBridgeOptions {
     setBuilderStructureItems: (items: BuilderStructureItem[]) => void;
     setBuilderCodePages: StateUpdater<BuilderCodePage[]>;
     setPendingBuilderStructureMutation: StateUpdater<PendingBuilderStructureMutation | null>;
-    setIsBuilderSidebarReady: (ready: boolean) => void;
+    markBuilderSidebarReady: (ready?: boolean) => void;
     t: (key: string) => string;
 }
 
@@ -98,9 +111,11 @@ interface UseChatEmbeddedBuilderBridgeResult {
 }
 
 export function useChatEmbeddedBuilderBridge({
+    projectId,
     viewMode,
     isVisualBuilderOpen,
     isBuilderSidebarReady,
+    isBuilderPreviewReady,
     isBuilderStructureOpen,
     builderPaneMode,
     previewViewport,
@@ -123,9 +138,8 @@ export function useChatEmbeddedBuilderBridge({
     setPreviewViewport,
     setPreviewInteractionState,
     setIsBuilderStructureOpen,
-    setSelectedBuilderSectionLocalId,
-    setSelectedPreviewSectionKey,
-    setSelectedBuilderTarget,
+    selectBuilderTarget,
+    clearBuilderSelection,
     setBuilderPaneMode,
     setActiveLibraryItem,
     setIsSavingBuilderDraft,
@@ -134,13 +148,163 @@ export function useChatEmbeddedBuilderBridge({
     setBuilderStructureItems,
     setBuilderCodePages,
     setPendingBuilderStructureMutation,
-    setIsBuilderSidebarReady,
+    markBuilderSidebarReady,
     t,
 }: UseChatEmbeddedBuilderBridgeOptions): UseChatEmbeddedBuilderBridgeResult {
     const lastSelectionCommandSignatureRef = useRef<string | null>(null);
+    const logChatBridge = useCallback((input: {
+        phase: 'send' | 'receive' | 'ignore' | 'drop';
+        target?: string | null;
+        message?: BuilderBridgeMessage | null;
+        rawType?: string | null;
+        requestId?: string | null;
+        reason?: string | null;
+    }) => {
+        logBuilderBridgeDiagnostic({
+            actor: 'chat',
+            ...input,
+        });
+    }, []);
+
+    const createBridgeMessageFromPayload = useCallback((payload: Record<string, unknown>): BuilderBridgeMessage | null => {
+        const type = typeof payload.type === 'string' ? payload.type : null;
+        if (!type) {
+            return null;
+        }
+
+        const input = {
+            source: 'chat' as const,
+            projectId,
+            page: activeBuilderPageIdentity,
+            requestId: typeof payload.requestId === 'string' ? payload.requestId : null,
+        };
+
+        switch (type) {
+            case 'builder:ping':
+                return buildBuilderRequestStateMessage({ reason: 'sidebar-ping' }, input);
+            case 'builder:clear-selected-section':
+                return buildBuilderClearSelectionMessage('clear-selection', input);
+            case 'builder:refresh-preview':
+                return buildBuilderRefreshPreviewMessage({ reason: 'manual-refresh' }, input);
+            case 'builder:save-draft':
+                return buildBuilderSaveDraftMessage({ reason: 'save-draft' }, input);
+            case 'builder:set-viewport':
+                return buildBuilderSyncStateMessage({
+                    viewport: payload.viewport === 'desktop' || payload.viewport === 'tablet' || payload.viewport === 'mobile'
+                        ? payload.viewport
+                        : null,
+                }, input);
+            case 'builder:set-interaction-state':
+                return buildBuilderSyncStateMessage({
+                    interactionState: payload.interactionState === 'normal'
+                        || payload.interactionState === 'hover'
+                        || payload.interactionState === 'focus'
+                        || payload.interactionState === 'active'
+                        ? payload.interactionState
+                        : null,
+                }, input);
+            case 'builder:set-sidebar-mode':
+                return buildBuilderSyncStateMessage({
+                    sidebarMode: payload.mode === 'elements' || payload.mode === 'settings'
+                        ? payload.mode
+                        : null,
+                }, input);
+            case 'builder:set-structure-open':
+                return buildBuilderSyncStateMessage({
+                    structureOpen: typeof payload.open === 'boolean' ? payload.open : null,
+                }, input);
+            case 'builder:set-selected-target':
+                return buildBuilderSelectTargetMessage({
+                    pageId: activeBuilderPageIdentity.pageId,
+                    pageSlug: activeBuilderPageIdentity.pageSlug,
+                    pageTitle: activeBuilderPageIdentity.pageTitle,
+                    sectionLocalId: typeof payload.sectionLocalId === 'string' ? payload.sectionLocalId : null,
+                    sectionKey: typeof payload.sectionKey === 'string' ? payload.sectionKey : null,
+                    componentType: typeof payload.componentType === 'string' ? payload.componentType : null,
+                    componentName: typeof payload.componentName === 'string' ? payload.componentName : null,
+                    parameterPath: typeof payload.parameterPath === 'string' ? payload.parameterPath : null,
+                    componentPath: typeof payload.componentPath === 'string' ? payload.componentPath : null,
+                    elementId: typeof payload.elementId === 'string' ? payload.elementId : null,
+                    selector: typeof payload.selector === 'string' ? payload.selector : null,
+                    textPreview: typeof payload.textPreview === 'string' ? payload.textPreview : null,
+                    props: payload.props && typeof payload.props === 'object' ? payload.props as Record<string, unknown> : null,
+                    fieldLabel: typeof payload.fieldLabel === 'string' ? payload.fieldLabel : null,
+                    fieldGroup: typeof payload.fieldGroup === 'string'
+                        ? payload.fieldGroup as BuilderEditableTarget['fieldGroup']
+                        : null,
+                    builderId: typeof payload.builderId === 'string' ? payload.builderId : null,
+                    parentId: typeof payload.parentId === 'string' ? payload.parentId : null,
+                    editableFields: Array.isArray(payload.editableFields) ? payload.editableFields as string[] : [],
+                    sectionId: typeof payload.sectionId === 'string' ? payload.sectionId : null,
+                    instanceId: typeof payload.instanceId === 'string' ? payload.instanceId : null,
+                    variants: payload.variants && typeof payload.variants === 'object'
+                        ? payload.variants as BuilderEditableTarget['variants']
+                        : null,
+                    allowedUpdates: payload.allowedUpdates && typeof payload.allowedUpdates === 'object'
+                        ? payload.allowedUpdates as BuilderEditableTarget['allowedUpdates']
+                        : null,
+                    currentBreakpoint: previewViewport,
+                    currentInteractionState: previewInteractionState,
+                    responsiveContext: payload.responsiveContext && typeof payload.responsiveContext === 'object'
+                        ? payload.responsiveContext as BuilderEditableTarget['responsiveContext']
+                        : null,
+                }, input);
+            case 'builder:set-initial-sections':
+                return buildBuilderInsertNodeMessage({
+                    sections: Array.isArray(payload.sections)
+                        ? payload.sections.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
+                        : [],
+                }, input);
+            case 'builder:apply-change-set':
+                return payload.changeSet && typeof payload.changeSet === 'object'
+                    ? buildBuilderPatchPropsMessage({ changeSet: payload.changeSet as Record<string, unknown> }, input)
+                    : null;
+            case 'builder:add-section-by-key':
+                return buildBuilderInsertNodeMessage({
+                    sectionKey: typeof payload.sectionKey === 'string' ? payload.sectionKey : null,
+                    sectionLocalId: typeof payload.sectionLocalId === 'string' ? payload.sectionLocalId : null,
+                    afterSectionLocalId: typeof payload.afterSectionLocalId === 'string' ? payload.afterSectionLocalId : null,
+                    targetSectionKey: typeof payload.targetSectionKey === 'string' ? payload.targetSectionKey : null,
+                    placement: payload.placement === 'before' || payload.placement === 'after' || payload.placement === 'inside'
+                        ? payload.placement
+                        : null,
+                }, input);
+            case 'builder:remove-section':
+                return buildBuilderDeleteNodeMessage({
+                    sectionLocalId: typeof payload.sectionLocalId === 'string' ? payload.sectionLocalId : null,
+                    sectionIndex: typeof payload.sectionIndex === 'number' ? payload.sectionIndex : null,
+                    sectionKey: typeof payload.sectionKey === 'string' ? payload.sectionKey : null,
+                }, input);
+            case 'builder:move-section': {
+                const sectionLocalId = typeof payload.sectionLocalId === 'string' ? payload.sectionLocalId : null;
+                const targetSectionLocalId = typeof payload.targetSectionLocalId === 'string' ? payload.targetSectionLocalId : null;
+                const position = payload.position === 'before' || payload.position === 'after' ? payload.position : null;
+                if (!sectionLocalId || !targetSectionLocalId || !position) {
+                    return null;
+                }
+
+                return buildBuilderMoveNodeMessage({
+                    sectionLocalId,
+                    targetSectionLocalId,
+                    position,
+                }, input);
+            }
+            default:
+                return null;
+        }
+    }, [
+        activeBuilderPageIdentity,
+        previewInteractionState,
+        previewViewport,
+        projectId,
+    ]);
 
     const flushBuilderCommandQueue = useCallback(() => {
         if (typeof window === 'undefined') {
+            return;
+        }
+
+        if (!isBuilderSidebarReady || !isBuilderPreviewReady) {
             return;
         }
 
@@ -150,30 +314,54 @@ export function useChatEmbeddedBuilderBridge({
         }
 
         const queue = builderSidebarCommandQueueRef.current.splice(0);
-        queue.forEach((payload) => {
-            postBuilderBridgeMessage(
-                frameWindow,
-                window.location.origin,
-                'webu-chat-builder',
-                payload,
-                normalizeBuilderBridgePageIdentity(payload),
-            );
+        queue.forEach((message) => {
+            logChatBridge({
+                phase: 'send',
+                target: 'sidebar',
+                message,
+                reason: 'flush-queued-command',
+            });
+            postBuilderBridgeEnvelope(frameWindow, window.location.origin, message);
         });
-    }, [builderSidebarCommandQueueRef, builderSidebarFrameRef]);
+    }, [builderSidebarCommandQueueRef, builderSidebarFrameRef, isBuilderPreviewReady, isBuilderSidebarReady, logChatBridge]);
 
     const postBuilderCommand = useCallback((payload: Record<string, unknown>) => {
         if (typeof window === 'undefined') {
             return;
         }
 
-        const frameWindow = builderSidebarFrameRef.current?.contentWindow;
-        if (!frameWindow || !isBuilderSidebarReady) {
-            builderSidebarCommandQueueRef.current.push(attachBuilderBridgePageIdentity(payload, activeBuilderPageIdentity));
+        const message = createBridgeMessageFromPayload(payload);
+        if (!message) {
+            logChatBridge({
+                phase: 'drop',
+                target: 'sidebar',
+                rawType: typeof payload.type === 'string' ? payload.type : null,
+                requestId: typeof payload.requestId === 'string' ? payload.requestId : null,
+                reason: 'unsupported-or-invalid-command-payload',
+            });
             return;
         }
 
-        postBuilderBridgeMessage(frameWindow, window.location.origin, 'webu-chat-builder', payload, activeBuilderPageIdentity);
-    }, [activeBuilderPageIdentity, builderSidebarCommandQueueRef, builderSidebarFrameRef, isBuilderSidebarReady]);
+        const frameWindow = builderSidebarFrameRef.current?.contentWindow;
+        if (!frameWindow || !isBuilderSidebarReady || !isBuilderPreviewReady) {
+            builderSidebarCommandQueueRef.current.push(message);
+            return;
+        }
+
+        logChatBridge({
+            phase: 'send',
+            target: 'sidebar',
+            message,
+        });
+        postBuilderBridgeEnvelope(frameWindow, window.location.origin, message);
+    }, [
+        builderSidebarCommandQueueRef,
+        builderSidebarFrameRef,
+        createBridgeMessageFromPayload,
+        isBuilderPreviewReady,
+        isBuilderSidebarReady,
+        logChatBridge,
+    ]);
 
     const resolveSelectedTargetPayload = useCallback(() => {
         const matchingItem = selectedBuilderSectionLocalId
@@ -225,15 +413,10 @@ export function useChatEmbeddedBuilderBridge({
         });
 
         const selectedTargetPayload = resolveSelectedTargetPayload();
-        let selectionPayload: Record<string, unknown>;
         let selectionSignature: string;
         if (selectedTargetPayload) {
-            selectionPayload = {
-                type: 'builder:set-selected-target',
-                ...selectedTargetPayload,
-            };
             selectionSignature = JSON.stringify({
-                type: 'builder:set-selected-target',
+                type: 'BUILDER_SELECT_TARGET',
                 pageId: activeBuilderPageIdentity.pageId ?? null,
                 pageSlug: activeBuilderPageIdentity.pageSlug ?? null,
                 pageTitle: activeBuilderPageIdentity.pageTitle ?? null,
@@ -247,11 +430,8 @@ export function useChatEmbeddedBuilderBridge({
                 }),
             });
         } else {
-            selectionPayload = {
-                type: 'builder:clear-selected-section',
-            };
             selectionSignature = JSON.stringify({
-                type: 'builder:clear-selected-section',
+                type: 'BUILDER_CLEAR_SELECTION',
                 pageId: activeBuilderPageIdentity.pageId ?? null,
                 pageSlug: activeBuilderPageIdentity.pageSlug ?? null,
                 pageTitle: activeBuilderPageIdentity.pageTitle ?? null,
@@ -260,7 +440,16 @@ export function useChatEmbeddedBuilderBridge({
 
         if (lastSelectionCommandSignatureRef.current !== selectionSignature) {
             lastSelectionCommandSignatureRef.current = selectionSignature;
-            postBuilderCommand(selectionPayload);
+            if (selectedTargetPayload) {
+                postBuilderCommand({
+                    type: 'builder:set-selected-target',
+                    ...selectedTargetPayload,
+                });
+            } else {
+                postBuilderCommand({
+                    type: 'builder:clear-selected-section',
+                });
+            }
         }
     }, [
         activeBuilderPageIdentity.pageId,
@@ -276,7 +465,7 @@ export function useChatEmbeddedBuilderBridge({
     ]);
 
     const syncBuilderChangeSet = useCallback((changeSet: ChangeSet): boolean => {
-        if (!isVisualBuilderOpen || !isBuilderSidebarReady || !Array.isArray(changeSet.operations) || changeSet.operations.length === 0) {
+        if (!isVisualBuilderOpen || !isBuilderSidebarReady || !isBuilderPreviewReady || !Array.isArray(changeSet.operations) || changeSet.operations.length === 0) {
             return false;
         }
 
@@ -289,7 +478,7 @@ export function useChatEmbeddedBuilderBridge({
         });
 
         return true;
-    }, [isBuilderSidebarReady, isVisualBuilderOpen, pendingBuilderChangeSetRequestIdRef, postBuilderCommand]);
+    }, [isBuilderPreviewReady, isBuilderSidebarReady, isVisualBuilderOpen, pendingBuilderChangeSetRequestIdRef, postBuilderCommand]);
 
     const setStructurePanelOpen = useCallback((open: boolean) => {
         preferPersistedStructureStateRef.current = false;
@@ -301,24 +490,31 @@ export function useChatEmbeddedBuilderBridge({
     }, [postBuilderCommand, preferPersistedStructureStateRef, setIsBuilderStructureOpen]);
 
     const handleBuilderSidebarFrameLoad = useCallback(() => {
-        setIsBuilderSidebarReady(false);
+        markBuilderSidebarReady(false);
         preferPersistedStructureStateRef.current = true;
         requestAnimationFrame(() => {
             const frameWindow = builderSidebarFrameRef.current?.contentWindow;
             if (typeof window !== 'undefined' && frameWindow) {
-                postBuilderBridgeMessage(
-                    frameWindow,
-                    window.location.origin,
-                    'webu-chat-builder',
-                    { type: 'builder:ping' },
-                    activeBuilderPageIdentity,
-                );
+                const requestStateMessage = buildBuilderRequestStateMessage({
+                    reason: 'sidebar-frame-load',
+                }, {
+                    source: 'chat',
+                    projectId,
+                    page: activeBuilderPageIdentity,
+                });
+                logChatBridge({
+                    phase: 'send',
+                    target: 'sidebar',
+                    message: requestStateMessage,
+                    reason: 'sidebar-frame-load',
+                });
+                postBuilderBridgeEnvelope(frameWindow, window.location.origin, requestStateMessage);
             }
             window.setTimeout(() => {
                 preferPersistedStructureStateRef.current = false;
             }, 0);
         });
-    }, [activeBuilderPageIdentity, builderSidebarFrameRef, preferPersistedStructureStateRef, setIsBuilderSidebarReady]);
+    }, [activeBuilderPageIdentity, builderSidebarFrameRef, logChatBridge, markBuilderSidebarReady, preferPersistedStructureStateRef, projectId]);
 
     useEffect(() => {
         if (viewMode !== 'inspect' || typeof window === 'undefined') {
@@ -327,160 +523,283 @@ export function useChatEmbeddedBuilderBridge({
 
         const handleEmbeddedBuilderMessage = (event: MessageEvent) => {
             if (event.origin !== window.location.origin) {
+                logChatBridge({
+                    phase: 'ignore',
+                    target: 'chat',
+                    reason: 'origin-mismatch',
+                });
                 return;
             }
 
-            const payload = parseBuilderBridgeCmsEvent(event.data);
+            const parsedEnvelope = inspectBuilderBridgeEnvelope(event.data);
+            const payload = parsedEnvelope.message;
             if (!payload) {
+                logChatBridge({
+                    phase: 'ignore',
+                    target: 'chat',
+                    reason: parsedEnvelope.error ?? 'invalid-envelope',
+                });
+                return;
+            }
+
+            if (payload.source !== 'sidebar') {
+                logChatBridge({
+                    phase: 'ignore',
+                    target: 'chat',
+                    message: payload,
+                    reason: 'unexpected-source',
+                });
+                return;
+            }
+
+            if (!builderBridgeEnvelopeTargetsProject(payload, projectId)) {
+                logChatBridge({
+                    phase: 'ignore',
+                    target: 'chat',
+                    message: payload,
+                    reason: 'project-mismatch',
+                });
                 return;
             }
 
             const shouldScopeToActivePage = activeBuilderPageIdentity.pageId !== null || activeBuilderPageIdentity.pageSlug !== null;
             if (shouldScopeToActivePage && !payloadTargetsBuilderBridgePage(payload, activeBuilderPageIdentity)) {
+                logChatBridge({
+                    phase: 'ignore',
+                    target: 'chat',
+                    message: payload,
+                    reason: 'page-mismatch',
+                });
                 return;
             }
+
+            logChatBridge({
+                phase: 'receive',
+                target: 'chat',
+                message: payload,
+            });
 
             const nextBuilderStateCursor = {
                 pageId: payload.pageId ?? null,
                 pageSlug: payload.pageSlug ?? null,
-                stateVersion: payload.stateVersion ?? null,
-                revisionVersion: payload.revisionVersion ?? null,
+                stateVersion: 'stateVersion' in payload.payload ? payload.payload.stateVersion ?? null : null,
+                revisionVersion: 'revisionVersion' in payload.payload ? payload.payload.revisionVersion ?? null : null,
             };
             const builderPayloadIsStale = isStaleBuilderBridgeState(
                 latestBuilderStateCursorRef.current,
                 nextBuilderStateCursor,
             );
 
-            if (payload.type === 'builder:state') {
+            if (payload.type === 'BUILDER_SYNC_STATE') {
                 if (builderPayloadIsStale) {
+                    logChatBridge({
+                        phase: 'ignore',
+                        target: 'chat',
+                        message: payload,
+                        reason: 'stale-state',
+                    });
                     return;
                 }
 
                 latestBuilderStateCursorRef.current = nextBuilderStateCursor;
-                if (payload.viewport === 'desktop' || payload.viewport === 'tablet' || payload.viewport === 'mobile') {
-                    setPreviewViewport(payload.viewport);
+                if (payload.payload.viewport === 'desktop' || payload.payload.viewport === 'tablet' || payload.payload.viewport === 'mobile') {
+                    setPreviewViewport(payload.payload.viewport);
                 }
-                if (payload.interactionState === 'normal' || payload.interactionState === 'hover' || payload.interactionState === 'focus' || payload.interactionState === 'active') {
-                    setPreviewInteractionState(payload.interactionState);
+                if (
+                    payload.payload.interactionState === 'normal'
+                    || payload.payload.interactionState === 'hover'
+                    || payload.payload.interactionState === 'focus'
+                    || payload.payload.interactionState === 'active'
+                ) {
+                    setPreviewInteractionState(payload.payload.interactionState);
                 }
 
-                if (typeof payload.structureOpen === 'boolean' && payload.structureOpen !== isBuilderStructureOpen) {
+                if (typeof payload.payload.structureOpen === 'boolean' && payload.payload.structureOpen !== isBuilderStructureOpen) {
                     postBuilderCommand({
                         type: 'builder:set-structure-open',
                         open: isBuilderStructureOpen,
                     });
                 }
 
+                if (payload.payload.draftSaveState) {
+                    const nextIsSaving = payload.payload.draftSaveState.isSaving;
+                    setIsSavingBuilderDraft(nextIsSaving);
+
+                    if (!nextIsSaving) {
+                        if (payload.payload.draftSaveState.success === true) {
+                            toast.success(t('Draft saved'));
+                        } else if (typeof payload.payload.draftSaveState.message === 'string' && payload.payload.draftSaveState.message.trim() !== '') {
+                            toast.error(payload.payload.draftSaveState.message);
+                        }
+                    }
+                }
+
+                if (Array.isArray(payload.payload.libraryItems)) {
+                    const nextItems = payload.payload.libraryItems.flatMap((entry) => {
+                        const key = entry.key.trim();
+                        const label = entry.label.trim();
+                        const category = entry.category.trim();
+
+                        if (key === '') {
+                            return [];
+                        }
+
+                        return [{
+                            key,
+                            label: label || key,
+                            category,
+                        }];
+                    });
+
+                    setBuilderLibraryItems((current) => {
+                        const merged = new Map<string, BuilderLibraryItem>();
+
+                        current.forEach((item) => {
+                            const key = item.key.trim();
+                            if (key !== '') {
+                                merged.set(key, item);
+                            }
+                        });
+
+                        nextItems.forEach((item) => {
+                            const key = item.key.trim();
+                            if (key !== '') {
+                                merged.set(key, {
+                                    ...merged.get(key),
+                                    ...item,
+                                });
+                            }
+                        });
+
+                        return Array.from(merged.values());
+                    });
+                }
+
+                if (Array.isArray(payload.payload.structureSections)) {
+                    const snapshotSignature = buildBuilderBridgeEventSignature({
+                        pageId: payload.pageId,
+                        pageSlug: payload.pageSlug,
+                        stateVersion: payload.payload.stateVersion ?? null,
+                        revisionVersion: payload.payload.revisionVersion ?? null,
+                        structureHash: payload.payload.structureHash ?? null,
+                    });
+                    if (lastBuilderSnapshotSignatureRef.current === snapshotSignature) {
+                        logChatBridge({
+                            phase: 'ignore',
+                            target: 'chat',
+                            message: payload,
+                            reason: 'duplicate-structure-snapshot',
+                        });
+                        return;
+                    }
+
+                    const nextItems: BuilderStructureItem[] = [];
+                    const nextCodeSections: BuilderCodeSection[] = [];
+                    const snapshotPage = normalizeBuilderBridgePageIdentity({
+                        pageId: payload.pageId,
+                        pageSlug: payload.pageSlug,
+                        pageTitle: payload.pageTitle,
+                    });
+
+                    payload.payload.structureSections.forEach((entry, index) => {
+                        const localId = entry.localId.trim();
+                        const sectionKey = entry.sectionKey.trim();
+                        const sectionType = entry.type.trim();
+                        const label = entry.label.trim();
+                        const previewText = entry.previewText.trim();
+                        const propsText = entry.propsText.trim();
+                        const props = entry.props ?? (parseBuilderSectionProps(propsText) ?? buildFallbackSectionProps(label, previewText));
+
+                        if (localId === '' || sectionKey === '') {
+                            return;
+                        }
+
+                        nextItems.push({
+                            localId,
+                            sectionKey,
+                            label: label || sectionKey,
+                            previewText,
+                            props,
+                        });
+
+                        if (sectionType === '') {
+                            return;
+                        }
+
+                        nextCodeSections.push({
+                            localId: localId || `builder-section-${index + 1}`,
+                            type: sectionType,
+                            props,
+                            propsText: propsText !== '' ? propsText : stringifySectionProps(props),
+                        });
+                    });
+
+                    structureSnapshotPageRef.current = snapshotPage;
+                    latestBuilderStateCursorRef.current = nextBuilderStateCursor;
+                    lastBuilderSnapshotSignatureRef.current = snapshotSignature;
+                    setPendingBuilderStructureMutation(null);
+                    setBuilderStructureItems(nextItems);
+                    const nextSelectedTarget = selectedBuilderTarget?.sectionLocalId
+                        ? (() => {
+                            const nextItem = nextItems.find((item) => item.localId === selectedBuilderTarget.sectionLocalId) ?? null;
+                            if (!nextItem) {
+                                return null;
+                            }
+
+                            return {
+                                ...selectedBuilderTarget,
+                                sectionKey: nextItem.sectionKey,
+                                componentType: nextItem.sectionKey,
+                                props: nextItem.props,
+                            };
+                        })()
+                        : selectedBuilderTarget;
+                    selectBuilderTarget(nextSelectedTarget);
+                    setBuilderCodePages((current) => upsertWorkspaceBuilderCodePages(current, {
+                        page: snapshotPage,
+                        sections: nextCodeSections,
+                    }, {
+                        buildPagePath: (page, index) => buildGeneratedPagePath({
+                            page_id: page.pageId,
+                            slug: page.pageSlug,
+                            title: page.pageTitle,
+                        }, index),
+                    }));
+                }
+
+                if (payload.payload.previewRefresh) {
+                    setPreviewRefreshTrigger(Date.now());
+                }
+
                 return;
             }
 
-            if (payload.type === 'builder:selected-section') {
+            if (payload.type === 'BUILDER_SELECT_TARGET') {
                 if (builderPayloadIsStale) {
-                    return;
-                }
-
-                latestBuilderStateCursorRef.current = nextBuilderStateCursor;
-                const nextLocalId = typeof payload.sectionLocalId === 'string' && payload.sectionLocalId.trim() !== ''
-                    ? payload.sectionLocalId.trim()
-                    : null;
-                const nextSectionKey = typeof payload.sectionKey === 'string' && payload.sectionKey.trim() !== ''
-                    ? payload.sectionKey.trim()
-                    : null;
-
-                const matchingItem = nextLocalId
-                    ? builderStructureItems.find((item) => item.localId === nextLocalId) ?? null
-                    : (nextSectionKey ? builderStructureItems.find((item) => item.sectionKey === nextSectionKey) ?? null : null);
-                const nextTarget = nextLocalId || nextSectionKey
-                    ? buildSectionScopedEditableTarget({
-                        pageId: payload.pageId ?? activeBuilderPageIdentity.pageId,
-                        pageSlug: payload.pageSlug ?? activeBuilderPageIdentity.pageSlug,
-                        pageTitle: payload.pageTitle ?? activeBuilderPageIdentity.pageTitle,
-                        sectionLocalId: nextLocalId,
-                        sectionKey: nextSectionKey,
-                        componentType: nextSectionKey,
-                        componentName: matchingItem?.label ?? null,
-                        props: matchingItem?.props ?? null,
-                        textPreview: matchingItem ? buildSectionPreviewText(matchingItem.props, matchingItem.previewText) : null,
-                        currentBreakpoint: previewViewport,
-                        currentInteractionState: previewInteractionState,
-                    })
-                    : null;
-                if (selectedBuilderSectionLocalId !== nextLocalId) {
-                    setSelectedBuilderSectionLocalId(nextLocalId);
-                }
-                if (selectedPreviewSectionKey !== nextSectionKey) {
-                    setSelectedPreviewSectionKey(nextSectionKey);
-                }
-                if (!areBuilderEditableTargetsEqual(selectedBuilderTarget, nextTarget)) {
-                    setSelectedBuilderTarget(nextTarget);
-                }
-                setActiveLibraryItem(null);
-                if (justPlacedSectionRef.current) {
-                    setBuilderPaneMode('elements');
-                    justPlacedSectionRef.current = false;
-                } else {
-                    setBuilderPaneMode(nextLocalId || nextSectionKey ? 'settings' : 'elements');
-                }
-                return;
-            }
-
-            if (payload.type === 'builder:selected-target') {
-                if (builderPayloadIsStale) {
+                    logChatBridge({
+                        phase: 'ignore',
+                        target: 'chat',
+                        message: payload,
+                        reason: 'stale-selection',
+                    });
                     return;
                 }
 
                 latestBuilderStateCursorRef.current = nextBuilderStateCursor;
                 const rawNextTarget = buildEditableTargetFromMessagePayload({
+                    ...(payload.payload.target ?? {}),
                     pageId: payload.pageId ?? activeBuilderPageIdentity.pageId,
                     pageSlug: payload.pageSlug ?? activeBuilderPageIdentity.pageSlug,
                     pageTitle: payload.pageTitle ?? activeBuilderPageIdentity.pageTitle,
-                    sectionLocalId: typeof payload.sectionLocalId === 'string' ? payload.sectionLocalId : null,
-                    sectionKey: typeof payload.sectionKey === 'string' ? payload.sectionKey : null,
-                    componentType: typeof payload.componentType === 'string' ? payload.componentType : null,
-                    componentName: typeof payload.componentName === 'string' ? payload.componentName : null,
-                    parameterPath: typeof payload.parameterPath === 'string' ? payload.parameterPath : null,
-                    componentPath: typeof payload.componentPath === 'string' ? payload.componentPath : null,
-                    elementId: typeof payload.elementId === 'string' ? payload.elementId : null,
-                    selector: typeof payload.selector === 'string' ? payload.selector : null,
-                    textPreview: typeof payload.textPreview === 'string' ? payload.textPreview : null,
-                    props: payload.props && typeof payload.props === 'object' ? payload.props as Record<string, unknown> : null,
-                    fieldLabel: typeof payload.fieldLabel === 'string' ? payload.fieldLabel : null,
-                    fieldGroup: typeof payload.fieldGroup === 'string'
-                        ? payload.fieldGroup as BuilderEditableTarget['fieldGroup']
-                        : null,
-                    builderId: typeof payload.builderId === 'string' ? payload.builderId : null,
-                    parentId: typeof payload.parentId === 'string' ? payload.parentId : null,
-                    editableFields: Array.isArray(payload.editableFields) ? payload.editableFields : undefined,
-                    sectionId: typeof payload.sectionId === 'string' ? payload.sectionId : null,
-                    instanceId: typeof payload.instanceId === 'string' ? payload.instanceId : null,
-                    variants: payload.variants && typeof payload.variants === 'object'
-                        ? payload.variants as BuilderEditableTarget['variants']
-                        : null,
-                    allowedUpdates: payload.allowedUpdates && typeof payload.allowedUpdates === 'object'
-                        ? payload.allowedUpdates as unknown as BuilderEditableTarget['allowedUpdates']
-                        : null,
-                    responsiveContext: payload.responsiveContext && typeof payload.responsiveContext === 'object'
-                        ? (payload.responsiveContext as unknown as NonNullable<BuilderEditableTarget['responsiveContext']>)
-                        : null,
-                    currentBreakpoint: payload.viewport === 'desktop' || payload.viewport === 'tablet' || payload.viewport === 'mobile'
-                        ? payload.viewport
-                        : previewViewport,
-                    currentInteractionState: payload.interactionState === 'normal' || payload.interactionState === 'hover' || payload.interactionState === 'focus' || payload.interactionState === 'active'
-                        ? payload.interactionState
-                        : previewInteractionState,
+                    currentBreakpoint: payload.payload.target?.currentBreakpoint ?? previewViewport,
+                    currentInteractionState: payload.payload.target?.currentInteractionState ?? previewInteractionState,
                 });
                 const nextTarget = buildSectionScopedEditableTarget(editableTargetToMessagePayload(rawNextTarget)) ?? rawNextTarget;
-                const nextLocalId = nextTarget?.sectionLocalId ?? null;
-                const nextSectionKey = nextTarget?.sectionKey ?? null;
 
-                if (!areBuilderEditableTargetsEqual(selectedBuilderTarget, nextTarget)) {
-                    setSelectedBuilderTarget(nextTarget);
-                }
-                if (selectedBuilderSectionLocalId !== nextLocalId) {
-                    setSelectedBuilderSectionLocalId(nextLocalId);
-                }
-                if (selectedPreviewSectionKey !== nextSectionKey) {
-                    setSelectedPreviewSectionKey(nextSectionKey);
+                if (nextTarget === null) {
+                    clearBuilderSelection();
+                } else if (!areBuilderEditableTargetsEqual(selectedBuilderTarget, nextTarget)) {
+                    selectBuilderTarget(nextTarget);
                 }
                 setActiveLibraryItem(null);
                 if (justPlacedSectionRef.current) {
@@ -492,27 +811,13 @@ export function useChatEmbeddedBuilderBridge({
                 return;
             }
 
-            if (payload.type === 'builder:draft-save-state') {
-                const nextIsSaving = payload.isSaving;
-                setIsSavingBuilderDraft(nextIsSaving);
-
-                if (!nextIsSaving) {
-                    if (payload.success === true) {
-                        toast.success(t('Draft saved'));
-                    } else if (typeof payload.message === 'string' && payload.message.trim() !== '') {
-                        toast.error(payload.message);
-                    }
-                }
-                return;
-            }
-
-            if (payload.type === 'builder:mutation-result') {
+            if (payload.type === 'BUILDER_ACK') {
                 if (payload.requestId === pendingBuilderChangeSetRequestIdRef.current) {
                     pendingBuilderChangeSetRequestIdRef.current = null;
-                    if (payload.success !== true || payload.changed !== true) {
+                    if (payload.payload.success !== true || payload.payload.changed !== true) {
                         setPreviewRefreshTrigger(Date.now());
-                        if (typeof payload.error === 'string' && payload.error.trim() !== '') {
-                            console.warn('[Builder sync] change set apply failed', payload.error);
+                        if (typeof payload.payload.error === 'string' && payload.payload.error.trim() !== '') {
+                            console.warn('[Builder sync] change set apply failed', payload.payload.error);
                         }
                     }
                     return;
@@ -520,9 +825,9 @@ export function useChatEmbeddedBuilderBridge({
 
                 const mutationResolution = resolvePendingBuilderStructureMutation(pendingBuilderStructureMutation, {
                     requestId: payload.requestId,
-                    success: payload.success,
-                    changed: payload.changed,
-                    error: payload.error,
+                    success: payload.payload.success,
+                    changed: payload.payload.changed ?? false,
+                    error: payload.payload.error,
                 });
                 if (mutationResolution.status === 'ignore') {
                     return;
@@ -530,169 +835,48 @@ export function useChatEmbeddedBuilderBridge({
                 if (mutationResolution.status === 'clear-error') {
                     setPendingBuilderStructureMutation(null);
                     if (pendingBuilderStructureMutation?.selectionSnapshot) {
-                        setSelectedBuilderSectionLocalId(pendingBuilderStructureMutation.selectionSnapshot.sectionLocalId);
-                        setSelectedPreviewSectionKey(pendingBuilderStructureMutation.selectionSnapshot.sectionKey);
-                        setSelectedBuilderTarget(pendingBuilderStructureMutation.selectionSnapshot.target);
+                        selectBuilderTarget(pendingBuilderStructureMutation.selectionSnapshot.target);
                     }
                     toast.error(mutationResolution.errorMessage ?? t('Builder update failed'));
                 }
                 return;
             }
 
-            if (payload.type === 'builder:library-snapshot' && Array.isArray(payload.items)) {
-                const nextItems = payload.items.flatMap((entry) => {
-                    const key = entry.key.trim();
-                    const label = entry.label.trim();
-                    const category = entry.category.trim();
-
-                    if (key === '') {
-                        return [];
-                    }
-
-                    return [{
-                        key,
-                        label: label || key,
-                        category,
-                    }];
-                });
-
-                setBuilderLibraryItems((current) => {
-                    const merged = new Map<string, BuilderLibraryItem>();
-
-                    current.forEach((item) => {
-                        const key = item.key.trim();
-                        if (key !== '') {
-                            merged.set(key, item);
-                        }
-                    });
-
-                    nextItems.forEach((item) => {
-                        const key = item.key.trim();
-                        if (key !== '') {
-                            merged.set(key, {
-                                ...merged.get(key),
-                                ...item,
-                            });
-                        }
-                    });
-
-                    return Array.from(merged.values());
-                });
-                return;
-            }
-
-            if (payload.type === 'builder:structure-snapshot' && Array.isArray(payload.sections)) {
+            if (payload.type === 'BUILDER_READY') {
                 if (builderPayloadIsStale) {
+                    logChatBridge({
+                        phase: 'ignore',
+                        target: 'chat',
+                        message: payload,
+                        reason: 'stale-ready',
+                    });
                     return;
                 }
 
-                const snapshotSignature = buildBuilderBridgeEventSignature(payload);
-                if (lastBuilderSnapshotSignatureRef.current === snapshotSignature) {
-                    return;
-                }
-
-                const nextItems: BuilderStructureItem[] = [];
-                const nextCodeSections: BuilderCodeSection[] = [];
-                const snapshotPage = normalizeBuilderBridgePageIdentity({
+                const readySignature = buildBuilderBridgeEventSignature({
                     pageId: payload.pageId,
                     pageSlug: payload.pageSlug,
-                    pageTitle: payload.pageTitle,
+                    stateVersion: payload.payload.stateVersion ?? null,
+                    revisionVersion: payload.payload.revisionVersion ?? null,
+                    structureHash: payload.payload.structureHash ?? null,
                 });
-
-                payload.sections.forEach((entry, index) => {
-                    const localId = entry.localId.trim();
-                    const sectionKey = entry.sectionKey.trim();
-                    const sectionType = entry.type.trim();
-                    const label = entry.label.trim();
-                    const previewText = entry.previewText.trim();
-                    const propsText = entry.propsText.trim();
-                    const props = entry.props ?? (parseBuilderSectionProps(propsText) ?? buildFallbackSectionProps(label, previewText));
-
-                    if (localId === '' || sectionKey === '') {
-                        return;
-                    }
-
-                    nextItems.push({
-                        localId,
-                        sectionKey,
-                        label: label || sectionKey,
-                        previewText,
-                        props,
-                    });
-
-                    if (sectionType === '') {
-                        return;
-                    }
-
-                    nextCodeSections.push({
-                        localId: localId || `builder-section-${index + 1}`,
-                        type: sectionType,
-                        props,
-                        propsText: propsText !== '' ? propsText : stringifySectionProps(props),
-                    });
-                });
-
-                structureSnapshotPageRef.current = snapshotPage;
-                latestBuilderStateCursorRef.current = nextBuilderStateCursor;
-                lastBuilderSnapshotSignatureRef.current = snapshotSignature;
-                setPendingBuilderStructureMutation(null);
-                setBuilderStructureItems(nextItems);
-                setSelectedBuilderSectionLocalId((current) => (
-                    current && nextItems.some((item) => item.localId === current) ? current : null
-                ));
-                setSelectedPreviewSectionKey((current) => (
-                    current && nextItems.some((item) => item.sectionKey === current) ? current : null
-                ));
-                setSelectedBuilderTarget((current) => {
-                    if (!current?.sectionLocalId) {
-                        return current;
-                    }
-
-                    const nextItem = nextItems.find((item) => item.localId === current.sectionLocalId) ?? null;
-                    if (!nextItem) {
-                        return null;
-                    }
-
-                    return {
-                        ...current,
-                        sectionKey: nextItem.sectionKey,
-                        componentType: nextItem.sectionKey,
-                        props: nextItem.props,
-                    };
-                });
-                setBuilderCodePages((current) => upsertWorkspaceBuilderCodePages(current, {
-                    page: snapshotPage,
-                    sections: nextCodeSections,
-                }, {
-                    buildPagePath: (page, index) => buildGeneratedPagePath({
-                        page_id: page.pageId,
-                        slug: page.pageSlug,
-                        title: page.pageTitle,
-                    }, index),
-                }));
-                return;
-            }
-
-            if (payload.type === 'builder:preview-refresh') {
-                setPreviewRefreshTrigger(Date.now());
-                return;
-            }
-
-            if (payload.type === 'builder:ready') {
-                if (builderPayloadIsStale) {
-                    return;
-                }
-
-                const readySignature = buildBuilderBridgeEventSignature(payload);
                 if (lastBuilderReadySignatureRef.current === readySignature) {
+                    logChatBridge({
+                        phase: 'ignore',
+                        target: 'chat',
+                        message: payload,
+                        reason: 'duplicate-ready',
+                    });
                     return;
                 }
                 latestBuilderStateCursorRef.current = nextBuilderStateCursor;
                 lastBuilderReadySignatureRef.current = readySignature;
-                setIsBuilderSidebarReady(true);
+                markBuilderSidebarReady(true);
                 requestAnimationFrame(() => {
-                    syncEmbeddedBuilderControls();
-                    flushBuilderCommandQueue();
+                    if (isBuilderPreviewReady) {
+                        syncEmbeddedBuilderControls();
+                        flushBuilderCommandQueue();
+                    }
                 });
             }
         };
@@ -721,20 +905,21 @@ export function useChatEmbeddedBuilderBridge({
         setBuilderLibraryItems,
         setBuilderPaneMode,
         setBuilderStructureItems,
-        setIsBuilderSidebarReady,
         setIsBuilderStructureOpen,
         setIsSavingBuilderDraft,
         setPendingBuilderStructureMutation,
         setPreviewInteractionState,
         setPreviewRefreshTrigger,
         setPreviewViewport,
-        setSelectedBuilderSectionLocalId,
-        setSelectedBuilderTarget,
-        setSelectedPreviewSectionKey,
+        selectBuilderTarget,
+        clearBuilderSelection,
         structureSnapshotPageRef,
         syncEmbeddedBuilderControls,
         t,
         viewMode,
+        projectId,
+        isBuilderPreviewReady,
+        markBuilderSidebarReady,
         justPlacedSectionRef,
     ]);
 
@@ -743,12 +928,12 @@ export function useChatEmbeddedBuilderBridge({
             return;
         }
 
-        setIsBuilderSidebarReady(false);
         setPendingBuilderStructureMutation(null);
         lastBuilderReadySignatureRef.current = null;
         lastBuilderSnapshotSignatureRef.current = null;
         latestBuilderStateCursorRef.current = null;
         lastSelectionCommandSignatureRef.current = null;
+        markBuilderSidebarReady(false);
     }, [
         activeBuilderPageIdentity.pageId,
         activeBuilderPageIdentity.pageSlug,
@@ -756,7 +941,7 @@ export function useChatEmbeddedBuilderBridge({
         lastBuilderSnapshotSignatureRef,
         lastSelectionCommandSignatureRef,
         latestBuilderStateCursorRef,
-        setIsBuilderSidebarReady,
+        markBuilderSidebarReady,
         setPendingBuilderStructureMutation,
         viewMode,
     ]);
@@ -768,13 +953,20 @@ export function useChatEmbeddedBuilderBridge({
         const sendPing = () => {
             const frameWindow = builderSidebarFrameRef.current?.contentWindow;
             if (frameWindow) {
-                postBuilderBridgeMessage(
-                    frameWindow,
-                    window.location.origin,
-                    'webu-chat-builder',
-                    { type: 'builder:ping' },
-                    activeBuilderPageIdentity,
-                );
+                const requestStateMessage = buildBuilderRequestStateMessage({
+                    reason: 'inspect-open',
+                }, {
+                    source: 'chat',
+                    projectId,
+                    page: activeBuilderPageIdentity,
+                });
+                logChatBridge({
+                    phase: 'send',
+                    target: 'sidebar',
+                    message: requestStateMessage,
+                    reason: 'inspect-open',
+                });
+                postBuilderBridgeEnvelope(frameWindow, window.location.origin, requestStateMessage);
             }
         };
         const t1 = window.setTimeout(sendPing, 200);
@@ -783,7 +975,7 @@ export function useChatEmbeddedBuilderBridge({
             window.clearTimeout(t1);
             window.clearTimeout(t2);
         };
-    }, [activeBuilderPageIdentity, builderSidebarFrameRef, viewMode]);
+    }, [activeBuilderPageIdentity, builderSidebarFrameRef, logChatBridge, projectId, viewMode]);
 
     useEffect(() => {
         if (viewMode !== 'inspect') {

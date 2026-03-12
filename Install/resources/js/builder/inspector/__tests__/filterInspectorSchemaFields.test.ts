@@ -97,4 +97,23 @@ describe('filterInspectorSchemaFields', () => {
         expect(filtered.map((f) => f.path.join('.'))).toContain('items.0.title');
         expect(filtered.map((f) => f.path.join('.'))).toContain('items.0.description');
     });
+
+    it('returns no scoped fields for stale target paths instead of widening by family', () => {
+        const fields = [
+            makeField('title', 'Title'),
+            makeField('subtitle', 'Subtitle'),
+            makeField('buttonText', 'Button text'),
+        ];
+
+        const filtered = filterInspectorSchemaFields(fields, {
+            previewMode: 'desktop',
+            interactionState: 'normal',
+            targetPath: 'ghost.title',
+            targetComponentPath: 'ghost',
+            targetEditableFields: ['ghost.title'],
+            elementorLike: false,
+        });
+
+        expect(filtered).toEqual([]);
+    });
 });
