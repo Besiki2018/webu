@@ -8,7 +8,6 @@ import {
     type BuilderBridgeViewport,
 } from '@/builder/cms/embeddedBuilderBridgeContract';
 import {
-    buildBuilderSelectionMessageSignature,
     type BuilderSelectionMessagePayload,
     type BuilderEditableTarget,
 } from '@/builder/editingState';
@@ -16,9 +15,12 @@ import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
 import { buildCanonicalBridgeSelectedTargetPayload } from '@/builder/cms/canonicalSelectionPayload';
 import {
     buildBuilderAckMessage,
+    buildBuilderBridgeSelectionSignature,
+    buildBuilderBridgeVisualStateSignature,
     buildBuilderReadyMessage,
     buildBuilderSelectTargetMessage,
     buildBuilderSyncStateMessage,
+    builderBridgeMessageEchoesActor,
     builderBridgeEnvelopeTargetsProject,
     inspectBuilderBridgeEnvelope,
     logBuilderBridgeDiagnostic,
@@ -94,7 +96,7 @@ export interface UseEmbeddedBuilderBridgeOptions {
     sectionDisplayLabelByKey: Map<string, string>;
     t: (key: string) => string;
     normalizeSectionTypeKey: (key: string) => string;
-    buildSectionPreviewText: (props: Record<string, unknown>, fallback: string) => string;
+    buildSectionPreviewText: (props: Record<string, unknown>, fallback: string, sectionKey?: string | null) => string;
     getBuilderSectionExplicitProps: (section: SectionDraft) => Record<string, unknown> | null;
     onSetViewport: (viewport: BuilderBridgeViewport) => void;
     onSetInteractionState: (state: BuilderBridgeInteractionState) => void;
@@ -156,6 +158,8 @@ export function useEmbeddedBuilderBridge({
     onMoveSection,
 }: UseEmbeddedBuilderBridgeOptions): void {
     const lastSelectedTargetEventSignatureRef = useRef<string | null>(null);
+    const lastReceivedChatVisualStateSignatureRef = useRef<string | null>(null);
+    const lastReceivedChatSelectionSignatureRef = useRef<string | null>(null);
     const targetOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const logSidebarBridge = (input: {
         phase: 'send' | 'receive' | 'ignore' | 'drop';
@@ -303,6 +307,20 @@ export function useEmbeddedBuilderBridge({
     };
 
     const emitCurrentVisualState = (requestId?: string | null) => {
+        const visualStateSignature = buildBuilderBridgeVisualStateSignature({
+            pageId: selectedPage.pageId,
+            pageSlug: selectedPage.pageSlug,
+            pageTitle: selectedPage.pageTitle,
+            viewport: builderViewport,
+            interactionState: builderInteractionState,
+            structureOpen: !isStructurePanelCollapsed,
+            sidebarMode: null,
+        });
+
+        if (!requestId && lastReceivedChatVisualStateSignatureRef.current === visualStateSignature) {
+            return;
+        }
+
         emitEnvelope(buildBuilderSyncStateMessage({
             viewport: builderViewport,
             structureOpen: !isStructurePanelCollapsed,
@@ -339,32 +357,41 @@ export function useEmbeddedBuilderBridge({
                         ? (sectionDisplayLabelByKey.get(selectedSectionKey ?? '') ?? sectionDisplayLabelByKey.get(selectedSectionDraft.type) ?? selectedSectionDraft.type)
                         : selectedFixedSectionKey,
                     textPreview: selectedSectionDraft
-                        ? buildSectionPreviewText(getBuilderSectionExplicitProps(selectedSectionDraft) ?? {}, t('No preview text'))
+                        ? buildSectionPreviewText(
+                            getBuilderSectionExplicitProps(selectedSectionDraft) ?? {},
+                            t('No preview text'),
+                            selectedSectionDraft.type,
+                        )
                         : null,
                 }
                 : null,
             currentBreakpoint: selectedTargetViewport,
             currentInteractionState: selectedTargetInteractionState,
         });
-        const selectedTargetSignature = JSON.stringify({
-            type: 'BUILDER_SELECT_TARGET',
-            pageId: selectedPage.pageId ?? null,
-            pageSlug: selectedPage.pageSlug ?? null,
-            pageTitle: selectedPage.pageTitle ?? null,
-            payload: selectedTargetPayload
-                ? buildBuilderSelectionMessageSignature({
-                    ...selectedTargetPayload,
-                    pageId: selectedPage.pageId,
-                    pageSlug: selectedPage.pageSlug,
-                    pageTitle: selectedPage.pageTitle,
-                    currentBreakpoint: selectedTargetViewport,
-                    currentInteractionState: selectedTargetInteractionState,
-                })
-                : 'null',
+        const selectionPayload = selectedTargetPayload
+            ? {
+                ...selectedTargetPayload,
+                pageId: selectedPage.pageId,
+                pageSlug: selectedPage.pageSlug,
+                pageTitle: selectedPage.pageTitle,
+                currentBreakpoint: selectedTargetViewport,
+                currentInteractionState: selectedTargetInteractionState,
+            }
+            : null;
+        const selectionSignature = buildBuilderBridgeSelectionSignature({
+            pageId: selectedPage.pageId,
+            pageSlug: selectedPage.pageSlug,
+            pageTitle: selectedPage.pageTitle,
+            target: selectionPayload,
         });
 
-        if (force || lastSelectedTargetEventSignatureRef.current !== selectedTargetSignature) {
-            lastSelectedTargetEventSignatureRef.current = selectedTargetSignature;
+        if (!force && selectionSignature === lastReceivedChatSelectionSignatureRef.current) {
+            lastSelectedTargetEventSignatureRef.current = selectionSignature;
+            return;
+        }
+
+        if (force || lastSelectedTargetEventSignatureRef.current !== selectionSignature) {
+            lastSelectedTargetEventSignatureRef.current = selectionSignature;
             emitEnvelope(buildBuilderSelectTargetMessage(selectedTargetPayload, {
                 source: 'sidebar',
                 projectId,
@@ -389,7 +416,7 @@ export function useEmbeddedBuilderBridge({
                 sectionKey: sectionType,
                 type: sectionType,
                 label,
-                previewText: buildSectionPreviewText(parsedProps ?? {}, t('No preview text')),
+                previewText: buildSectionPreviewText(parsedProps ?? {}, t('No preview text'), sectionType),
                 propsText: section.propsText,
                 props: parsedProps ?? {},
             };
@@ -478,6 +505,16 @@ export function useEmbeddedBuilderBridge({
                 return;
             }
 
+            if (builderBridgeMessageEchoesActor(payload, 'sidebar')) {
+                logSidebarBridge({
+                    phase: 'ignore',
+                    target: 'sidebar',
+                    message: payload,
+                    reason: 'self-origin',
+                });
+                return;
+            }
+
             if (payload.source !== 'chat') {
                 logSidebarBridge({
                     phase: 'ignore',
@@ -529,6 +566,25 @@ export function useEmbeddedBuilderBridge({
             });
 
             if (payload.type === 'BUILDER_SYNC_STATE') {
+                lastReceivedChatVisualStateSignatureRef.current = buildBuilderBridgeVisualStateSignature({
+                    pageId: payload.pageId ?? selectedPage.pageId,
+                    pageSlug: payload.pageSlug ?? selectedPage.pageSlug,
+                    pageTitle: payload.pageTitle ?? selectedPage.pageTitle,
+                    viewport: payload.payload.viewport ?? builderViewport,
+                    interactionState: payload.payload.interactionState ?? builderInteractionState,
+                    structureOpen: typeof payload.payload.structureOpen === 'boolean'
+                        ? payload.payload.structureOpen
+                        : !isStructurePanelCollapsed,
+                    sidebarMode: null,
+                });
+                if (payload.payload.selectedTarget) {
+                    lastReceivedChatSelectionSignatureRef.current = buildBuilderBridgeSelectionSignature({
+                        pageId: payload.pageId ?? selectedPage.pageId,
+                        pageSlug: payload.pageSlug ?? selectedPage.pageSlug,
+                        pageTitle: payload.pageTitle ?? selectedPage.pageTitle,
+                        target: payload.payload.selectedTarget,
+                    });
+                }
                 if (payload.payload.viewport) {
                     onSetViewport(payload.payload.viewport);
                 }
@@ -553,11 +609,32 @@ export function useEmbeddedBuilderBridge({
             }
 
             if (payload.type === 'BUILDER_CLEAR_SELECTION') {
+                lastReceivedChatSelectionSignatureRef.current = buildBuilderBridgeSelectionSignature({
+                    pageId: payload.pageId ?? selectedPage.pageId,
+                    pageSlug: payload.pageSlug ?? selectedPage.pageSlug,
+                    pageTitle: payload.pageTitle ?? selectedPage.pageTitle,
+                    target: null,
+                });
                 onClearSelectedSection();
                 return;
             }
 
             if (payload.type === 'BUILDER_SELECT_TARGET') {
+                lastReceivedChatSelectionSignatureRef.current = buildBuilderBridgeSelectionSignature({
+                    pageId: payload.pageId ?? selectedPage.pageId,
+                    pageSlug: payload.pageSlug ?? selectedPage.pageSlug,
+                    pageTitle: payload.pageTitle ?? selectedPage.pageTitle,
+                    target: payload.payload.target
+                        ? {
+                            ...payload.payload.target,
+                            pageId: payload.pageId ?? selectedPage.pageId,
+                            pageSlug: payload.pageSlug ?? selectedPage.pageSlug,
+                            pageTitle: payload.pageTitle ?? selectedPage.pageTitle,
+                            currentBreakpoint: payload.payload.target.currentBreakpoint ?? selectedTargetViewport,
+                            currentInteractionState: payload.payload.target.currentInteractionState ?? selectedTargetInteractionState,
+                        }
+                        : null,
+                });
                 if (payload.payload.target) {
                     onSetSelectedTarget(payload.payload.target);
                 } else {
@@ -664,5 +741,15 @@ export function useEmbeddedBuilderBridge({
         emitCurrentLibrarySnapshot();
     }, [
         emitCurrentLibrarySnapshot,
+    ]);
+
+    useEffect(() => {
+        lastReceivedChatVisualStateSignatureRef.current = null;
+        lastReceivedChatSelectionSignatureRef.current = null;
+        lastSelectedTargetEventSignatureRef.current = null;
+    }, [
+        projectId,
+        selectedPage.pageId,
+        selectedPage.pageSlug,
     ]);
 }

@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
     BUILDER_BRIDGE_VERSION,
     buildBuilderInsertNodeMessage,
+    buildBuilderBridgeSelectionSignature,
+    buildBuilderBridgeVisualStateSignature,
     buildBuilderReadyMessage,
     buildBuilderSelectTargetMessage,
     buildBuilderSyncStateMessage,
+    builderBridgeMessageEchoesActor,
     builderBridgeEnvelopeTargetsProject,
     inspectBuilderBridgeEnvelope,
     parseBuilderBridgeEnvelope,
@@ -156,5 +159,98 @@ describe('builderBridge', () => {
         expect(parsedMessage).not.toBeNull();
         expect(builderBridgeEnvelopeTargetsProject(parsedMessage!, 'project-1')).toBe(true);
         expect(builderBridgeEnvelopeTargetsProject(parsedMessage!, 'project-2')).toBe(false);
+    });
+
+    it('flags self-origin bridge envelopes for echo suppression', () => {
+        const message = buildBuilderSyncStateMessage({
+            viewport: 'desktop',
+        }, input);
+
+        expect(builderBridgeMessageEchoesActor(message, 'chat')).toBe(true);
+        expect(builderBridgeMessageEchoesActor(message, 'sidebar')).toBe(false);
+    });
+
+    it('builds stable visual and selection signatures for echo guards', () => {
+        expect(buildBuilderBridgeVisualStateSignature({
+            pageId: 42,
+            pageSlug: 'home',
+            pageTitle: 'Home',
+            viewport: 'desktop',
+            interactionState: 'normal',
+            structureOpen: true,
+            sidebarMode: 'settings',
+        })).toBe(JSON.stringify({
+            type: 'BUILDER_SYNC_STATE',
+            pageId: 42,
+            pageSlug: 'home',
+            pageTitle: 'Home',
+            payload: {
+                viewport: 'desktop',
+                interactionState: 'normal',
+                structureOpen: true,
+                sidebarMode: 'settings',
+            },
+        }));
+
+        expect(buildBuilderBridgeSelectionSignature({
+            pageId: 42,
+            pageSlug: 'home',
+            pageTitle: 'Home',
+            target: {
+                pageId: 42,
+                pageSlug: 'home',
+                pageTitle: 'Home',
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Hero',
+                parameterPath: null,
+                componentPath: null,
+                elementId: null,
+                selector: null,
+                textPreview: null,
+                props: null,
+                fieldLabel: null,
+                fieldGroup: null,
+                builderId: 'hero-1::section',
+                parentId: null,
+                editableFields: ['subtitle', 'title'],
+                sectionId: null,
+                instanceId: null,
+                variants: null,
+                allowedUpdates: null,
+                currentBreakpoint: 'desktop',
+                currentInteractionState: 'normal',
+                responsiveContext: null,
+            },
+        })).toBe(JSON.stringify({
+            type: 'BUILDER_SELECT_TARGET',
+            pageId: 42,
+            pageSlug: 'home',
+            pageTitle: 'Home',
+            payload: {
+                pageId: 42,
+                pageSlug: 'home',
+                pageTitle: 'Home',
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Hero',
+                parameterPath: null,
+                componentPath: null,
+                elementId: null,
+                selector: null,
+                textPreview: null,
+                fieldLabel: null,
+                fieldGroup: null,
+                builderId: 'hero-1::section',
+                parentId: null,
+                editableFields: ['subtitle', 'title'],
+                sectionId: null,
+                instanceId: null,
+                currentBreakpoint: 'desktop',
+                currentInteractionState: 'normal',
+            },
+        }));
     });
 });

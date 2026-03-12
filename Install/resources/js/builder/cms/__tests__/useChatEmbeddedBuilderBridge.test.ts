@@ -191,4 +191,196 @@ describe('useChatEmbeddedBuilderBridge', () => {
             expect(toast.error).toHaveBeenCalled();
         });
     });
+
+    it('ignores duplicate structure snapshots and refreshes selected target preview data from the first snapshot only once', async () => {
+        const options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            selectedBuilderTarget: {
+                targetId: 'hero-1::section',
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Old Hero',
+                path: null,
+                elementId: null,
+                selector: '[data-webu-section-local-id="hero-1"]',
+                textPreview: 'Old hero',
+                props: { headline: 'Old hero' },
+            },
+            selectedBuilderSectionLocalId: 'hero-1',
+        });
+
+        renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        const snapshotEvent = {
+            origin: window.location.origin,
+            data: {
+                type: 'BUILDER_SYNC_STATE',
+                source: 'sidebar',
+                projectId: 'project-1',
+                requestId: 'req-sync-1',
+                timestamp: Date.now(),
+                version: 1,
+                pageId: 11,
+                pageSlug: 'home',
+                pageTitle: 'Home',
+                payload: {
+                    stateVersion: 9,
+                    revisionVersion: 4,
+                    structureHash: 'hash-9',
+                    structureSections: [{
+                        localId: 'hero-1',
+                        sectionKey: 'webu_general_hero_01',
+                        type: 'webu_general_hero_01',
+                        label: 'Hero',
+                        previewText: 'Fresh preview',
+                        propsText: JSON.stringify({ title: 'Fresh preview' }),
+                        props: { title: 'Fresh preview' },
+                    }],
+                },
+            },
+        };
+
+        window.dispatchEvent(new MessageEvent('message', snapshotEvent));
+        window.dispatchEvent(new MessageEvent('message', snapshotEvent));
+
+        await waitFor(() => {
+            expect(options.setBuilderStructureItems).toHaveBeenCalledTimes(1);
+            expect(options.selectBuilderTarget).toHaveBeenCalledWith(expect.objectContaining({
+                sectionLocalId: 'hero-1',
+                componentName: 'Hero',
+                textPreview: 'Fresh preview',
+                props: { title: 'Fresh preview' },
+            }));
+        });
+    });
+
+    it('adopts sidebar visual state without echoing the same sync state back to the sidebar iframe', async () => {
+        const postMessage = vi.fn();
+        let options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            isBuilderStructureOpen: true,
+            builderPaneMode: 'settings',
+            builderSidebarFrameRef: {
+                current: {
+                    contentWindow: { postMessage },
+                } as unknown as HTMLIFrameElement,
+            },
+        });
+
+        const { rerender } = renderHook(() => useChatEmbeddedBuilderBridge(options));
+        postMessage.mockClear();
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: {
+                type: 'BUILDER_SYNC_STATE',
+                source: 'sidebar',
+                projectId: 'project-1',
+                requestId: 'req-sync-loop-1',
+                timestamp: Date.now(),
+                version: 1,
+                pageId: 11,
+                pageSlug: 'home',
+                pageTitle: 'Home',
+                payload: {
+                    viewport: 'mobile',
+                    interactionState: 'hover',
+                    sidebarMode: 'elements',
+                    structureOpen: false,
+                },
+            },
+        }));
+
+        await waitFor(() => {
+            expect(options.setPreviewViewport).toHaveBeenCalledWith('mobile');
+            expect(options.setPreviewInteractionState).toHaveBeenCalledWith('hover');
+            expect(options.setIsBuilderStructureOpen).toHaveBeenCalledWith(false);
+        });
+
+        options = {
+            ...options,
+            previewViewport: 'mobile',
+            previewInteractionState: 'hover',
+            builderPaneMode: 'elements',
+            isBuilderStructureOpen: false,
+        };
+        rerender();
+
+        expect(postMessage).not.toHaveBeenCalled();
+    });
+
+    it('does not echo sidebar selection back as a new select-target bridge message', async () => {
+        const postMessage = vi.fn();
+        const target = {
+            targetId: 'hero-1::section',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: null,
+            elementId: null,
+            selector: '[data-webu-section-local-id="hero-1"]',
+            textPreview: 'Hello',
+            props: { headline: 'Hello' },
+        };
+        let options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            builderSidebarFrameRef: {
+                current: {
+                    contentWindow: { postMessage },
+                } as unknown as HTMLIFrameElement,
+            },
+        });
+
+        const { rerender } = renderHook(() => useChatEmbeddedBuilderBridge(options));
+        postMessage.mockClear();
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: {
+                type: 'BUILDER_SELECT_TARGET',
+                source: 'sidebar',
+                projectId: 'project-1',
+                requestId: 'req-select-loop-1',
+                timestamp: Date.now(),
+                version: 1,
+                pageId: 11,
+                pageSlug: 'home',
+                pageTitle: 'Home',
+                payload: {
+                    target: {
+                        sectionLocalId: 'hero-1',
+                        sectionKey: 'webu_general_hero_01',
+                        componentType: 'webu_general_hero_01',
+                        componentName: 'Hero',
+                        textPreview: 'Hello',
+                        props: { headline: 'Hello' },
+                        currentBreakpoint: 'desktop',
+                        currentInteractionState: 'normal',
+                    },
+                },
+            },
+        }));
+
+        await waitFor(() => {
+            expect(options.selectBuilderTarget).toHaveBeenCalledWith(expect.objectContaining({
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+            }));
+        });
+
+        options = {
+            ...options,
+            selectedBuilderTarget: target,
+            selectedBuilderSectionLocalId: 'hero-1',
+        };
+        rerender();
+
+        expect(postMessage.mock.calls.some(([message]) => message?.type === 'BUILDER_SELECT_TARGET')).toBe(false);
+        expect(postMessage.mock.calls.some(([message]) => message?.type === 'BUILDER_CLEAR_SELECTION')).toBe(false);
+    });
 });

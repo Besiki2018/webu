@@ -150,6 +150,17 @@ export interface BuilderBridgeParseResult {
     error: string | null;
 }
 
+interface BuilderBridgeVisualStateSignatureInput extends BuilderBridgePageIdentity {
+    viewport?: BuilderBridgeViewport | null;
+    interactionState?: BuilderBridgeInteractionState | null;
+    structureOpen?: boolean | null;
+    sidebarMode?: BuilderBridgeSidebarMode | null;
+}
+
+interface BuilderBridgeSelectionSignatureInput extends BuilderBridgePageIdentity {
+    target: BuilderSelectionMessagePayload | null | undefined;
+}
+
 interface BuilderBridgeDiagnosticInput {
     phase: BuilderBridgeDiagnosticPhase;
     actor: BuilderBridgeRuntimeSource;
@@ -837,6 +848,77 @@ export function inspectBuilderBridgeEnvelope(value: unknown): BuilderBridgeParse
 
 export function parseBuilderBridgeEnvelope(value: unknown): BuilderBridgeMessage | null {
     return inspectBuilderBridgeEnvelope(value).message;
+}
+
+export function builderBridgeMessageEchoesActor(
+    message: BuilderBridgeMessage | null | undefined,
+    actor: BuilderBridgeRuntimeSource,
+): boolean {
+    return Boolean(message && message.source === actor);
+}
+
+export function buildBuilderBridgeVisualStateSignature({
+    pageId = null,
+    pageSlug = null,
+    pageTitle = null,
+    viewport = null,
+    interactionState = null,
+    structureOpen = null,
+    sidebarMode = null,
+}: BuilderBridgeVisualStateSignatureInput): string {
+    return JSON.stringify({
+        type: 'BUILDER_SYNC_STATE',
+        pageId,
+        pageSlug,
+        pageTitle,
+        payload: {
+            viewport,
+            interactionState,
+            structureOpen: typeof structureOpen === 'boolean' ? structureOpen : null,
+            sidebarMode,
+        },
+    });
+}
+
+export function buildBuilderBridgeSelectionSignature({
+    pageId = null,
+    pageSlug = null,
+    pageTitle = null,
+    target,
+}: BuilderBridgeSelectionSignatureInput): string {
+    return JSON.stringify({
+        type: target ? 'BUILDER_SELECT_TARGET' : 'BUILDER_CLEAR_SELECTION',
+        pageId,
+        pageSlug,
+        pageTitle,
+        payload: target
+            ? {
+                pageId: target.pageId ?? null,
+                pageSlug: target.pageSlug ?? null,
+                pageTitle: target.pageTitle ?? null,
+                sectionLocalId: target.sectionLocalId ?? null,
+                sectionKey: target.sectionKey ?? null,
+                componentType: target.componentType ?? null,
+                componentName: target.componentName ?? null,
+                parameterPath: target.parameterPath ?? null,
+                componentPath: target.componentPath ?? null,
+                elementId: target.elementId ?? null,
+                selector: target.selector ?? null,
+                textPreview: target.textPreview ?? null,
+                fieldLabel: target.fieldLabel ?? null,
+                fieldGroup: target.fieldGroup ?? null,
+                builderId: target.builderId ?? null,
+                parentId: target.parentId ?? null,
+                editableFields: Array.isArray(target.editableFields)
+                    ? [...target.editableFields].filter((entry) => typeof entry === 'string').sort()
+                    : [],
+                sectionId: target.sectionId ?? null,
+                instanceId: target.instanceId ?? null,
+                currentBreakpoint: target.currentBreakpoint ?? null,
+                currentInteractionState: target.currentInteractionState ?? null,
+            }
+            : null,
+    });
 }
 
 export function builderBridgeEnvelopeTargetsProject(

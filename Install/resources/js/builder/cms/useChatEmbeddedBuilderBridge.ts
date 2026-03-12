@@ -24,7 +24,6 @@ import {
 import { buildFallbackSectionProps, buildGeneratedPagePath } from '@/builder/cms/chatEmbeddedBuilderUtils';
 import {
     areBuilderEditableTargetsEqual,
-    buildBuilderSelectionMessageSignature,
     buildEditableTargetFromMessagePayload,
     buildSectionScopedEditableTarget,
     editableTargetToMessagePayload,
@@ -35,6 +34,8 @@ import type { ChangeSet } from '@/hooks/useAiSiteEditor';
 import type { PreviewViewport } from '@/components/Preview/PreviewViewportMenu';
 import { buildCanonicalBridgeSelectedTargetPayload } from '@/builder/cms/canonicalSelectionPayload';
 import {
+    buildBuilderBridgeSelectionSignature,
+    buildBuilderBridgeVisualStateSignature,
     buildBuilderClearSelectionMessage,
     buildBuilderDeleteNodeMessage,
     buildBuilderInsertNodeMessage,
@@ -45,6 +46,7 @@ import {
     buildBuilderSelectTargetMessage,
     buildBuilderSyncStateMessage,
     buildBuilderSaveDraftMessage,
+    builderBridgeMessageEchoesActor,
     builderBridgeEnvelopeTargetsProject,
     inspectBuilderBridgeEnvelope,
     logBuilderBridgeDiagnostic,
@@ -154,6 +156,8 @@ export function useChatEmbeddedBuilderBridge({
     t,
 }: UseChatEmbeddedBuilderBridgeOptions): UseChatEmbeddedBuilderBridgeResult {
     const lastSelectionCommandSignatureRef = useRef<string | null>(null);
+    const lastReceivedSidebarVisualStateSignatureRef = useRef<string | null>(null);
+    const lastReceivedSidebarSelectionSignatureRef = useRef<string | null>(null);
     const logChatBridge = useCallback((input: {
         phase: 'send' | 'receive' | 'ignore' | 'drop';
         target?: string | null;
@@ -378,7 +382,9 @@ export function useChatEmbeddedBuilderBridge({
                     sectionKey: selectedPreviewSectionKey ?? matchingItem?.sectionKey ?? null,
                     componentType: selectedPreviewSectionKey ?? matchingItem?.sectionKey ?? null,
                     componentName: matchingItem?.label ?? null,
-                    textPreview: matchingItem ? buildSectionPreviewText(matchingItem.props, matchingItem.previewText) : null,
+                    textPreview: matchingItem
+                        ? buildSectionPreviewText(matchingItem.props, matchingItem.previewText, matchingItem.sectionKey)
+                        : null,
                 }
                 : null,
             currentBreakpoint: previewViewport,
@@ -395,47 +401,57 @@ export function useChatEmbeddedBuilderBridge({
     ]);
 
     const syncEmbeddedBuilderControls = useCallback(() => {
-        postBuilderCommand({
-            type: 'builder:set-viewport',
+        const normalizedSidebarMode = builderPaneMode === 'design-system' ? 'settings' : builderPaneMode;
+        const visualStateSignature = buildBuilderBridgeVisualStateSignature({
+            pageId: activeBuilderPageIdentity.pageId,
+            pageSlug: activeBuilderPageIdentity.pageSlug,
+            pageTitle: activeBuilderPageIdentity.pageTitle,
             viewport: previewViewport,
-        });
-        postBuilderCommand({
-            type: 'builder:set-structure-open',
-            open: isBuilderStructureOpen,
-        });
-        postBuilderCommand({
-            type: 'builder:set-sidebar-mode',
-            mode: builderPaneMode === 'design-system' ? 'settings' : builderPaneMode,
-        });
-        postBuilderCommand({
-            type: 'builder:set-interaction-state',
             interactionState: previewInteractionState,
+            structureOpen: isBuilderStructureOpen,
+            sidebarMode: normalizedSidebarMode,
         });
 
+        if (lastReceivedSidebarVisualStateSignatureRef.current !== visualStateSignature) {
+            postBuilderCommand({
+                type: 'builder:set-viewport',
+                viewport: previewViewport,
+            });
+            postBuilderCommand({
+                type: 'builder:set-structure-open',
+                open: isBuilderStructureOpen,
+            });
+            postBuilderCommand({
+                type: 'builder:set-sidebar-mode',
+                mode: normalizedSidebarMode,
+            });
+            postBuilderCommand({
+                type: 'builder:set-interaction-state',
+                interactionState: previewInteractionState,
+            });
+        }
+
         const selectedTargetPayload = resolveSelectedTargetPayload();
-        let selectionSignature: string;
-        if (selectedTargetPayload) {
-            selectionSignature = JSON.stringify({
-                type: 'BUILDER_SELECT_TARGET',
-                pageId: activeBuilderPageIdentity.pageId ?? null,
-                pageSlug: activeBuilderPageIdentity.pageSlug ?? null,
-                pageTitle: activeBuilderPageIdentity.pageTitle ?? null,
-                payload: buildBuilderSelectionMessageSignature({
-                    ...selectedTargetPayload,
-                    pageId: activeBuilderPageIdentity.pageId,
-                    pageSlug: activeBuilderPageIdentity.pageSlug,
-                    pageTitle: activeBuilderPageIdentity.pageTitle,
-                    currentBreakpoint: previewViewport,
-                    currentInteractionState: previewInteractionState,
-                }),
-            });
-        } else {
-            selectionSignature = JSON.stringify({
-                type: 'BUILDER_CLEAR_SELECTION',
-                pageId: activeBuilderPageIdentity.pageId ?? null,
-                pageSlug: activeBuilderPageIdentity.pageSlug ?? null,
-                pageTitle: activeBuilderPageIdentity.pageTitle ?? null,
-            });
+        const selectionPayload = selectedTargetPayload
+            ? {
+                ...selectedTargetPayload,
+                pageId: activeBuilderPageIdentity.pageId,
+                pageSlug: activeBuilderPageIdentity.pageSlug,
+                pageTitle: activeBuilderPageIdentity.pageTitle,
+                currentBreakpoint: previewViewport,
+                currentInteractionState: previewInteractionState,
+            }
+            : null;
+        const selectionSignature = buildBuilderBridgeSelectionSignature({
+            pageId: activeBuilderPageIdentity.pageId,
+            pageSlug: activeBuilderPageIdentity.pageSlug,
+            pageTitle: activeBuilderPageIdentity.pageTitle,
+            target: selectionPayload,
+        });
+
+        if (selectionSignature === lastReceivedSidebarSelectionSignatureRef.current) {
+            lastSelectionCommandSignatureRef.current = selectionSignature;
+            return;
         }
 
         if (lastSelectionCommandSignatureRef.current !== selectionSignature) {
@@ -521,7 +537,7 @@ export function useChatEmbeddedBuilderBridge({
             return;
         }
 
-        const handleEmbeddedBuilderMessage = (event: MessageEvent) => {
+    const handleEmbeddedBuilderMessage = (event: MessageEvent) => {
             if (event.origin !== window.location.origin) {
                 logChatBridge({
                     phase: 'ignore',
@@ -538,6 +554,16 @@ export function useChatEmbeddedBuilderBridge({
                     phase: 'ignore',
                     target: 'chat',
                     reason: parsedEnvelope.error ?? 'invalid-envelope',
+                });
+                return;
+            }
+
+            if (builderBridgeMessageEchoesActor(payload, 'chat')) {
+                logChatBridge({
+                    phase: 'ignore',
+                    target: 'chat',
+                    message: payload,
+                    reason: 'self-origin',
                 });
                 return;
             }
@@ -591,6 +617,25 @@ export function useChatEmbeddedBuilderBridge({
             );
 
             if (payload.type === 'BUILDER_SYNC_STATE') {
+                lastReceivedSidebarVisualStateSignatureRef.current = buildBuilderBridgeVisualStateSignature({
+                    pageId: payload.pageId ?? activeBuilderPageIdentity.pageId,
+                    pageSlug: payload.pageSlug ?? activeBuilderPageIdentity.pageSlug,
+                    pageTitle: payload.pageTitle ?? activeBuilderPageIdentity.pageTitle,
+                    viewport: payload.payload.viewport ?? previewViewport,
+                    interactionState: payload.payload.interactionState ?? previewInteractionState,
+                    structureOpen: typeof payload.payload.structureOpen === 'boolean'
+                        ? payload.payload.structureOpen
+                        : isBuilderStructureOpen,
+                    sidebarMode: payload.payload.sidebarMode ?? (builderPaneMode === 'design-system' ? 'settings' : builderPaneMode),
+                });
+                if (payload.payload.selectedTarget) {
+                    lastReceivedSidebarSelectionSignatureRef.current = buildBuilderBridgeSelectionSignature({
+                        pageId: payload.pageId ?? activeBuilderPageIdentity.pageId,
+                        pageSlug: payload.pageSlug ?? activeBuilderPageIdentity.pageSlug,
+                        pageTitle: payload.pageTitle ?? activeBuilderPageIdentity.pageTitle,
+                        target: payload.payload.selectedTarget,
+                    });
+                }
                 if (builderPayloadIsStale) {
                     logChatBridge({
                         phase: 'ignore',
@@ -615,10 +660,7 @@ export function useChatEmbeddedBuilderBridge({
                 }
 
                 if (typeof payload.payload.structureOpen === 'boolean' && payload.payload.structureOpen !== isBuilderStructureOpen) {
-                    postBuilderCommand({
-                        type: 'builder:set-structure-open',
-                        open: isBuilderStructureOpen,
-                    });
+                    setIsBuilderStructureOpen(payload.payload.structureOpen);
                 }
 
                 if (payload.payload.draftSaveState) {
@@ -751,6 +793,8 @@ export function useChatEmbeddedBuilderBridge({
                                 ...selectedBuilderTarget,
                                 sectionKey: nextItem.sectionKey,
                                 componentType: nextItem.sectionKey,
+                                componentName: nextItem.label,
+                                textPreview: buildSectionPreviewText(nextItem.props, nextItem.previewText, nextItem.sectionKey),
                                 props: nextItem.props,
                             };
                         })()
@@ -776,6 +820,21 @@ export function useChatEmbeddedBuilderBridge({
             }
 
             if (payload.type === 'BUILDER_SELECT_TARGET') {
+                lastReceivedSidebarSelectionSignatureRef.current = buildBuilderBridgeSelectionSignature({
+                    pageId: payload.pageId ?? activeBuilderPageIdentity.pageId,
+                    pageSlug: payload.pageSlug ?? activeBuilderPageIdentity.pageSlug,
+                    pageTitle: payload.pageTitle ?? activeBuilderPageIdentity.pageTitle,
+                    target: payload.payload.target
+                        ? {
+                            ...payload.payload.target,
+                            pageId: payload.pageId ?? activeBuilderPageIdentity.pageId,
+                            pageSlug: payload.pageSlug ?? activeBuilderPageIdentity.pageSlug,
+                            pageTitle: payload.pageTitle ?? activeBuilderPageIdentity.pageTitle,
+                            currentBreakpoint: payload.payload.target.currentBreakpoint ?? previewViewport,
+                            currentInteractionState: payload.payload.target.currentInteractionState ?? previewInteractionState,
+                        }
+                        : null,
+                });
                 if (builderPayloadIsStale) {
                     logChatBridge({
                         phase: 'ignore',
@@ -809,6 +868,19 @@ export function useChatEmbeddedBuilderBridge({
                 } else {
                     setBuilderPaneMode(nextTarget ? 'settings' : 'elements');
                 }
+                return;
+            }
+
+            if (payload.type === 'BUILDER_CLEAR_SELECTION') {
+                lastReceivedSidebarSelectionSignatureRef.current = buildBuilderBridgeSelectionSignature({
+                    pageId: payload.pageId ?? activeBuilderPageIdentity.pageId,
+                    pageSlug: payload.pageSlug ?? activeBuilderPageIdentity.pageSlug,
+                    pageTitle: payload.pageTitle ?? activeBuilderPageIdentity.pageTitle,
+                    target: null,
+                });
+                clearBuilderSelection();
+                setActiveLibraryItem(null);
+                setBuilderPaneMode('elements');
                 return;
             }
 
@@ -932,6 +1004,8 @@ export function useChatEmbeddedBuilderBridge({
         lastBuilderSnapshotSignatureRef.current = null;
         latestBuilderStateCursorRef.current = null;
         lastSelectionCommandSignatureRef.current = null;
+        lastReceivedSidebarVisualStateSignatureRef.current = null;
+        lastReceivedSidebarSelectionSignatureRef.current = null;
         markBuilderSidebarReady(false);
     }, [
         activeBuilderPageIdentity.pageId,
@@ -939,6 +1013,8 @@ export function useChatEmbeddedBuilderBridge({
         lastBuilderReadySignatureRef,
         lastBuilderSnapshotSignatureRef,
         lastSelectionCommandSignatureRef,
+        lastReceivedSidebarSelectionSignatureRef,
+        lastReceivedSidebarVisualStateSignatureRef,
         latestBuilderStateCursorRef,
         markBuilderSidebarReady,
         setPendingBuilderStructureMutation,

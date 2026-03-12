@@ -130,4 +130,125 @@ describe('useEmbeddedBuilderBridge', () => {
             placement: 'after',
         }), expect.any(Function));
     });
+
+    it('applies chat visual sync once without echoing the same sync state back to chat', () => {
+        const postMessage = vi.fn();
+        Object.defineProperty(window, 'parent', {
+            configurable: true,
+            value: { postMessage },
+        });
+
+        let options = buildOptions({
+            isEmbeddedVisualBuilder: true,
+            builderViewport: 'desktop',
+            builderInteractionState: 'normal',
+            isStructurePanelCollapsed: false,
+        });
+
+        const { rerender } = renderHook(() => useEmbeddedBuilderBridge(options));
+        postMessage.mockClear();
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: {
+                type: 'BUILDER_SYNC_STATE',
+                source: 'chat',
+                projectId: 'project-1',
+                requestId: 'req-chat-sync-1',
+                timestamp: Date.now(),
+                version: 1,
+                payload: {
+                    viewport: 'mobile',
+                    interactionState: 'hover',
+                    structureOpen: false,
+                },
+            },
+        }));
+
+        expect(options.onSetViewport).toHaveBeenCalledWith('mobile');
+        expect(options.onSetInteractionState).toHaveBeenCalledWith('hover');
+        expect(options.onSetStructureOpen).toHaveBeenCalledWith(false);
+
+        options = {
+            ...options,
+            builderViewport: 'mobile',
+            builderInteractionState: 'hover',
+            isStructurePanelCollapsed: true,
+        };
+        rerender();
+
+        expect(postMessage.mock.calls.some(([message]) => (
+            message?.type === 'BUILDER_SYNC_STATE'
+            && (
+                message?.payload?.viewport === 'mobile'
+                || message?.payload?.interactionState === 'hover'
+                || message?.payload?.structureOpen === false
+            )
+        ))).toBe(false);
+    });
+
+    it('does not echo chat selection back after local state updates from the same inbound envelope', () => {
+        const postMessage = vi.fn();
+        Object.defineProperty(window, 'parent', {
+            configurable: true,
+            value: { postMessage },
+        });
+
+        const target = {
+            targetId: 'hero-1::section',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: null,
+            elementId: null,
+            selector: '[data-webu-section-local-id="hero-1"]',
+            textPreview: 'Hero',
+            props: { headline: 'Hello' },
+        };
+        let options = buildOptions({
+            isEmbeddedVisualBuilder: true,
+        });
+
+        const { rerender } = renderHook(() => useEmbeddedBuilderBridge(options));
+        postMessage.mockClear();
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: {
+                type: 'BUILDER_SELECT_TARGET',
+                source: 'chat',
+                projectId: 'project-1',
+                requestId: 'req-chat-select-1',
+                timestamp: Date.now(),
+                version: 1,
+                payload: {
+                    target: {
+                        sectionLocalId: 'hero-1',
+                        sectionKey: 'webu_general_hero_01',
+                        componentType: 'webu_general_hero_01',
+                        componentName: 'Hero',
+                        textPreview: 'Hero',
+                        props: { headline: 'Hello' },
+                        currentBreakpoint: 'desktop',
+                        currentInteractionState: 'normal',
+                    },
+                },
+            },
+        }));
+
+        expect(options.onSetSelectedTarget).toHaveBeenCalledWith(expect.objectContaining({
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+        }));
+
+        options = {
+            ...options,
+            selectedSectionLocalId: 'hero-1',
+            selectedBuilderTarget: target,
+        };
+        rerender();
+
+        expect(postMessage.mock.calls.some(([message]) => message?.type === 'BUILDER_SELECT_TARGET')).toBe(false);
+    });
 });
