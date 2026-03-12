@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["type", "props", "bindings", "meta"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "type": "string" },
+    "props": {
+      "type": "object",
+      "required": ["content", "data", "style", "advanced", "responsive", "states"],
+      "properties": {
+        "content": {}, "data": {}, "style": {}, "advanced": {}, "responsive": {}, "states": {}
+      }
+    },
+    "bindings": { "type": "object" },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "type": "integer" }
+      }
+    }
+  }
+}

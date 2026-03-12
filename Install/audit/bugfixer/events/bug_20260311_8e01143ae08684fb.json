@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260311_8e01143ae08684fb",
+    "timestamp": "2026-03-11T23:41:17+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cdf23-5316-707f-9cbb-03851fd40711?debug=inspect&tab=inspect",
+    "event": "[console.warn] [WebuInspectLifecycle] handleInspectClick {\"clientX\":1048,\"clientY\":311,\"elementAtPoint\":null,\"section\":null,\"mention\":null}",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "8e01143ae08684fb",
+    "frequency": 1
+}

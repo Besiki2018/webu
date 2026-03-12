@@ -1,0 +1,16 @@
+{
+  "section_type": "cta",
+  "cms_fields": [
+    { "key": "title", "label": "Title", "type": "text" },
+    { "key": "button_text", "label": "Button text", "type": "text" },
+    { "key": "button_link", "label": "Button link", "type": "link" }
+  ],
+  "content_json": {
+    "title": "Ready to get started?",
+    "button_text": "Contact us",
+    "button_link": "/contact"
+  },
+  "style_json": {
+    "alignment": "center"
+  }
+}

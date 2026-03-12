@@ -1,0 +1,48 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_product_detail_01",
+  "label": "Product detail",
+  "bindings": {
+    "source": "product_by_slug",
+    "slugParam": "slug"
+  },
+  "content": {
+    "description": { "type": "string", "title": "Product description" },
+    "product": {
+      "type": "object",
+      "title": "Product",
+      "properties": {
+        "name": { "type": "string", "title": "Product name" },
+        "sku": { "type": "string", "title": "SKU" },
+        "stock_text": { "type": "string", "title": "Stock text" },
+        "price": { "type": "string", "title": "Price" },
+        "old_price": { "type": "string", "title": "Old price" },
+        "slug": { "type": "string", "title": "Slug" }
+      }
+    },
+    "highlights": {
+      "type": "array",
+      "title": "Highlights",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "value": { "type": "string", "title": "Value" }
+        }
+      }
+    },
+    "product_slug": { "type": "string", "title": "Product slug (or {{route.params.slug}})" },
+    "add_to_cart_label": { "type": "string", "title": "Add to cart label" },
+    "show_specs": { "type": "boolean", "title": "Show specs table" },
+    "show_shipping_returns": { "type": "boolean", "title": "Show shipping & returns" }
+  },
+  "style": {
+    "desktop": { "paddingTop": "string", "paddingBottom": "string", "layout": "string" },
+    "tablet": { "paddingTop": "string", "paddingBottom": "string" },
+    "mobile": { "paddingTop": "string", "paddingBottom": "string" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" },
+    "sticky_buybox": { "type": "boolean", "title": "Sticky buy box" }
+  }
+}

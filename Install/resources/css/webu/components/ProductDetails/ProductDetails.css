@@ -1,0 +1,65 @@
+/**
+ * Webu Product Details — გვერდი ერთი პროდუქტისთვის (სურათი, სახელი, ფასი, აღწერა).
+ * Root: .webu-product-details
+ */
+
+.webu-product-details {
+  max-width: var(--container-width);
+  margin: 0 auto;
+  padding: 3rem 1rem;
+}
+
+.webu-product-details__grid {
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 768px) {
+  .webu-product-details__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.webu-product-details__image-wrap {
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-muted);
+}
+.webu-product-details__image-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.webu-product-details__body {
+  display: flex;
+  flex-direction: column;
+}
+.webu-product-details__body .webu-product-card__badge {
+  position: static;
+  display: inline-block;
+}
+
+.webu-product-details__title {
+  font-size: var(--heading-section);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.webu-product-details__price {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.webu-product-details__description {
+  color: var(--color-muted);
+  line-height: var(--line-height-normal);
+}
+
+.webu-product-details__actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_add_to_cart_button_01",
+  "label": "Add to cart button",
+  "description": "Quantity and button labels editable in builder.",
+  "content": {
+    "quantity_label": { "type": "string", "title": "Quantity label" },
+    "quantity_default": { "type": "integer", "title": "Default quantity", "default": 1 },
+    "add_to_cart_label": { "type": "string", "title": "Add to cart label" },
+    "wishlist_label": { "type": "string", "title": "Wishlist button label" }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

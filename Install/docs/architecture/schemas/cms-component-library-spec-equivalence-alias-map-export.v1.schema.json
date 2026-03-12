@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "stats", "fingerprints", "mappings"],
+  "properties": {
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "source_spec_ref", "gap_audit_ref", "coverage_status", "mapping_count"],
+      "properties": {
+        "version": { "const": "v1" },
+        "source_spec_ref": { "type": "string" },
+        "gap_audit_ref": { "const": "Install/docs/qa/UNIVERSAL_COMPONENT_LIBRARY_SPEC_COMPONENT_COVERAGE_GAP_AUDIT_BASELINE.md" },
+        "coverage_status": { "const": "complete_exact_plus_equivalent" },
+        "mapping_count": { "const": 70 }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows", "coverage_breakdown", "rows_with_multiple_canonical_keys", "max_canonical_keys_per_row", "distinct_canonical_builder_key_count", "composite_alias_rows"],
+      "properties": {
+        "rows": { "const": 70 },
+        "coverage_breakdown": { "type": "object" },
+        "rows_with_multiple_canonical_keys": { "type": "integer" },
+        "max_canonical_keys_per_row": { "type": "integer" },
+        "distinct_canonical_builder_key_count": { "type": "integer" },
+        "composite_alias_rows": { "type": "integer" }
+      }
+    },
+    "fingerprints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "map_fingerprint", "schema_fingerprint", "export_schema_fingerprint", "export_content_fingerprint", "artifact_bundle_fingerprint"],
+      "properties": {
+        "ok": { "const": true },
+        "map_fingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "schema_fingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "export_schema_fingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "export_content_fingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "artifact_bundle_fingerprint": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "mappings": {
+      "type": "array",
+      "minItems": 70,
+      "items": { "$ref": "#/$defs/mappingRow" }
+    }
+  },
+  "$defs": {
+    "mappingRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_component_key", "coverage", "canonical_builder_keys"],
+      "properties": {
+        "source_component_key": {
+          "type": "string",
+          "pattern": "^[a-z]+\\.[a-zA-Z][\\w]*$"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": ["exact", "equivalent", "partial", "missing"]
+        },
+        "canonical_builder_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

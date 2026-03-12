@@ -1,0 +1,28 @@
+{
+    "The :attribute field is required.": "Поле :attribute обязательно.",
+    "The :attribute must be unique.": ":attribute должно быть уникальным.",
+    "The :attribute must be a valid email address.": ":attribute должно быть действительным адресом электронной почты.",
+    "The :attribute must be at least :min characters.": ":attribute должно быть не менее :min символов.",
+    "The :attribute must not be greater than :max characters.": ":attribute не должно быть более :max символов.",
+    "The :attribute confirmation does not match.": "Подтверждение :attribute не совпадает.",
+    "The :attribute has already been taken.": ":attribute уже занято.",
+    "The :attribute format is invalid.": "Формат :attribute недействителен.",
+    "The :attribute must be a number.": ":attribute должно быть числом.",
+    "The :attribute must be an integer.": ":attribute должно быть целым числом.",
+    "The :attribute must be a valid URL.": ":attribute должно быть действительным URL.",
+    "The :attribute must be a valid date.": ":attribute должно быть действительной датой.",
+    "The :attribute must be a file of type: :values.": ":attribute должно быть файлом типа: :values",
+    "The :attribute must not be greater than :max kilobytes.": ":attribute не должно быть более :max килобайт.",
+    "The selected :attribute is invalid.": "Выбранное :attribute недействительно.",
+    "The :attribute must be accepted.": ":attribute должно быть принято.",
+    "The :attribute must be a valid JSON string.": ":attribute должно быть действительной JSON-строкой.",
+
+    "This field is required": "Это поле обязательно",
+    "Invalid email address": "Неверный адрес электронной почты",
+    "Password is too short": "Пароль слишком короткий",
+    "Passwords do not match": "Пароли не совпадают",
+    "Invalid value": "Неверное значение",
+    "Please select an option": "Пожалуйста, выберите опцию",
+    "File too large": "Файл слишком большой",
+    "Invalid file type": "Неверный тип файла"
+}

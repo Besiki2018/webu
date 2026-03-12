@@ -1,0 +1,37 @@
+/**
+ * Webu Banner / CTA — ცენტრალური ბლოკი, ოფციონალური ფონის სურათი.
+ * Root: .webu-banner | With image: .webu-banner--has-bg (--webu-banner-bg)
+ */
+
+.webu-banner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 5rem 1.5rem;
+  text-align: center;
+  border-radius: var(--radius-lg);
+  background: var(--color-accent);
+}
+@media (min-width: 768px) {
+  .webu-banner {
+    padding: 7rem 1.5rem;
+  }
+}
+
+.webu-banner__inner {
+  position: relative;
+  z-index: 10;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+  text-align: center;
+}
+
+.webu-banner--has-bg {
+  background-image: var(--webu-banner-bg);
+  background-size: cover;
+  background-position: center;
+}

@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_95aa935aafd72d23",
+    "timestamp": "2026-03-07T10:37:13+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce7-ac45-711a-9e9e-1c53bcac527e?tab=inspect",
+    "event": "[console.error] Failed to fetch notifications: Request failed with status code 401\nAxiosError: Request failed with status code 401\n    at settle (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-6FQ6SF2D.js?v=ee191eb0:1257:12)\n    at XMLHttpRequest.onloadend (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-6FQ6SF2D.js?v=ee191eb0:1606:7)\n    at Axios.request (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-6FQ6SF2D.js?v=ee191eb0:2223:41)\n    at async http:\/\/[::1]:5174\/resources\/js\/hooks\/useNotifications.ts:12:24",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "95aa935aafd72d23",
+    "frequency": 1
+}

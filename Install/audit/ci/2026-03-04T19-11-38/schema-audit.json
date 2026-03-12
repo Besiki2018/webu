@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "timestamp": "2026-03-04T19:12:52.551Z",
+  "schemas": {
+    "SitePlan": {
+      "present": true,
+      "hasValidation": true,
+      "note": "Custom parser (no Zod); used before render/save"
+    },
+    "ChangeSet (AI ops)": {
+      "present": true,
+      "hasValidation": true,
+      "note": "Zod schemas for AI edit operations"
+    }
+  },
+  "errors": []
+}

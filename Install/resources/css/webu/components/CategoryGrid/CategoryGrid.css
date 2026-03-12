@@ -1,0 +1,16 @@
+/**
+ * Webu Category Grid — სექცია კატეგორიების ბადით (.webu-grid იმპორტირებულია layout-დან).
+ * Root: .webu-section.webu-category-gallery
+ */
+
+.webu-category-gallery {
+  max-width: var(--container-width);
+  margin: 0 auto;
+  padding: var(--section-spacing) 1rem;
+}
+
+.webu-category-gallery__title {
+  font-size: var(--heading-section);
+  font-weight: 600;
+  color: var(--color-text);
+}

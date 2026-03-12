@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260304_bbd5c147ccc93355",
+    "timestamp": "2026-03-04T21:23:51+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/create",
+    "event": "[console.error] Warning: You are calling ReactDOMClient.createRoot() on a container that has already been passed to createRoot() before. Instead, call root.render() on the existing root instead if you want to update it.",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "bbd5c147ccc93355",
+    "frequency": 4
+}

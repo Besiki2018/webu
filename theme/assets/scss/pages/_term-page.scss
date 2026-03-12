@@ -1,0 +1,32 @@
+/*-------------------------------------------------
+  Terms-Condition Page CSS
+---------------------------------------------------*/
+// Utilities ( Import Utilities )
+@use "utilities/_variables";
+@use "utilities/_mixins";
+
+.terms_condition_page {
+	.ec-common-wrapper {
+		padding: 30px;
+		border: 1px solid variables.$border-color-4;
+		max-width: 1140px;
+		margin: 0 auto;
+		background-color: variables.$card-bg-white;
+	}
+
+	.ec-cms-block {
+		p {
+			margin-bottom: 29px;
+
+			b {
+				font-weight: 500;
+			}
+		}
+
+		&:last-child {
+			p {
+				margin-bottom: 0;
+			}
+		}
+	}
+}

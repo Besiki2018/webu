@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80" width="220" height="80" role="img" aria-label="Demo logo 4">
+  <rect width="220" height="80" rx="16" fill="#f8fafc"/>
+  <circle cx="36" cy="40" r="16" fill="#0ea5e9"/>
+  <text x="64" y="47" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#0f172a">Brand 4</text>
+</svg>

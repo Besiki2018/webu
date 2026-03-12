@@ -1,0 +1,26 @@
+{
+  "hero_headlines": [
+    "Beauty Salon",
+    "Professional Care",
+    "Relax and Refresh",
+    "Your Beauty Partner",
+    "Style and Wellness Center"
+  ],
+  "about_lines": [
+    "We create beauty and comfort.",
+    "Years of experience and quality.",
+    "Individual approach for every client.",
+    "Our goal is your satisfaction."
+  ],
+  "cta_labels": [
+    "Book now",
+    "Contact us",
+    "About us",
+    "Services"
+  ],
+  "service_descriptions": [
+    "Full range of services.",
+    "Professional stylists.",
+    "Quality products."
+  ]
+}

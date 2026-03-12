@@ -1,0 +1,232 @@
+/*-------------------------------------------------
+  Contact Page CSS
+---------------------------------------------------*/
+// Utilities ( Import Utilities )
+@use "utilities/_variables";
+@use "utilities/_mixins";
+
+.ec-contact-leftside {
+	max-width: 568px;
+	padding-right: 15px;
+	float: variables.$floatleft;
+	margin: 0 auto;
+}
+
+.ec-contact-rightside {
+	max-width: calc(100% - 568px);
+	padding-left: 15px;
+	float: variables.$floatleft;
+	margin: 0 auto;
+	width: variables.$width-100;
+}
+
+.ec-contact-container {
+	padding: 30px;
+	background-color: variables.$card-bg-white;
+	border: 1px solid variables.$border-color-4;
+	text-align: variables.$textleft;
+
+	.ec-contact-form {
+		.ec-contact-wrap {
+			width: variables.$width-100;
+			padding: 0 15px;
+		}
+
+		.ec-contact-wrap.ec-contact-half {
+			width: 50%;
+		}
+
+		form {
+			display: flex;
+			flex-flow: row wrap;
+			margin: 0 -15px;
+		}
+
+		label {
+			margin-bottom: 9px;
+			color: variables.$main-text-color;
+			font-size: 14px;
+			font-weight: 500;
+			letter-spacing: 0;
+			line-height: 1;
+		}
+
+		input {
+			background-color: transparent;
+			border: 1px solid variables.$border-color-4;
+			color: variables.$main-text-color;
+			font-size: variables.$fontsize-14px;
+			margin-bottom: 27px;
+			padding: 0 15px;
+			width: variables.$width-100;
+			outline: none;
+
+			&::placeholder {
+				color: variables.$text-color-777;
+			}
+
+			&::-ms-input-placeholder {
+				color: variables.$text-color-777;
+			}
+		}
+
+		textarea {
+			background-color: transparent;
+			border: 1px solid variables.$border-color-4;
+			color: variables.$main-text-color;
+			font-size: variables.$fontsize-14px;
+			margin-bottom: 27px;
+			padding: 0 15px;
+			width: variables.$width-100;
+			outline: none;
+			padding-top: 14px;
+			min-height: 150px;
+
+			&::placeholder {
+				color: variables.$text-color-777;
+			}
+
+			&::-ms-input-placeholder {
+				color: variables.$text-color-777;
+			}
+		}
+
+		.ec-contact-fp {
+			label {
+				margin-bottom: 0;
+
+				a {
+					color: variables.$main-text-color;
+					font-size: variables.$fontsize-14px;
+					font-weight: variables.$font-weight-600;
+					letter-spacing: 0px;
+				}
+			}
+		}
+
+		.ec-rg-select-inner {
+			position: variables.$relative;
+			display: flex;
+			width: variables.$width-100;
+			height: 50px;
+			border-radius: 0;
+			border: 1px solid #ededed !important;
+			font-size: variables.$fontsize-14px;
+			padding: 0;
+			margin-bottom: 27px;
+
+			select {
+				padding: 0 15px;
+			}
+
+			&::after {
+				content: '\f107';
+				position: variables.$absolute;
+				font-family: variables.$EcIcons;
+				top: 0;
+				right: 0;
+				padding: 0 10px;
+				cursor: pointer;
+				pointer-events: none;
+				font-size: 24px;
+				display: flex;
+				height: 50px;
+				line-height: 1;
+				justify-content: center;
+				align-items: variables.$textcenter;
+				color: variables.$main-second-text-color;
+			}
+		}
+
+		.ec-contact-wrap.ec-recaptcha {
+			display: flex;
+		}
+
+		.ec-contact-btn {
+			display: flex;
+		}
+
+		.btn {
+			cursor: pointer;
+			font-size: 13px;
+			font-weight: 500;
+			line-height: 1;
+			padding: 0 15px;
+			text-transform: variables.$uppercase;
+			transition: all 0.3s ease 0s;
+			outline: none;
+			border-radius: 0px;
+			width: 150px;
+			display: flex;
+			justify-content: center;
+			align-items: variables.$textcenter;
+		}
+	}
+}
+
+.ec_contact_info {
+	max-width: 375px;
+	margin-top: 30px;
+	background-color: variables.$card-bg-white;
+
+	.ec_contact_info_head {
+		font-family: 'Montserrat';
+		font-size: 20px;
+		font-weight: 600;
+		margin-bottom: 19px;
+		color: variables.$footer-heading-color;
+		letter-spacing: 0.6px;
+		position: variables.$relative;
+	}
+}
+
+li.ec-contact-item {
+	display: flex;
+	margin: 0;
+	line-height: 26px;
+	border: 0;
+	padding: 0;
+	font-weight: variables.$font-weight-400;
+	font-size: 14px;
+	color: variables.$main-second-text-color;
+	margin-bottom: 9px;
+
+	+ {
+		.ec-contact-item {
+			margin-bottom: 18px;
+		}
+	}
+
+	&:last-child {
+		margin-bottom: 0;
+	}
+
+	a {
+		color: variables.$main-second-text-color;
+	}
+
+	span {
+		font-size: 15px;
+		color: variables.$main-text-color;
+		font-weight: 500;
+		min-width: 74px;
+	}
+}
+
+.ec-contact-item {
+	i {
+		min-width: 20px;
+		font-size: variables.$fontsize-20px;
+		color: variables.$main-primary-color;
+		margin-right: 11px;
+	}
+}
+
+.ec_map_canvas {
+	iframe {
+		overflow: hidden;
+		background: none !important;
+		height: 500px;
+		width: variables.$width-100;
+	}
+}

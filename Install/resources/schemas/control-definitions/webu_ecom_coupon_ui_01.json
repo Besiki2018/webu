@@ -1,0 +1,12 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_coupon_ui_01",
+  "label": "Coupon UI",
+  "description": "Coupon field and button labels editable in builder.",
+  "content": {
+    "coupon_label": { "type": "string", "title": "Coupon label" },
+    "coupon_preview": { "type": "string", "title": "Coupon placeholder / preview" },
+    "apply_label": { "type": "string", "title": "Apply button label" }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

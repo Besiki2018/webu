@@ -1,0 +1,12 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_general_text_01",
+  "label": "Text block",
+  "description": "Rich text. Content editable in builder.",
+  "content": {
+    "body": { "type": "string", "title": "Body text" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

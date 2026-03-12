@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_7cd7e584f1b3d30d",
+    "timestamp": "2026-03-07T10:55:43+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc",
+    "event": "[console.error] [vite] The requested module '\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=ee191eb0' does not provide an export named 'useRouter'\nSyntaxError: The requested module '\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=ee191eb0' does not provide an export named 'useRouter'",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "7cd7e584f1b3d30d",
+    "frequency": 1
+}

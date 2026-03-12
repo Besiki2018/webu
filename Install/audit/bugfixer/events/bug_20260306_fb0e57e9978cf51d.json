@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_fb0e57e9978cf51d",
+    "timestamp": "2026-03-06T20:34:54+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc?tab=inspect",
+    "event": "[console.warn] [WebuInspect] hit layer mounted width= 1085.8046875 height= 700.5",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "fb0e57e9978cf51d",
+    "frequency": 36
+}

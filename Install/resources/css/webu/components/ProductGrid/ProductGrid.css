@@ -1,0 +1,68 @@
+/**
+ * Webu Product Grid — სექცია + ბადე 2/3/4 სვეტი.
+ * Root: .webu-product-grid-section, .webu-product-grid | Modifiers: .webu-product-grid--2, --3, --4
+ */
+
+.webu-product-grid-section {
+  max-width: var(--container-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding: 3rem 1rem;
+}
+
+.webu-product-grid-section__title {
+  font-size: var(--text-2xl, 1.5rem);
+  font-weight: 600;
+  margin-bottom: 2rem;
+}
+
+.webu-product-grid-section__filters {
+  margin-bottom: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.webu-product-grid-section__pagination {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.webu-product-grid-section__pagination-label {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.webu-product-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.webu-product-grid--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.webu-product-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.webu-product-grid--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 1024px) {
+  .webu-product-grid--3,
+  .webu-product-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .webu-product-grid--2,
+  .webu-product-grid--3,
+  .webu-product-grid--4 {
+    grid-template-columns: 1fr;
+  }
+}

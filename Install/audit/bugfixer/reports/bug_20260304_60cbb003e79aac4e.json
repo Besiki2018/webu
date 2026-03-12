@@ -1,0 +1,9 @@
+{
+  "bugId": "bug_20260304_60cbb003e79aac4e",
+  "status": "fixed",
+  "timestamp": "2026-03-04T23:55:36.891Z",
+  "resolution": "manually_resolved",
+  "sourceSeverity": "high",
+  "sourceRoute": "/create",
+  "note": "Resolved during admin bugfixer bulk cleanup."
+}

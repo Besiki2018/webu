@@ -1,0 +1,14 @@
+{
+  "section_type": "features",
+  "cms_fields": [
+    { "key": "heading", "label": "Heading", "type": "text" },
+    { "key": "items", "label": "Features", "type": "repeater" }
+  ],
+  "content_json": {
+    "heading": "What we offer",
+    "items": []
+  },
+  "style_json": {
+    "columns": 3
+  }
+}

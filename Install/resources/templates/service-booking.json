@@ -1,0 +1,38 @@
+{
+  "name": "Service Booking Business",
+  "theme_preset": "corporate_clean",
+  "default_pages": [
+    {
+      "slug": "home",
+      "title": "Home",
+      "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "Professional Services", "subtitle": "Book your appointment online.", "layout_variant": "centered", "style_variant": "minimal" } },
+        { "key": "webu_general_text_01", "props": { "title": "Our Services", "body": "We offer a range of services. Use the booking page to schedule." } },
+        { "key": "webu_general_heading_01", "props": { "headline": "How It Works" } }
+      ]
+    },
+    {
+      "slug": "services",
+      "title": "Services",
+      "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "Services We Offer" } },
+        { "key": "webu_general_text_01", "props": { "title": "Service list", "body": "View and book services below." } }
+      ]
+    },
+    {
+      "slug": "booking",
+      "title": "Book Now",
+      "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "Book an Appointment" } }
+      ]
+    },
+    {
+      "slug": "contact",
+      "title": "Contact",
+      "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "Contact Us" } },
+        { "key": "webu_general_text_01", "props": { "title": "Get in touch", "body": "Reach out for questions or support." } }
+      ]
+    }
+  ]
+}

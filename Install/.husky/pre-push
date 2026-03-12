@@ -1,0 +1,9 @@
+#!/bin/sh
+# Release Gate — runs before push. Bypass with: SKIP_RELEASE_GATE=1 git push
+if [ -n "$SKIP_RELEASE_GATE" ]; then
+  echo "[husky] Skipping release gate (SKIP_RELEASE_GATE is set)"
+  exit 0
+fi
+dir="."
+[ -d Install ] && dir="Install"
+(cd "$dir" && npm run release:gate)

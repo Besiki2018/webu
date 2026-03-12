@@ -1,0 +1,157 @@
+/*-------------------------------------------------
+  Testimonial Section CSS
+---------------------------------------------------*/
+// Utilities ( Import Utilities )
+@use "utilities/_variables";
+@use "utilities/_mixins";
+
+section.ec-test-section {
+	background: #f9f9f9;
+}
+
+.ec-test-section {
+	.ec-test-inner {
+		max-width: 730px;
+		margin: 0 auto;
+		cursor: pointer;
+	}
+
+	.ec-test-item {
+		max-width: 1140px;
+		margin: 0 auto;
+		background: variables.$white-color;
+		padding: 29px 25px;
+		position: variables.$relative;
+		border: 1px solid variables.$border-color-1;
+	}
+
+	.slick-slide {
+		padding: 27px 0;
+	}
+
+	.ec-test-desc {
+		font-size: 15px;
+		color: variables.$main-second-text-color;
+		line-height: 26px;
+		letter-spacing: 0;
+		margin-bottom: 15px;
+	}
+
+	.ec-test-content {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.ec-test-name {
+		font-family: 'Montserrat';
+		font-size: 22px;
+		font-weight: 600;
+		margin-bottom: 6px;
+		color: variables.$main-primary-color;
+		letter-spacing: 0.6px;
+		line-height: 1.2;
+	}
+
+	.ec-test-designation {
+		font-size: variables.$fontsize-16px;
+		color: variables.$main-text-color;
+		line-height: 1.2;
+		letter-spacing: 0.5px;
+		margin-bottom: 8px;
+	}
+
+	.ec-test-rating {
+		i {
+			font-size: 11px;
+			margin: 0 0.5px;
+		}
+
+		margin: 0 auto;
+	}
+
+	.slick-dots {
+		display: flex;
+		justify-content: center;
+		align-items: variables.$textcenter;
+
+		li {
+			width: 100px;
+			background-color: variables.$white-color;
+			border: 3px solid variables.$main-secondary-color;
+			border-radius: 100%;
+			-webkit-border-radius: 100%;
+			-moz-border-radius: 100%;
+			-ms-border-radius: 100%;
+			-o-border-radius: 100%;
+			display: inline-block;
+			height: 100px;
+			overflow: hidden;
+			position: variables.$relative;
+			cursor: pointer;
+			transform: scale(0.7);
+			transition: all 0.3s ease 0s;
+			opacity: 0.5;
+
+			&:hover {
+				margin: 0 15px;
+				transform: scale(1);
+				opacity: 1;
+			}
+
+			img {
+				max-width: variables.$width-100;
+			}
+		}
+
+		li.slick-active {
+			margin: 0 15px;
+			transform: scale(1);
+			opacity: 1;
+		}
+	}
+}
+
+#ec-testimonial-slider {
+	text-align: variables.$textcenter;
+}
+
+.ec-test-inner {
+	.ec-test-img {
+		display: none;
+	}
+}
+
+.svg_img.test_svg,
+.fi-rr-quote-right {
+	position: variables.$absolute;
+	width: 45px;
+	height: auto;
+	fill: variables.$main-secondary-color;
+}
+
+.svg_img.test_svg.top {
+	top: -24px;
+	left: 63px;
+	right: auto;
+}
+
+.fi-rr-quote-right.top {
+	top: -38px;
+	left: 63px;
+	right: auto;
+	font-size: 41px;
+	transform: rotate(180deg);
+}
+
+.svg_img.test_svg.bottom {
+	bottom: -27px;
+	right: 88px;
+	left: auto;
+}
+
+.fi-rr-quote-right.bottom {
+	bottom: -38px;
+	right: 88px;
+	left: auto;
+	font-size: 41px;
+}

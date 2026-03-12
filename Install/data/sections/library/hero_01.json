@@ -1,0 +1,21 @@
+{
+  "section_type": "hero",
+  "cms_fields": [
+    { "key": "title", "label": "Title", "type": "text" },
+    { "key": "subtitle", "label": "Subtitle", "type": "textarea" },
+    { "key": "button_text", "label": "Button text", "type": "text" },
+    { "key": "button_link", "label": "Button link", "type": "link" },
+    { "key": "image", "label": "Hero image", "type": "image" }
+  ],
+  "content_json": {
+    "title": "",
+    "subtitle": "",
+    "button_text": "Contact us",
+    "button_link": "/contact",
+    "image": ""
+  },
+  "style_json": {
+    "alignment": "center",
+    "spacing": "medium"
+  }
+}

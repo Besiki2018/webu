@@ -1,0 +1,45 @@
+name: Component Library Alias Map Convergence Hygiene
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  component-library-alias-map-convergence-hygiene:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Install
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, sqlite3, pdo_sqlite, fileinfo, dom
+          coverage: none
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare application env
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
+      - name: Convergence report / patch preview smoke
+        run: |
+          php artisan cms:component-library-alias-map-convergence --json --limit=5
+          php artisan cms:component-library-alias-map-convergence --source-key=basic.heading --assert-max-blocked=1
+          php artisan cms:component-library-alias-map-convergence --export-json --output=ci/convergence-report.json --overwrite
+          php artisan cms:component-library-alias-map-convergence --export-patch-preview --output=ci/convergence-patch-preview.json --overwrite
+
+      - name: Convergence command + workflow contract tests
+        run: |
+          php artisan test --filter=CmsComponentLibraryAliasMapConvergenceCommandTest
+          php artisan test --filter=CmsComponentLibraryAliasMapConvergenceCiWorkflowContractTest

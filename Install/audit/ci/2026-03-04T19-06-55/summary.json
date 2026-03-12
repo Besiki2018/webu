@@ -1,0 +1,43 @@
+{
+  "runId": "2026-03-04T19-06-55",
+  "passed": false,
+  "failedStep": "test:smoke",
+  "results": [
+    {
+      "step": "lint",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "typecheck",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "test:unit",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "build",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "audit:schemas",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "audit:ai-regression",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "test:smoke",
+      "passed": false,
+      "status": 1
+    }
+  ],
+  "timestamp": "2026-03-04T19:08:11.058Z"
+}

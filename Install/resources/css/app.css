@@ -1,0 +1,963 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./themes.css";
+
+/* TBC Contractica: add font files to public/fonts/ and uncomment @font-face rules below to enable */
+/*
+@font-face {
+  font-family: "TBC Contractica";
+  src: url("/fonts/TBCContractica-Light.woff2") format("woff2"),
+       url("/fonts/TBCContractica-Light.woff") format("woff");
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TBC Contractica";
+  src: url("/fonts/TBCContractica-Regular.woff2") format("woff2"),
+       url("/fonts/TBCContractica-Regular.woff") format("woff");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TBC Contractica";
+  src: url("/fonts/TBCContractica-Medium.woff2") format("woff2"),
+       url("/fonts/TBCContractica-Medium.woff") format("woff");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TBC Contractica";
+  src: url("/fonts/TBCContractica-Bold.woff2") format("woff2"),
+       url("/fonts/TBCContractica-Bold.woff") format("woff");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TBC Contractica";
+  src: url("/fonts/TBCContractica-Black.woff2") format("woff2"),
+       url("/fonts/TBCContractica-Black.woff") format("woff");
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}
+*/
+
+@font-face {
+  font-family: "TBC Contractica";
+  src: url("/fonts/TBCContractica-Regular.woff2") format("woff2"),
+       url("/fonts/TBCContractica-Regular.woff") format("woff");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "TBC Contractica";
+  src: url("/fonts/TBCContractica-Medium.woff2") format("woff2"),
+       url("/fonts/TBCContractica-Medium.woff") format("woff");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+:root {
+  --font-app-sans: "Noto Sans Georgian", "DejaVu Sans", "Segoe UI", system-ui, sans-serif;
+  --workspace-admin-surface: #F9F9F9;
+}
+
+/* Design system – single source for tokens, layout, components, utilities, animations */
+@import "./design-system/tokens.css";
+@import "./design-system/base.css";
+@import "./design-system/layout.css";
+@import "./design-system/components.css";
+@import "./design-system/utilities.css";
+@import "./design-system/animations.css";
+@import "./pages/chat-workspace.css";
+
+/* Plugins - use @plugin directive in v4 */
+@plugin "@tailwindcss/forms";
+@plugin "@tailwindcss/typography";
+@plugin "@tailwindcss/container-queries";
+
+/* Source paths for class detection (replaces content array) */
+@source "../js/**/*.tsx";
+@source "../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php";
+@source "../../resources/views/**/*.blade.php";
+
+/* Global base styles - outside @layer in v4 */
+* {
+  border-color: var(--border);
+}
+body {
+  font-family: var(--font-app-sans);
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.create-page-title {
+  font-family: "TBC Contractica", var(--font-app-sans);
+}
+
+.auth-shell {
+  font-family: var(--font-app-sans);
+}
+
+.auth-shell__logo {
+  font-family: "TBC Contractica", var(--font-app-sans);
+}
+
+.auth-shell__card {
+  font-family: var(--font-app-sans);
+}
+
+.auth-form-copy {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.auth-form-title {
+  margin: 0;
+  font-family: "TBC Contractica", var(--font-app-sans);
+  font-size: clamp(1.7rem, 2.8vw, 2.2rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: var(--foreground);
+}
+
+.auth-form-subtitle {
+  margin: 0;
+  font-family: var(--font-app-sans);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: hsl(var(--muted-foreground));
+}
+
+.auth-form-meta {
+  margin: 0;
+  font-family: var(--font-app-sans);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+}
+
+.auth-shell label,
+.auth-shell input,
+.auth-shell button,
+.auth-shell a {
+  font-family: var(--font-app-sans);
+}
+
+.admin-ui-shell {
+  --admin-header-height: 48px;
+  --sidebar-width: 17.5rem;
+  --sidebar-width-icon: 3.5rem;
+  background-color: var(--workspace-admin-surface);
+}
+
+.admin-layout__inset {
+  min-width: 0;
+  overflow-x: hidden;
+  background: transparent;
+}
+
+.admin-layout__body {
+  min-height: 100vh;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  background: var(--workspace-admin-surface);
+}
+
+.admin-layout__header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  min-height: var(--admin-header-height);
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 0.5rem;
+  padding-inline: 1rem;
+  background-color: var(--workspace-admin-surface);
+  border-bottom: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.admin-layout__main {
+  min-width: 0;
+  overflow-x: hidden;
+  padding: 0;
+}
+
+.admin-layout__content-shell {
+  width: 100%;
+  min-width: 0;
+  max-width: 80rem;
+  margin-inline: auto;
+  overflow-x: hidden;
+}
+
+.admin-layout__content-shell--full {
+  max-width: 100%;
+}
+
+.admin-layout__content-surface {
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.admin-layout__content-surface--page {
+  padding: 1rem;
+}
+
+@media (min-width: 768px) {
+  .admin-layout__content-surface--page {
+    padding: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .admin-layout__content-surface--page {
+    padding: 2rem;
+  }
+}
+
+.admin-layout__content-surface--hero {
+  display: flex;
+  min-height: calc(100vh - var(--admin-header-height) - 2rem);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1rem 4rem;
+}
+
+@media (min-width: 768px) {
+  .admin-layout__content-surface--hero {
+    min-height: calc(100vh - var(--admin-header-height) - 3rem);
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .admin-layout__content-surface--hero {
+    min-height: calc(100vh - var(--admin-header-height) - 4rem);
+    padding-inline: 2rem;
+  }
+}
+
+.create-chat-shell {
+  border-radius: 1.75rem;
+  background-color: var(--workspace-admin-surface);
+  box-shadow: none;
+}
+
+.create-chat-shell .workspace-composer {
+  background-color: var(--workspace-admin-surface);
+  box-shadow: none;
+}
+
+.create-page .workspace-composer:focus-within,
+.create-page .workspace-input-wrap,
+.create-page .workspace-thinking-chip {
+  background: var(--workspace-admin-surface);
+  box-shadow: none;
+}
+
+/* Requested override: keep primary/action buttons black across all themes. */
+:root,
+:root[data-theme],
+:root.dark,
+:root[data-theme].dark {
+  --primary: hsl(0 0% 7%);
+  --primary-foreground: hsl(0 0% 100%);
+  --ring: hsl(0 0% 7%);
+}
+
+/* Force platform font stack across landing page sections/components. */
+.landing-font-scope,
+.landing-font-scope * {
+  font-family: var(--font-app-sans) !important;
+}
+
+/* Landing-only palette refresh (clean white + ChatGPT-like contrast/accents). */
+.landing-font-scope {
+  --chatgpt-sidebar-gray: #f9f9f9;
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222 25% 12%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222 25% 12%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222 25% 12%);
+  --primary: hsl(0 0% 7%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: var(--chatgpt-sidebar-gray);
+  --secondary-foreground: hsl(222 25% 12%);
+  --muted: var(--chatgpt-sidebar-gray);
+  --muted-foreground: hsl(215 16% 42%);
+  --accent: var(--chatgpt-sidebar-gray);
+  --accent-foreground: hsl(222 25% 12%);
+  --border: var(--chatgpt-sidebar-gray);
+  --input: var(--chatgpt-sidebar-gray);
+  --ring: hsl(0 0% 7%);
+  --chat-input-bg: #F9F9F9;
+}
+
+.landing-font-scope .workspace-composer,
+.landing-font-scope button.workspace-composer-icon {
+  background-color: #F9F9F9;
+}
+
+/* Custom keyframes */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes typingDot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@keyframes rainbow-wave {
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes rainbow-hue {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+  100% {
+    filter: hue-rotate(360deg);
+  }
+}
+
+@keyframes heartbeat {
+  0% {
+    transform: scale(1);
+  }
+  14% {
+    transform: scale(1.2);
+  }
+  28% {
+    transform: scale(1);
+  }
+  42% {
+    transform: scale(1.15);
+  }
+  70% {
+    transform: scale(1);
+  }
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-rtl {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(50%);
+  }
+}
+
+@keyframes collapsible-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+/* Custom utilities - use @utility directive in v4 */
+@utility shimmer-animation {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(var(--primary-rgb, 59, 130, 246), 0.1) 50%,
+    transparent 100%
+  );
+  animation: shimmer 2s infinite;
+}
+
+@utility animate-blob {
+  animation: blob 10s infinite ease-in-out;
+}
+
+@utility animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+@utility animation-delay-3000 {
+  animation-delay: 3s;
+}
+
+@utility animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+@utility animation-delay-5000 {
+  animation-delay: 5s;
+}
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@utility animate-rainbow {
+  background: linear-gradient(
+    90deg,
+    #f97316,
+    #eab308,
+    #22c55e,
+    #06b6d4,
+    #3b82f6,
+    #8b5cf6,
+    #ec4899,
+    #f97316
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: rainbow-wave 2s linear infinite;
+}
+
+@utility animate-rainbow-icon {
+  color: #3b82f6;
+  animation: rainbow-hue 2s linear infinite, heartbeat 1.5s ease-in-out infinite;
+}
+
+@utility typing-dot {
+  animation: typingDot 1.4s infinite ease-in-out;
+}
+
+@utility animate-marquee {
+  animation: marquee 20s linear infinite;
+}
+
+@utility animate-marquee-slow {
+  animation: marquee 30s linear infinite;
+}
+
+@utility animate-marquee-rtl {
+  animation: marquee-rtl 20s linear infinite;
+}
+
+@utility animate-marquee-rtl-slow {
+  animation: marquee-rtl 30s linear infinite;
+}
+
+@utility animate-collapsible-down {
+  animation: collapsible-down 0.2s ease-out;
+}
+
+@utility animate-collapsible-up {
+  animation: collapsible-up 0.2s ease-out;
+}
+
+/* Typing dot delays - plain CSS classes */
+.typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Admin / CMS UI: sidebar and shell polish */
+.admin-ui-shell {
+  --text-xs: 0.8rem;
+  --text-sm: 0.94rem;
+  --text-base: 1.02rem;
+  --text-lg: 1.16rem;
+}
+
+/* Sidebar: cleaner look, spacing, active state */
+.admin-ui-shell [data-sidebar="group-label"] {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sidebar-foreground);
+  opacity: 0.7;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.admin-ui-shell [data-sidebar="menu-button"] {
+  font-size: 0.9375rem;
+  border-radius: 0.5rem;
+  margin: 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.admin-ui-shell [data-sidebar="menu-button"]:hover {
+  background-color: var(--sidebar-accent);
+}
+
+.admin-ui-shell [data-sidebar="menu-button"][data-active="true"] {
+  background-color: var(--sidebar-primary);
+  color: var(--sidebar-primary-foreground);
+}
+
+.admin-ui-shell [data-sidebar="menu-button"][data-size="sm"] {
+  font-size: 0.875rem;
+}
+
+.admin-ui-shell [data-sidebar="menu-badge"] {
+  font-size: 0.75rem;
+}
+
+.admin-ui-shell [data-sidebar="menu-button"] > svg,
+.admin-ui-shell [data-sidebar="group-label"] > svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  opacity: 0.9;
+}
+
+.admin-ui-shell [data-sidebar="menu-button"][data-active="true"] > svg {
+  opacity: 1;
+}
+
+/* Sidebar header: subtle border */
+.admin-ui-shell [data-sidebar="sidebar"] {
+  background-color: var(--workspace-admin-surface);
+  border-right: 0;
+  box-shadow: none;
+}
+
+.admin-ui-shell .language-selector__trigger {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-ui-shell .language-selector__trigger:hover,
+.admin-ui-shell .language-selector__trigger:focus-visible {
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-ui-shell .language-selector__trigger svg {
+  border-radius: 9999px;
+}
+
+/* App sidebar variant: ChatGPT-like layout and rhythm */
+.app-sidebar--chatgpt [data-sidebar="sidebar"] {
+  background-color: var(--workspace-admin-surface);
+  border-right: 0;
+}
+
+.admin-ui-shell .app-sidebar--chatgpt [data-sidebar="sidebar"] {
+  background-color: var(--workspace-admin-surface);
+}
+
+.dark .app-sidebar--chatgpt [data-sidebar="sidebar"],
+:root.dark .app-sidebar--chatgpt [data-sidebar="sidebar"],
+:root[data-theme].dark .app-sidebar--chatgpt [data-sidebar="sidebar"] {
+  background-color: hsl(var(--sidebar));
+  border-right: 0;
+}
+
+.app-sidebar__header {
+  padding: 0.625rem 0.625rem 0.5rem;
+  gap: 0.5rem;
+  border-bottom: 1px solid hsl(var(--sidebar-border) / 0.72);
+}
+
+.app-sidebar__brand-row {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+}
+
+.app-sidebar__brand-link {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  border-radius: 0.625rem;
+  padding: 0.25rem 0.375rem;
+  color: inherit;
+  transition: background-color 0.15s ease;
+}
+
+.app-sidebar__brand-link:hover {
+  background-color: hsl(var(--sidebar-accent) / 0.5);
+}
+
+.app-sidebar__content {
+  overflow: hidden !important;
+}
+
+.app-sidebar__scroll-area [data-slot="scroll-area-viewport"] {
+  padding: 0.25rem 0.5rem 0.75rem;
+}
+
+.app-sidebar__group {
+  padding: 0.25rem 0;
+}
+
+.app-sidebar__group--workspace {
+  padding-top: 0.5rem;
+}
+
+.app-sidebar__header-menu,
+.app-sidebar__menu,
+.app-sidebar__chat-list {
+  gap: 0.125rem;
+}
+
+.app-sidebar__section-label,
+.app-sidebar__collapsible-label {
+  height: 1.75rem;
+  margin: 0 0 0.125rem;
+  padding: 0 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: #8f8f8f;
+  opacity: 1;
+}
+
+.app-sidebar__collapsible-label {
+  cursor: pointer;
+  justify-content: space-between;
+  border-radius: 0.5rem;
+  opacity: 1;
+}
+
+.app-sidebar__collapsible-label:hover {
+  background-color: hsl(var(--sidebar-accent) / 0.52);
+}
+
+.app-sidebar--chatgpt [data-sidebar="menu-button"] {
+  height: 2.15rem;
+  margin: 0;
+  border-radius: 0.625rem;
+  padding-inline: 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: hsl(var(--sidebar-foreground) / 0.92);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.app-sidebar--chatgpt [data-sidebar="menu-button"] > svg {
+  width: 1rem;
+  height: 1rem;
+  opacity: 0.75;
+}
+
+.app-sidebar--chatgpt [data-sidebar="menu-button"]:hover {
+  background-color: hsl(var(--sidebar-accent) / 0.72);
+}
+
+.app-sidebar--chatgpt [data-sidebar="menu-button"][data-active="true"] {
+  background-color: hsl(var(--sidebar-accent));
+  color: hsl(var(--sidebar-accent-foreground));
+}
+
+.app-sidebar--chatgpt [data-sidebar="menu-button"][data-active="true"] > svg {
+  opacity: 0.92;
+}
+
+.app-sidebar__new-chat-button {
+  height: 2.4rem !important;
+  border: 1px solid hsl(var(--sidebar-border));
+  background-color: transparent;
+  font-weight: 600;
+}
+
+.app-sidebar__new-chat-button:hover,
+.app-sidebar__new-chat-button[data-active="true"] {
+  border-color: hsl(var(--sidebar-accent));
+  background-color: hsl(var(--sidebar-accent) / 0.7);
+}
+
+.app-sidebar__history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.app-sidebar__history-bucket {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.app-sidebar__history-title {
+  margin: 0;
+  padding: 0.2rem 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: hsl(var(--sidebar-foreground) / 0.56);
+}
+
+.app-sidebar__chat-item > a {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.app-sidebar__chat-item > a > span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-sidebar__empty-history {
+  margin: 0;
+  padding: 0.3rem 0.625rem;
+  font-size: 0.8125rem;
+  color: hsl(var(--sidebar-foreground) / 0.56);
+}
+
+.app-sidebar__sub-list {
+  margin: 0.125rem 0 0.375rem 1.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.app-sidebar__sub-item {
+  display: flex;
+  min-height: 1.65rem;
+  align-items: center;
+  border-radius: 0.5rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  color: hsl(var(--sidebar-foreground) / 0.7);
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.app-sidebar__sub-item:hover {
+  background-color: hsl(var(--sidebar-accent) / 0.55);
+  color: hsl(var(--sidebar-accent-foreground));
+}
+
+.app-sidebar__sub-item.is-active {
+  background-color: hsl(var(--sidebar-accent));
+  color: hsl(var(--sidebar-accent-foreground));
+}
+
+.app-sidebar__footer {
+  padding: 0.5rem;
+  gap: 0.375rem;
+  border-top: 1px solid hsl(var(--sidebar-border) / 0.75);
+}
+
+.app-sidebar__footer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.app-sidebar__footer-action {
+  height: 2.125rem;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  border-radius: 0.625rem;
+  padding-inline: 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: hsl(var(--sidebar-foreground) / 0.88);
+}
+
+.app-sidebar__footer-action:hover {
+  background-color: hsl(var(--sidebar-accent) / 0.72);
+}
+
+.app-sidebar__profile {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.5625rem;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.app-sidebar__profile:hover {
+  background-color: hsl(var(--sidebar-accent) / 0.8);
+}
+
+.app-sidebar__avatar {
+  width: 1.9rem;
+  height: 1.9rem;
+  flex-shrink: 0;
+}
+
+.app-sidebar__profile-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.app-sidebar__profile-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.8125rem;
+  line-height: 1.1;
+  font-weight: 600;
+}
+
+.app-sidebar__profile-email {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  color: hsl(var(--sidebar-foreground) / 0.64);
+}
+
+/* CMS page-level overflow guard:
+   Prevent whole CMS pages from horizontally drifting while allowing local
+   scroll containers (tables/code blocks) to manage their own overflow. */
+.cms-admin-shell__main,
+.cms-admin-shell__content,
+.cms-workspace {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.cms-workspace > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cms-workspace [data-slot="tabs"],
+.cms-workspace [data-slot="tabs-content"],
+.cms-workspace [data-slot="card"],
+.cms-workspace [data-slot="card-header"],
+.cms-workspace [data-slot="card-content"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cms-workspace [data-slot="tabs-content"] {
+  overflow-x: hidden;
+}
+
+/* Common root cause: flex/grid children retain intrinsic width and push the page.
+   Allow shrinking inside CMS workspace, while nested explicit scrollers still work. */
+.cms-workspace :is(.flex, .grid) > * {
+  min-width: 0;
+}
+
+.cms-visual-builder {
+  background: hsl(var(--background));
+}
+
+.cms-visual-builder--standalone {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+}
+
+.cms-visual-builder--embedded {
+  position: relative;
+  min-height: 100%;
+  height: 100%;
+  width: 100%;
+  z-index: auto;
+}
+
+.cms-admin-shell__main--embedded {
+  padding: 0;
+}
+
+.cms-admin-shell__content--embedded {
+  min-height: 100%;
+  padding: 0;
+}
+
+/* Requested override: keep bg-background surfaces pure white. */
+.bg-background {
+  background-color: #fff !important;
+}

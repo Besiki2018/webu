@@ -1,0 +1,23 @@
+{
+  "feature_key": "compare",
+  "category": "E-commerce",
+  "context": "public",
+  "entities": [
+    {
+      "name": "compareItem",
+      "fields": {
+        "product_id": "number"
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/compare"
+    }
+  ],
+  "ui": {
+    "primary": "table",
+    "secondary": ["button"]
+  }
+}

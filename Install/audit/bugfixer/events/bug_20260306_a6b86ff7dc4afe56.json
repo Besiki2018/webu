@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_a6b86ff7dc4afe56",
+    "timestamp": "2026-03-06T12:41:58+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc",
+    "event": "[console.error] The above error occurred in the <Chat> component:\n\n    at Chat (http:\/\/[::1]:5174\/resources\/js\/Pages\/Chat.tsx?t=1772800915122:54:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/LanguageContext.tsx?t=1772786151099:683:36)\n    at AppWrapper (http:\/\/[::1]:5174\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=ee191eb0:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5174\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/ThemeContext.tsx:41:33)\n\nReact will try to recreate this component tree from scratch using the error boundary you provided, BugfixerErrorBoundary.",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "a6b86ff7dc4afe56",
+    "frequency": 1
+}

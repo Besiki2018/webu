@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Webu control schema",
+  "description": "Content / Style / Advanced control definitions. Responsive: style.desktop, style.tablet, style.mobile.",
+  "type": "object",
+  "properties": {
+    "content": {
+      "type": "object",
+      "description": "Content controls: text, images, links, bindings"
+    },
+    "layout": {
+      "type": "object",
+      "description": "Layout options: columns, variant, structure"
+    },
+    "dataSource": {
+      "type": "object",
+      "description": "Data source: product source, category, menu source, etc. (can be in content)"
+    },
+    "style": {
+      "type": "object",
+      "properties": {
+        "desktop": { "type": "object" },
+        "tablet": { "type": "object" },
+        "mobile": { "type": "object" }
+      }
+    },
+    "advanced": {
+      "type": "object",
+      "properties": {
+        "margin": { "type": "object" },
+        "padding": { "type": "object" },
+        "custom_class": { "type": "string" }
+      }
+    }
+  }
+}

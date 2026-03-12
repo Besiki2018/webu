@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260311_9c9c5733023ee916",
+    "timestamp": "2026-03-11T16:39:23+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cdcff-b68a-72dc-a9d3-6d31071007b6",
+    "event": "[console.error] Warning: React has detected a change in the order of Hooks called by %s. This will lead to bugs and errors if not fixed. For more information, read the Rules of Hooks: https:\/\/reactjs.org\/link\/rules-of-hooks\n\n   Previous render            Next render\n   ------------------------------------------------------\n%s   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n%s Chat 1. useContext                 useContext\n2. useContext                 useContext\n3. useState                   useState\n4. useState                   useState\n5. useState                   useState\n6. useState                   useState\n7. useCallback                useCallback\n8. useCallback                useCallback\n9. useCallback                useCallback\n10. useCallback               useCallback\n11. useEffect                 useEffect\n12. useState                  useState\n13. useState                  useState\n14. useRef                    useRef\n15. useRef                    useRef\n16. useEffect                 useEffect\n17. useCallback               useCallback\n18. useCallback               useCallback\n19. useEffect                 useEffect\n20. useState                  useState\n21. useEffect                 useEffect\n22. useState                  useState\n23. useState                  useState\n24. useState                  useState\n25. useState                  useState\n26. useState                  useState\n27. useRef                    useRef\n28. useState                  useState\n29. useStat",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "9c9c5733023ee916",
+    "frequency": 1
+}

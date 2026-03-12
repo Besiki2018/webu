@@ -1,0 +1,13 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_account_security_01",
+  "label": "Account security",
+  "description": "Policy and action labels editable in builder.",
+  "content": {
+    "policy_title": { "type": "string", "title": "Policy section title" },
+    "policy_items": { "type": "array", "title": "Policy items", "items": { "type": "string" } },
+    "actions_title": { "type": "string", "title": "Actions section title" },
+    "action_chips": { "type": "array", "title": "Action chips", "items": { "type": "string" } }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

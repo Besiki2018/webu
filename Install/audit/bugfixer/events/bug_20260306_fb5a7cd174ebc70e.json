@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_fb5a7cd174ebc70e",
+    "timestamp": "2026-03-06T21:07:08+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cc456-9919-72f7-b916-247f74d98266?tab=inspect",
+    "event": "[console.error] [vite] Failed to reload \/resources\/js\/Pages\/Chat.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "fb5a7cd174ebc70e",
+    "frequency": 2
+}

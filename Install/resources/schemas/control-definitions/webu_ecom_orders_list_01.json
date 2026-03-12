@@ -1,0 +1,24 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_orders_list_01",
+  "label": "Orders list",
+  "description": "Table headers and order rows editable in builder.",
+  "content": {
+    "headers": { "type": "array", "title": "Table headers", "items": { "type": "string" } },
+    "orders": {
+      "type": "array",
+      "title": "Orders",
+      "items": {
+        "type": "object",
+        "properties": {
+          "number": { "type": "string", "title": "Order number" },
+          "date": { "type": "string", "title": "Date" },
+          "status": { "type": "string", "title": "Status" },
+          "status_variant": { "type": "string", "title": "Status variant" },
+          "total": { "type": "string", "title": "Total" }
+        }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

@@ -1,0 +1,33 @@
+{
+  "feature_key": "reviews",
+  "title": "Product Reviews",
+  "category": "E-commerce",
+  "context": "public",
+  "entities": [
+    {
+      "name": "review",
+      "fields": {
+        "id": "number",
+        "rating": "number",
+        "comment": "string",
+        "author": "string"
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "name": "GetReviews",
+      "method": "GET",
+      "path": "/products/{id}/reviews"
+    },
+    {
+      "name": "CreateReview",
+      "method": "POST",
+      "path": "/reviews"
+    }
+  ],
+  "ui": {
+    "primary": "list",
+    "secondary": ["form"]
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260305_51745c2a32b8580f",
+    "timestamp": "2026-03-05T14:08:51+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/admin\/cms-sections",
+    "event": "Cannot read properties of null (reading 'useMemo')",
+    "stack": "TypeError: Cannot read properties of null (reading 'useMemo')\n    at Object.useMemo (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-PMKBOVCG.js?v=406cdc05:1094:29)\n    at useScope (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-75U33LEE.js?v=406cdc05:2116:21)\n    at Select (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-select.js?v=d8c56a8a:295:23)\n    at renderWithHooks (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=76fd5c0d:11596:26)\n    at mountIndeterminateComponent (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=76fd5c0d:14974:21)\n    at beginWork (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=76fd5c0d:15962:22)\n    at beginWork$1 (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=76fd5c0d:19806:22)\n    at performUnitOfWork (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=76fd5c0d:19251:20)\n    at workLoopSync (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=76fd5c0d:19190:13)\n    at renderRootSync (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=76fd5c0d:19169:15)",
+    "context": {
+        "sectionId": null,
+        "componentStack": "at Select (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-select.js?v=d8c56a8a:280:5)\n    at Select (http:\/\/[::1]:5173\/resources\/js\/components\/ui\/select.tsx:22:6)\n    at div\n    at div\n    at div\n    at div\n    at main\n    at div\n    at main\n    at _c9 (http:\/\/[::1]:5173\/resources\/js\/components\/ui\/sidebar.tsx:422:48)\n    at div\n    at Provider2 (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=76fd5c0d:58:15)\n    at TooltipProvider (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=76fd5c0d:421:5)\n    at TooltipProvider (http:\/\/[::1]:5173\/resources\/js\/components\/ui\/tooltip.tsx:21:3)\n    at http:\/\/[::1]:5173\/resources\/js\/components\/ui\/sidebar.tsx:60:7\n    at Provider2 (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=76fd5c0d:58:15)\n    at TooltipProvider (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=76fd5c0d:421:5)\n    at TooltipProvider (http:\/\/[::1]:5173\/resources\/js\/components\/ui\/tooltip.tsx:21:3)\n    at AdminLayout (http:\/\/[::1]:5173\/resources\/js\/Layouts\/AdminLayout.tsx?t=1772717608637:41:39)\n    at CmsSections (http:\/\/[::1]:5173\/resources\/js\/Pages\/Admin\/CmsSections.tsx:90:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/LanguageContext.tsx:685:36)\n    at AppWrapper (http:\/\/[::1]:5173\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=76fd5c0d:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5173\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/ThemeContext.tsx:41:33)"
+    },
+    "dedupKey": "51745c2a32b8580f",
+    "frequency": 1
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_general_spacer_01",
+  "label": "Spacer",
+  "description": "Vertical spacing. Height editable in builder.",
+  "content": {},
+  "style": {
+    "desktop": {
+      "height": { "type": "integer", "title": "Height (px)", "default": 24 }
+    }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

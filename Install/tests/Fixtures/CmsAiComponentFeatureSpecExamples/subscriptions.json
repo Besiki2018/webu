@@ -1,0 +1,25 @@
+{
+  "feature_key": "subscriptions",
+  "category": "E-commerce",
+  "context": "customer",
+  "entities": [
+    {
+      "name": "subscription",
+      "fields": {
+        "id": "number",
+        "status": "string",
+        "next_billing": "date"
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "name": "GetSubscriptions",
+      "method": "GET",
+      "path": "/subscriptions"
+    }
+  ],
+  "ui": {
+    "primary": "list"
+  }
+}

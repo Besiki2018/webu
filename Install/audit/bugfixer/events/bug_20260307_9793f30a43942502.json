@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_9793f30a43942502",
+    "timestamp": "2026-03-07T00:14:06+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc",
+    "event": "Should have a queue. This is likely a bug in React. Please file an issue.",
+    "stack": "Error: Should have a queue. This is likely a bug in React. Please file an issue.\n    at updateReducer (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:11778:19)\n    at updateState (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:12069:18)\n    at Object.useState (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:12801:24)\n    at useState (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-PMKBOVCG.js?v=ee191eb0:1066:29)\n    at useSessionReconnection (http:\/\/[::1]:5174\/resources\/js\/hooks\/useSessionReconnection.ts?t=1772840217401:12:51)\n    at useBuilderChat (http:\/\/[::1]:5174\/resources\/js\/hooks\/useBuilderChat.ts?t=1772842445827:111:31)\n    at Chat (http:\/\/[::1]:5174\/resources\/js\/Pages\/Chat.tsx?t=1772842445827:434:7)\n    at renderWithHooks (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:11596:26)\n    at updateFunctionComponent (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:14630:28)\n    at beginWork (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:15972:22)",
+    "context": {
+        "sectionId": null,
+        "componentStack": "at Chat (http:\/\/[::1]:5174\/resources\/js\/Pages\/Chat.tsx?t=1772842445827:207:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/LanguageContext.tsx:683:36)\n    at AppWrapper (http:\/\/[::1]:5174\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=ee191eb0:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5174\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/ThemeContext.tsx:41:33)"
+    },
+    "dedupKey": "9793f30a43942502",
+    "frequency": 1
+}

@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260304_d18d5b726d554de1",
+    "timestamp": "2026-03-04T20:47:27+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/",
+    "event": "[console.error] `DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.\n\nIf you want to hide the `DialogTitle`, you can wrap it with our VisuallyHidden component.\n\nFor more information, see https:\/\/radix-ui.com\/primitives\/docs\/components\/dialog",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "d18d5b726d554de1",
+    "frequency": 1
+}

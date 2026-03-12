@@ -1,0 +1,23 @@
+openapi: 3.0.3
+info:
+  title: Webu Ecommerce (minimal)
+  version: v1
+paths:
+  /public/sites/{site}/ecommerce/payment-options:
+    get: {}
+  /public/sites/{site}/ecommerce/products:
+    get: {}
+  /public/sites/{site}/ecommerce/products/{slug}:
+    get: {}
+  /public/sites/{site}/ecommerce/carts:
+    post: {}
+  /public/sites/{site}/ecommerce/carts/{cart}/items:
+    get: {}
+  /public/sites/{site}/ecommerce/carts/{cart}/coupon:
+    post: {}
+  /public/sites/{site}/ecommerce/carts/{cart}/shipping/options:
+    get: {}
+  /public/sites/{site}/ecommerce/carts/{cart}/checkout:
+    post: {}
+  /public/sites/{site}/ecommerce/orders/{order}/payments/start:
+    post: {}

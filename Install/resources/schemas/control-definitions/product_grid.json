@@ -1,0 +1,32 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_product_grid_01",
+  "label": "Product grid",
+  "bindings": {
+    "source": "products",
+    "filters": {},
+    "sort": "newest",
+    "limit": 24
+  },
+  "content": {
+    "title": { "type": "string", "title": "Section title" },
+    "subtitle": { "type": "string", "title": "Subtitle" },
+    "add_to_cart_label": { "type": "string", "title": "Add to cart label" },
+    "products_per_page": { "type": "integer", "title": "Products per page" },
+    "show_filters": { "type": "boolean", "title": "Show filters" },
+    "show_sort": { "type": "boolean", "title": "Show sort" },
+    "pagination_mode": { "type": "string", "enum": ["load_more", "pagination"], "title": "Pagination mode" }
+  },
+  "layout": {
+    "columns_desktop": { "type": "integer", "title": "Columns (desktop)", "default": 4 },
+    "layout_style": { "type": "string", "title": "Layout style", "enum": ["grid", "list"], "default": "grid" }
+  },
+  "style": {
+    "desktop": { "paddingTop": "string", "paddingBottom": "string", "grid_gap": "string", "columns": "integer" },
+    "tablet": { "paddingTop": "string", "paddingBottom": "string", "columns": "integer" },
+    "mobile": { "paddingTop": "string", "paddingBottom": "string", "columns": "integer" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

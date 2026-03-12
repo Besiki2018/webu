@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_62b7ee99a75d8e37",
+    "timestamp": "2026-03-07T02:01:20+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce7-ac45-711a-9e9e-1c53bcac527e\/cms?embedded=sidebar&tab=editor",
+    "event": "createScheduleDraftPersist is not defined",
+    "stack": "ReferenceError: createScheduleDraftPersist is not defined\n    at http:\/\/[::1]:5174\/resources\/js\/Pages\/Project\/Cms.tsx?t=1772848876669:6758:57\n    at updateMemo (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:12258:27)\n    at Object.useMemo (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:12774:24)\n    at useMemo (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-PMKBOVCG.js?v=ee191eb0:1094:29)\n    at Cms (http:\/\/[::1]:5174\/resources\/js\/Pages\/Project\/Cms.tsx?t=1772848876669:6758:43)\n    at renderWithHooks (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:11596:26)\n    at updateFunctionComponent (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:14630:28)\n    at beginWork (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:15972:22)\n    at beginWork$1 (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:19806:22)\n    at performUnitOfWork (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:19251:20)",
+    "context": {
+        "sectionId": null,
+        "componentStack": "at Cms (http:\/\/[::1]:5174\/resources\/js\/Pages\/Project\/Cms.tsx?t=1772848876669:6484:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/LanguageContext.tsx:683:36)\n    at AppWrapper (http:\/\/[::1]:5174\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=ee191eb0:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5174\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/ThemeContext.tsx:41:33)"
+    },
+    "dedupKey": "62b7ee99a75d8e37",
+    "frequency": 1
+}

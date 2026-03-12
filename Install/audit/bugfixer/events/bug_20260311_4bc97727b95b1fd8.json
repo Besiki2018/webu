@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260311_4bc97727b95b1fd8",
+    "timestamp": "2026-03-11T12:22:24+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cdcb4-5e47-7085-ba6f-2bcfa97c9f79?debug=inspect&tab=inspect",
+    "event": "[console.warn] [WebuInspect:Chat] handleElementSelect {\"id\":\"[data-webu-section=\\\"webu_header_01\\\"]\",\"tagName\":\"header\",\"selector\":\"[data-webu-section=\\\"webu_header_01\\\"]\",\"textPreview\":\"მთავარი ჩვენ შესახებ კონტაქტი დაწყება\",\"sectionKey\":\"webu_header_01\",\"placement\":null}",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "4bc97727b95b1fd8",
+    "frequency": 1
+}

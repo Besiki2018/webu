@@ -1,0 +1,36 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "contact_split_form",
+  "label": "Contact form (split)",
+  "description": "Form title, fields, and contact channels editable in builder.",
+  "content": {
+    "form": {
+      "type": "object",
+      "title": "Form",
+      "properties": {
+        "title": { "type": "string", "title": "Form title" },
+        "fields": {
+          "type": "array",
+          "title": "Fields",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string", "title": "Label" },
+              "value": { "type": "string", "title": "Placeholder / value" }
+            }
+          }
+        },
+        "button_label": { "type": "string", "title": "Submit button label" }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "title": "Channels",
+      "properties": {
+        "title": { "type": "string", "title": "Channels title" },
+        "items": { "type": "array", "title": "Channel items", "items": { "type": "string" } }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

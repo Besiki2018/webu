@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260304_5ba6c4be46e7afc3",
+    "timestamp": "2026-03-04T21:27:31+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/",
+    "event": "Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.",
+    "stack": "NotFoundError: Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.\n    at removeChildFromContainer (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:8509:23)\n    at commitDeletionEffectsOnFiber (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:17558:21)\n    at recursivelyTraverseDeletionEffects (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:17535:13)\n    at commitDeletionEffectsOnFiber (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:17627:15)\n    at recursivelyTraverseDeletionEffects (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:17535:13)\n    at commitDeletionEffectsOnFiber (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:17627:15)\n    at recursivelyTraverseDeletionEffects (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:17535:13)\n    at commitDeletionEffectsOnFiber (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:17627:15)\n    at recursivelyTraverseDeletionEffects (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:17535:13)\n    at commitDeletionEffectsOnFiber (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:17660:15)",
+    "context": {
+        "sectionId": null,
+        "componentStack": "at LanguageProvider (http:\/\/127.0.0.1:5173\/resources\/js\/contexts\/LanguageContext.tsx?t=1772659479225:594:36)\n    at AppWrapper (http:\/\/127.0.0.1:5173\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=3be44cfe:14984:3)\n    at BugfixerErrorBoundary (http:\/\/127.0.0.1:5173\/resources\/js\/components\/BugfixerErrorBoundary.tsx?t=1772658901256:7:5)\n    at ThemeProvider (http:\/\/127.0.0.1:5173\/resources\/js\/contexts\/ThemeContext.tsx:41:33)"
+    },
+    "dedupKey": "5ba6c4be46e7afc3",
+    "frequency": 1
+}

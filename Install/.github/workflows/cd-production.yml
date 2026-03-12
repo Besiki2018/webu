@@ -1,0 +1,42 @@
+# CD: Manual promotion to production (trigger: workflow_dispatch)
+name: CD Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm production deploy'
+        required: true
+
+defaults:
+  run:
+    working-directory: Install
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event.inputs.confirm == 'deploy'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: Install/package-lock.json
+      - name: Build artifacts
+        run: |
+          composer install --no-dev --no-interaction --prefer-dist
+          npm ci && npm run build
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache 2>/dev/null || true
+      # Add your production deploy step
+      # - name: Deploy to production
+      #   run: |
+      #     echo "Deploy to production server here"

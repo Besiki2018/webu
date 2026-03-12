@@ -1,0 +1,22 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_order_summary_01",
+  "label": "Order summary",
+  "description": "Summary rows and total label editable in builder.",
+  "content": {
+    "rows": {
+      "type": "array",
+      "title": "Summary rows",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "value": { "type": "string", "title": "Value" }
+        }
+      }
+    },
+    "total_label": { "type": "string", "title": "Total row label" },
+    "total_value": { "type": "string", "title": "Total value" }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

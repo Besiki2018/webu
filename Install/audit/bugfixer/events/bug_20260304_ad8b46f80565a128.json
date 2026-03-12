@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260304_ad8b46f80565a128",
+    "timestamp": "2026-03-04T20:53:33+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/admin\/plans",
+    "event": "[console.error] [vite] Failed to reload \/resources\/js\/components\/Dashboard\/PromptInput.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "ad8b46f80565a128",
+    "frequency": 5
+}

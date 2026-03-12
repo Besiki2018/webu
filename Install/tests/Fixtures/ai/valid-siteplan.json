@@ -1,0 +1,8 @@
+{
+  "meta": { "name": "Test Store", "language": "en", "currency": "GEL" },
+  "theme": { "mode": "light", "primaryColor": "#2563eb", "fontFamily": "Inter" },
+  "pages": [
+    { "id": "p1", "route": "/", "title": "Home", "sections": [{ "id": "s1", "type": "HeroBanner", "props": {} }] },
+    { "id": "p2", "route": "/shop", "title": "Shop", "sections": [{ "id": "s2", "type": "ProductGrid" }] }
+  ]
+}

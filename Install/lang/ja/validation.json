@@ -1,0 +1,28 @@
+{
+    "The :attribute field is required.": ":attribute は必須です。",
+    "The :attribute must be unique.": ":attribute は一意である必要があります。",
+    "The :attribute must be a valid email address.": ":attribute は有効なメールアドレスである必要があります。",
+    "The :attribute must be at least :min characters.": ":attribute は少なくとも :min 文字である必要があります。",
+    "The :attribute must not be greater than :max characters.": ":attribute は :max 文字を超えてはいけません。",
+    "The :attribute confirmation does not match.": ":attribute の確認が一致しません。",
+    "The :attribute has already been taken.": ":attribute はすでに使用されています。",
+    "The :attribute format is invalid.": ":attribute の形式が無効です。",
+    "The :attribute must be a number.": ":attribute は数値である必要があります。",
+    "The :attribute must be an integer.": ":attribute は整数である必要があります。",
+    "The :attribute must be a valid URL.": ":attribute は有効な URL である必要があります。",
+    "The :attribute must be a valid date.": ":attribute は有効な日付である必要があります。",
+    "The :attribute must be a file of type: :values.": ":attribute は次のタイプのファイルである必要があります: :values",
+    "The :attribute must not be greater than :max kilobytes.": ":attribute は :max キロバイトを超えてはいけません。",
+    "The selected :attribute is invalid.": "選択された :attribute は無効です。",
+    "The :attribute must be accepted.": ":attribute を受け入れる必要があります。",
+    "The :attribute must be a valid JSON string.": ":attribute は有効な JSON 文字列である必要があります。",
+
+    "This field is required": "このフィールドは必須です",
+    "Invalid email address": "無効なメールアドレス",
+    "Password is too short": "パスワードが短すぎます",
+    "Passwords do not match": "パスワードが一致しません",
+    "Invalid value": "無効な値",
+    "Please select an option": "オプションを選択してください",
+    "File too large": "ファイルが大きすぎます",
+    "Invalid file type": "無効なファイルタイプ"
+}

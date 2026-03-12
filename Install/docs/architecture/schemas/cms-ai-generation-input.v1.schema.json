@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request", "platform_context", "meta"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "request": {
+      "type": "object",
+      "required": ["mode", "prompt", "locale", "target"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["generate_site", "generate_pages", "generate_theme", "edit_page", "edit_site"]
+        },
+        "prompt": { "type": "string" },
+        "locale": { "type": "string" },
+        "target": {}
+      }
+    },
+    "platform_context": {
+      "type": "object",
+      "required": [
+        "project",
+        "site",
+        "template_blueprint",
+        "site_settings_snapshot",
+        "section_library",
+        "module_registry",
+        "module_entitlements"
+      ],
+      "properties": {
+        "project": {},
+        "site": {},
+        "template_blueprint": {
+          "type": "object",
+          "required": ["template_id", "template_slug", "default_pages", "default_sections"],
+          "properties": {
+            "template_id": {}, "template_slug": {}, "default_pages": {}, "default_sections": {}
+          }
+        },
+        "site_settings_snapshot": {
+          "type": "object",
+          "required": ["site", "typography", "global_settings"],
+          "properties": {
+            "site": {},
+            "typography": {},
+            "global_settings": {
+              "type": "object",
+              "required": [
+                "logo_media_id",
+                "logo_asset_url",
+                "contact_json",
+                "social_links_json",
+                "analytics_ids_json"
+              ],
+              "properties": {
+                "logo_media_id": {}, "logo_asset_url": {}, "contact_json": {}, "social_links_json": {}, "analytics_ids_json": {}
+              }
+            }
+          }
+        },
+        "section_library": {},
+        "module_registry": {},
+        "module_entitlements": {},
+        "compatibility_refs": {
+          "type": "object",
+          "properties": {
+            "canonical_component_registry_schema": {},
+            "canonical_page_node_schema": {},
+            "binding_resolver_contract": {},
+            "control_metadata_contract": {}
+          }
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "required": ["request_id", "created_at", "source"],
+      "properties": {
+        "request_id": {},
+        "created_at": {},
+        "source": {
+          "type": "string",
+          "enum": ["builder_chat", "builder_action", "internal_tool", "api"]
+        }
+      }
+    }
+  }
+}

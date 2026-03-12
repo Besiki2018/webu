@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260305_18f43125858406e1",
+    "timestamp": "2026-03-05T23:24:16+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce7-ac45-711a-9e9e-1c53bcac527e\/cms?tab=editor",
+    "event": "isElementorStyleField is not defined",
+    "stack": "ReferenceError: isElementorStyleField is not defined\n    at http:\/\/[::1]:5173\/resources\/js\/Pages\/Project\/Cms.tsx?t=1772753054506:20854:11\n    at Array.filter (<anonymous>)\n    at http:\/\/[::1]:5173\/resources\/js\/Pages\/Project\/Cms.tsx?t=1772753054506:20846:50\n    at updateMemo (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=686d2a38:12258:27)\n    at Object.useMemo (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=686d2a38:12774:24)\n    at useMemo (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-PMKBOVCG.js?v=686d2a38:1094:29)\n    at Cms (http:\/\/[::1]:5173\/resources\/js\/Pages\/Project\/Cms.tsx?t=1772753054506:20841:57)\n    at renderWithHooks (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=686d2a38:11596:26)\n    at updateFunctionComponent (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=686d2a38:14630:28)\n    at beginWork (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=686d2a38:15972:22)",
+    "context": {
+        "sectionId": null,
+        "componentStack": "at Cms (http:\/\/[::1]:5173\/resources\/js\/Pages\/Project\/Cms.tsx?t=1772753054506:6372:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/LanguageContext.tsx:685:36)\n    at AppWrapper (http:\/\/[::1]:5173\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=e38fc9d3:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5173\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/ThemeContext.tsx:41:33)"
+    },
+    "dedupKey": "18f43125858406e1",
+    "frequency": 1
+}

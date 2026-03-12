@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["type", "category", "props_schema", "default_props", "renderer", "controls_config"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "type": "string" },
+    "category": { "type": "string" },
+    "props_schema": { "type": "object" },
+    "default_props": { "type": "object" },
+    "renderer": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["template_marker", "frontend_builtin"]
+        }
+      }
+    },
+    "controls_config": { "type": "object" }
+  }
+}

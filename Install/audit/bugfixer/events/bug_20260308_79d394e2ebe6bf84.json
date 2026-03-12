@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260308_79d394e2ebe6bf84",
+    "timestamp": "2026-03-08T18:59:48+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc\/cms?embedded=sidebar&tab=editor",
+    "event": "[console.error] Warning: React has detected a change in the order of Hooks called by %s. This will lead to bugs and errors if not fixed. For more information, read the Rules of Hooks: https:\/\/reactjs.org\/link\/rules-of-hooks\n\n   Previous render            Next render\n   ------------------------------------------------------\n%s   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n%s Cms 1. useContext                 useContext\n2. useContext                 useContext\n3. useMemo                    useMemo\n4. useState                   useState\n5. useState                   useState\n6. useEffect                  useEffect\n7. useState                   useState\n8. useState                   useState\n9. useState                   useState\n10. useState                  useState\n11. useState                  useState\n12. useState                  useState\n13. useState                  useState\n14. useState                  useState\n15. useState                  useState\n16. useState                  useState\n17. useState                  useState\n18. useState                  useState\n19. useState                  useState\n20. useState                  useState\n21. useState                  useState\n22. useState                  useState\n23. useState                  useState\n24. useState                  useState\n25. useState                  useState\n26. useState                  useState\n27. useState                  useState\n28. useState                  useState\n29. useState",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "79d394e2ebe6bf84",
+    "frequency": 1
+}

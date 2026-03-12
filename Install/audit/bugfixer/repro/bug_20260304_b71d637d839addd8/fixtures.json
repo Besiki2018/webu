@@ -1,0 +1,11 @@
+{
+  "bugId": "bug_20260304_b71d637d839addd8",
+  "websiteId": null,
+  "tenantId": null,
+  "route": "/admin/settings?tab=integrations",
+  "source": "frontend",
+  "sanitizedContext": {
+    "sectionId": null,
+    "componentStack": null
+  }
+}

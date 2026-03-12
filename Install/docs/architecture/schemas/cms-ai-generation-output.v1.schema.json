@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "theme", "pages", "header", "footer", "meta"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "theme": { "$ref": "#/$defs/themeOutput" },
+    "pages": { "type": "array", "items": { "$ref": "#/$defs/pageOutput" } },
+    "header": { "$ref": "#/$defs/fixedSectionOutput" },
+    "footer": { "$ref": "#/$defs/fixedSectionOutput" },
+    "meta": {
+      "type": "object",
+      "required": ["generator", "created_at", "contracts", "validation_expectations"],
+      "properties": {
+        "generator": {},
+        "created_at": {},
+        "contracts": {
+          "type": "object",
+          "required": ["ai_input_schema", "canonical_page_node_schema", "canonical_component_registry_schema"],
+          "properties": {
+            "ai_input_schema": { "const": "docs/architecture/schemas/cms-ai-generation-input.v1.schema.json" },
+            "canonical_page_node_schema": {},
+            "canonical_component_registry_schema": {}
+          }
+        },
+        "validation_expectations": {
+          "type": "object",
+          "required": [
+            "strict_top_level",
+            "no_parallel_storage",
+            "builder_native_pages",
+            "component_availability_check_required",
+            "binding_validation_required"
+          ],
+          "properties": {
+            "strict_top_level": { "const": true },
+            "no_parallel_storage": { "const": true },
+            "builder_native_pages": { "const": true },
+            "component_availability_check_required": {},
+            "binding_validation_required": {}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "themeOutput": {
+      "type": "object",
+      "required": ["theme_settings_patch"],
+      "properties": { "theme_settings_patch": {} }
+    },
+    "pageOutput": {
+      "type": "object",
+      "required": ["slug", "title", "status", "builder_nodes"],
+      "properties": {
+        "slug": {},
+        "title": {},
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "builder_nodes": {
+          "type": "array",
+          "items": { "$ref": "cms-canonical-page-node.v1.schema.json" }
+        },
+        "meta": {
+          "type": "object",
+          "properties": {
+            "reproducibility": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "schema_version": { "const": 1 },
+                "learned_rule_set_version": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "fixedSectionOutput": {
+      "type": "object",
+      "required": ["enabled", "section_type", "props"],
+      "properties": {
+        "enabled": {},
+        "section_type": {},
+        "props": {},
+        "meta": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": ["generated", "template_derived", "keep_existing"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

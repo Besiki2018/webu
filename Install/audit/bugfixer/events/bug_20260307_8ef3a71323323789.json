@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_8ef3a71323323789",
+    "timestamp": "2026-03-07T16:14:22+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc",
+    "event": "[console.error] Error inlining remote css file {}",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "8ef3a71323323789",
+    "frequency": 9
+}

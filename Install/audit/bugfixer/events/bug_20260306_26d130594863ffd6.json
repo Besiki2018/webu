@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_26d130594863ffd6",
+    "timestamp": "2026-03-06T20:34:54+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc?tab=inspect",
+    "event": "[console.warn] [WebuInspect] InspectPreview inspect mode previewUrl= true iframeReady= false onElementSelect= true onLibraryItemPlace= true",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "26d130594863ffd6",
+    "frequency": 11
+}

@@ -1,0 +1,32 @@
+{
+  "name": "Portfolio / Agency",
+  "theme_preset": "creative_portfolio",
+  "default_pages": [
+    {
+      "slug": "home",
+      "title": "Home",
+      "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "We Create Digital Experiences", "subtitle": "Design, build, and grow.", "layout_variant": "centered", "style_variant": "bold" } },
+        { "key": "webu_general_heading_01", "props": { "headline": "Selected Work" } },
+        { "key": "webu_general_text_01", "props": { "title": "Our portfolio", "body": "Explore our latest projects and case studies." } },
+        { "key": "webu_general_testimonials_01", "props": { "layout_variant": "grid", "style_variant": "card" } }
+      ]
+    },
+    {
+      "slug": "projects",
+      "title": "Projects",
+      "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "Projects" } },
+        { "key": "webu_general_text_01", "props": { "title": "Case studies", "body": "A selection of our work." } }
+      ]
+    },
+    {
+      "slug": "contact",
+      "title": "Contact",
+      "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "Let's Work Together" } },
+        { "key": "webu_general_text_01", "props": { "title": "Get in touch", "body": "Email or call to start a conversation." } }
+      ]
+    }
+  ]
+}

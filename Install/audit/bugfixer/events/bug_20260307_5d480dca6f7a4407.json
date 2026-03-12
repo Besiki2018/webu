@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_5d480dca6f7a4407",
+    "timestamp": "2026-03-07T10:55:56+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc",
+    "event": "[console.error] [vite] Failed to reload \/resources\/js\/Pages\/Project\/Cms.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "5d480dca6f7a4407",
+    "frequency": 2
+}

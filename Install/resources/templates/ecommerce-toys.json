@@ -1,0 +1,38 @@
+{
+  "name": "Toys & Games Store",
+  "theme_preset": "soft_pastel",
+  "default_pages": [
+    {
+      "slug": "home",
+      "title": "Home",
+      "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "Play, Learn, Grow", "subtitle": "Toys and games for every age. Safe, fun, and educational.", "layout_variant": "centered", "style_variant": "minimal" } },
+        { "key": "webu_ecom_product_grid_01", "props": { "title": "New Arrivals", "products_per_page": 8, "show_filters": false, "show_sort": false, "layout_variant": "standard", "style_variant": "softshadow" } },
+        { "key": "webu_general_heading_01", "props": { "headline": "Shop by Age", "subtitle": "0–3, 3–6, 6+, family games.", "layout_variant": "centered", "style_variant": "minimal" } },
+        { "key": "webu_ecom_product_grid_01", "props": { "title": "Best Sellers", "products_per_page": 6, "show_filters": false, "show_sort": false, "layout_variant": "standard", "style_variant": "softshadow" } },
+        { "key": "webu_general_testimonials_01", "props": { "title": "What Parents Say", "layout_variant": "carousel", "style_variant": "card" } },
+        { "key": "webu_general_cta_banner_01", "props": { "headline": "Free gift wrap on orders over 50 GEL" } },
+        { "key": "webu_general_newsletter_01", "props": { "title": "New toys and exclusive offers" } }
+      ]
+    },
+    { "slug": "shop", "title": "Shop", "sections": [
+        { "key": "webu_ecom_product_search_01", "props": { "title": "Search", "variant": "inline" } },
+        { "key": "webu_ecom_product_grid_01", "props": { "title": "All Products", "show_filters": true, "show_sort": true, "pagination_mode": "pagination" } }
+    ]},
+    { "slug": "product", "title": "Product", "sections": [
+        { "key": "webu_ecom_product_gallery_01", "props": { "product_slug": "{{route.params.slug}}" } },
+        { "key": "webu_ecom_product_detail_01", "props": { "product_slug": "{{route.params.slug}}" } },
+        { "key": "webu_ecom_product_tabs_01", "props": { "product_slug": "{{route.params.slug}}" } }
+    ]},
+    { "slug": "cart", "title": "Cart", "sections": [
+        { "key": "webu_ecom_cart_page_01", "props": { "title": "Your Cart", "show_coupon_slot": true, "show_order_summary": true } }
+    ]},
+    { "slug": "checkout", "title": "Checkout", "sections": [
+        { "key": "webu_ecom_checkout_form_01", "props": { "title": "Checkout", "variant": "combined" } }
+    ]},
+    { "slug": "contact", "title": "Contact", "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "We're Here to Help", "subtitle": "Orders, recommendations, or bulk requests.", "layout_variant": "centered", "style_variant": "minimal" } },
+        { "key": "webu_general_text_01", "props": { "title": "Contact", "body": "Email or call. We respond within 24 hours." } }
+    ]}
+  ]
+}

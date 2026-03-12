@@ -1,0 +1,21 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_account_profile_01",
+  "label": "Account profile",
+  "description": "Profile form fields (label, value) editable in builder.",
+  "content": {
+    "fields": {
+      "type": "array",
+      "title": "Fields",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "value": { "type": "string", "title": "Value" },
+          "full_width": { "type": "boolean", "title": "Full width" }
+        }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

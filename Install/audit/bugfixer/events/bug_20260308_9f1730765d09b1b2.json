@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260308_9f1730765d09b1b2",
+    "timestamp": "2026-03-08T10:58:40+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc",
+    "event": "[console.error] The above error occurred in the <MessageBubble> component:\n\n    at MessageBubble (http:\/\/[::1]:5174\/resources\/js\/components\/Chat\/MessageBubble.tsx?t=1772967519849:177:33)\n    at div\n    at div\n    at div\n    at http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=ee191eb0:162:13\n    at http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=ee191eb0:311:13\n    at div\n    at http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=ee191eb0:162:13\n    at Provider (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=ee191eb0:183:15)\n    at http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=ee191eb0:249:7\n    at ScrollArea (http:\/\/[::1]:5174\/resources\/js\/components\/ui\/scroll-area.tsx:21:3)\n    at div\n    at div\n    at div\n    at div\n    at div\n    at Chat (http:\/\/[::1]:5174\/resources\/js\/Pages\/Chat.tsx?t=1772967444086:271:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/LanguageContext.tsx?t=1772967260615:700:36)\n    at AppWrapper (http:\/\/[::1]:5174\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=ee191eb0:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5174\/resources\/js\/components\/BugfixerEr",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "9f1730765d09b1b2",
+    "frequency": 1
+}

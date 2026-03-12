@@ -1,0 +1,13 @@
+{
+  "runId": "2026-03-04T18-55-54",
+  "passed": false,
+  "failedStep": "lint",
+  "results": [
+    {
+      "step": "lint",
+      "passed": false,
+      "status": 1
+    }
+  ],
+  "timestamp": "2026-03-04T18:56:09.124Z"
+}

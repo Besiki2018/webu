@@ -1,0 +1,28 @@
+{
+    "The :attribute field is required.": "حقل :attribute مطلوب.",
+    "The :attribute must be unique.": "يجب أن يكون :attribute فريداً.",
+    "The :attribute must be a valid email address.": "يجب أن يكون :attribute عنوان بريد إلكتروني صالح.",
+    "The :attribute must be at least :min characters.": "يجب أن يكون :attribute على الأقل :min أحرف.",
+    "The :attribute must not be greater than :max characters.": "يجب ألا يتجاوز :attribute :max حرفاً.",
+    "The :attribute confirmation does not match.": "تأكيد :attribute غير متطابق.",
+    "The :attribute has already been taken.": ":attribute مستخدم بالفعل.",
+    "The :attribute format is invalid.": "تنسيق :attribute غير صالح.",
+    "The :attribute must be a number.": "يجب أن يكون :attribute رقماً.",
+    "The :attribute must be an integer.": "يجب أن يكون :attribute عدداً صحيحاً.",
+    "The :attribute must be a valid URL.": "يجب أن يكون :attribute رابطاً صالحاً.",
+    "The :attribute must be a valid date.": "يجب أن يكون :attribute تاريخاً صالحاً.",
+    "The :attribute must be a file of type: :values.": "يجب أن يكون :attribute ملفاً من نوع: :values.",
+    "The :attribute must not be greater than :max kilobytes.": "يجب ألا يتجاوز :attribute :max كيلوبايت.",
+    "The selected :attribute is invalid.": ":attribute المحدد غير صالح.",
+    "The :attribute must be accepted.": "يجب قبول :attribute.",
+    "The :attribute must be a valid JSON string.": "يجب أن يكون :attribute نص JSON صالح.",
+
+    "This field is required": "هذا الحقل مطلوب",
+    "Invalid email address": "عنوان البريد الإلكتروني غير صالح",
+    "Password is too short": "كلمة المرور قصيرة جداً",
+    "Passwords do not match": "كلمات المرور غير متطابقة",
+    "Invalid value": "قيمة غير صالحة",
+    "Please select an option": "يرجى اختيار خيار",
+    "File too large": "الملف كبير جداً",
+    "Invalid file type": "نوع الملف غير صالح"
+}

@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260309_47f1a7e8d6184321",
+    "timestamp": "2026-03-09T11:56:32+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/create",
+    "event": "[console.error] [vite] Failed to reload \/resources\/css\/app.css. This could be due to syntax errors or importing non-existent modules. (see errors above)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "47f1a7e8d6184321",
+    "frequency": 1
+}

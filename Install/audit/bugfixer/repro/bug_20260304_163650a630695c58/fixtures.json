@@ -1,0 +1,11 @@
+{
+  "bugId": "bug_20260304_163650a630695c58",
+  "websiteId": null,
+  "tenantId": null,
+  "route": "/projects",
+  "source": "frontend",
+  "sanitizedContext": {
+    "sectionId": null,
+    "componentStack": null
+  }
+}

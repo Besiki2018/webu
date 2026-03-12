@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_14d329fb64f3051a",
+    "timestamp": "2026-03-06T20:21:00+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc?tab=inspect",
+    "event": "[console.warn] [WebuInspect] InspectPreview inspect mode {\"hasPreviewUrl\":true,\"iframeReady\":true,\"pendingLibraryItem\":null,\"hasOnElementSelect\":true,\"hasOnLibraryItemPlace\":true}",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "14d329fb64f3051a",
+    "frequency": 8
+}

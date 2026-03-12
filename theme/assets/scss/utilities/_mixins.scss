@@ -1,0 +1,67 @@
+//-------------------------------------------------
+// Mixin SCSS
+//-------------------------------------------------
+@mixin fadeOutDown {
+  animation-duration: 1s;
+  animation-fill-mode: both;
+  animation-name: fadeOutDown;
+}
+
+@mixin custom-scroll-bar() {
+  ::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #888;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+}
+
+@mixin scrollbar {
+  &::-webkit-scrollbar {
+    background-color: transparent;
+    width: 7px;
+    height: 7px;
+    position: absolute;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(80, 93, 113, .5);
+    border-radius: 5px;
+  }
+}
+
+@mixin hoverscrollbar {
+  &::-webkit-scrollbar {
+    position: absolute;
+    width: 7px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(80, 93, 113, .5);
+    border-radius: 5px;
+    // border: 1px solid #1d2531;
+  }
+}
+
+@mixin ease2 {
+  -webkit-transition: all 0.2s ease-in-out;
+  -moz-transition: all 0.2s ease-in-out;
+  -o-transition: all 0.2s ease-in-out;
+  transition: all 0.2s ease-in-out;
+}
+
+@mixin ease3 {
+  -webkit-transition: all 0.3s ease-in-out;
+  -moz-transition: all 0.3s ease-in-out;
+  -o-transition: all 0.3s ease-in-out;
+  transition: all 0.3s ease-in-out;
+}

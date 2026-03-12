@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260311_f2b75825e3e1b34c",
+    "timestamp": "2026-03-11T10:30:51+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cdc5d-46ca-72b2-925d-1307b7a26713?tab=inspect",
+    "event": "[console.warn] [Builder sync] change set apply failed The target section could not be found.",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "f2b75825e3e1b34c",
+    "frequency": 1
+}

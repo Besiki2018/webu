@@ -1,0 +1,37 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_cart_page_01",
+  "label": "Cart page",
+  "bindings": {
+    "source": "cart"
+  },
+  "content": {
+    "title": { "type": "string", "title": "Page title" },
+    "table_headers": { "type": "array", "title": "Table headers", "items": { "type": "string" } },
+    "cart_items": {
+      "type": "array",
+      "title": "Cart items (or from runtime)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "title": "Product name" },
+          "price": { "type": "string", "title": "Price" },
+          "qty": { "type": "string", "title": "Qty" },
+          "total": { "type": "string", "title": "Total" }
+        }
+      }
+    },
+    "show_coupon_slot": { "type": "boolean", "title": "Show coupon field" },
+    "show_order_summary": { "type": "boolean", "title": "Show order summary" },
+    "checkout_cta_label": { "type": "string", "title": "Checkout button label" },
+    "empty_cart_message": { "type": "string", "title": "Empty cart message" }
+  },
+  "style": {
+    "desktop": { "paddingTop": "string", "paddingBottom": "string", "layout": "string" },
+    "tablet": { "paddingTop": "string", "paddingBottom": "string" },
+    "mobile": { "paddingTop": "string", "paddingBottom": "string" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_85499b30eac17bbc",
+    "timestamp": "2026-03-06T14:46:19+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce7-ac45-711a-9e9e-1c53bcac527e",
+    "event": "Cannot access 'postBuilderCommand' before initialization",
+    "stack": "ReferenceError: Cannot access 'postBuilderCommand' before initialization\n    at Chat (http:\/\/[::1]:5174\/resources\/js\/Pages\/Chat.tsx?t=1772808378732:383:36)\n    at renderWithHooks (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:11596:26)\n    at mountIndeterminateComponent (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:14974:21)\n    at beginWork (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:15962:22)\n    at beginWork$1 (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:19806:22)\n    at performUnitOfWork (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:19251:20)\n    at workLoopSync (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:19190:13)\n    at renderRootSync (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:19169:15)\n    at recoverFromConcurrentError (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:18786:28)\n    at performSyncWorkOnRoot (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=ee191eb0:18932:28)",
+    "context": {
+        "sectionId": null,
+        "componentStack": "at Chat (http:\/\/[::1]:5174\/resources\/js\/Pages\/Chat.tsx?t=1772808378732:56:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/LanguageContext.tsx?t=1772786151099:683:36)\n    at AppWrapper (http:\/\/[::1]:5174\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=ee191eb0:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5174\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/ThemeContext.tsx:41:33)"
+    },
+    "dedupKey": "85499b30eac17bbc",
+    "frequency": 1
+}

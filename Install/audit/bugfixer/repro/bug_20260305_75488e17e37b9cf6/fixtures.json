@@ -1,0 +1,11 @@
+{
+  "bugId": "bug_20260305_75488e17e37b9cf6",
+  "websiteId": null,
+  "tenantId": null,
+  "route": "/project/019cbb52-19ff-7345-b9d7-c28bf5061311",
+  "source": "frontend",
+  "sanitizedContext": {
+    "sectionId": null,
+    "componentStack": "at Chat (http://127.0.0.1:5173/resources/js/Pages/Chat.tsx?t=1772668273399:57:3)\n    at DisabledReCaptchaProvider (http://127.0.0.1:[REDACTED].tsx:60:38)\n    at ReCaptchaProvider (http://127.0.0.1:[REDACTED].tsx:77:37)\n    at LanguageProvider (http://127.0.0.1:[REDACTED].tsx?t=1772669476234:681:36)\n    at AppWrapper (http://127.0.0.1:5173/resources/js/app.tsx?t=1772669476234:30:23)\n    at App (http://127.0.0.1:5173/node_modules/.vite/deps/@inertiajs_react.js?v=0ec34260:14984:3)\n    at BugfixerErrorBoundary (http://127.0.0.1:[REDACTED].tsx:7:5)\n    at ThemeProvider (http://127.0.0.1:5173/resources/js/contexts/ThemeContext.tsx:41:33)"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "feature_key",
+    "title",
+    "category",
+    "description",
+    "context",
+    "permissions",
+    "entities",
+    "endpoints",
+    "events",
+    "ui_intent",
+    "generator_hints",
+    "meta"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "feature_key": { "type": "string" },
+    "title": { "type": "string" },
+    "category": { "type": "string" },
+    "description": { "type": "string" },
+    "context": {
+      "type": "string",
+      "enum": ["public", "customer", "admin"]
+    },
+    "permissions": { "type": "array" },
+    "entities": { "type": "array" },
+    "endpoints": { "type": "array", "minItems": 1 },
+    "events": { "type": "array" },
+    "ui_intent": {
+      "type": "object",
+      "required": ["primary_component", "secondary_components", "component_set"],
+      "properties": {
+        "primary_component": {}, "secondary_components": {}, "component_set": {}
+      }
+    },
+    "generator_hints": {
+      "type": "object",
+      "required": ["namespace", "builder_sidebar_category", "component_types", "feature_dir"],
+      "properties": {
+        "namespace": {}, "builder_sidebar_category": {}, "component_types": {}, "feature_dir": {}
+      }
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "parser": { "const": "CmsAiComponentFeatureSpecParser" },
+        "contracts": {
+          "type": "object",
+          "properties": {
+            "canonical_component_registry_schema": {
+              "const": "docs/architecture/schemas/cms-canonical-component-registry-entry.v1.schema.json"
+            }
+          }
+        }
+      }
+    }
+  }
+}

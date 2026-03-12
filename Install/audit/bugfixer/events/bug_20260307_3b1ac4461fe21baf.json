@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_3b1ac4461fe21baf",
+    "timestamp": "2026-03-08T00:35:45+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce7-ac45-711a-9e9e-1c53bcac527e",
+    "event": "[console.error] [AI Site Editor] execute failed {\"status\":422,\"statusText\":\"Unprocessable Content\",\"errors\":{\"change_set.operations\":[\"validation.required\"]},\"validation\":\"validation.required\",\"sent\":{\"projectId\":\"019cbce7-ac45-711a-9e9e-1c53bcac527e\",\"page_id\":15,\"page_slug\":\"home\",\"operationsCount\":0,\"hasSummary\":true}}",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "3b1ac4461fe21baf",
+    "frequency": 2
+}

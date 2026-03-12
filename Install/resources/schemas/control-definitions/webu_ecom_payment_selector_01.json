@@ -1,0 +1,22 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_payment_selector_01",
+  "label": "Payment selector",
+  "description": "Payment options (label, status) editable in builder.",
+  "content": {
+    "options": {
+      "type": "array",
+      "title": "Payment options",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "status": { "type": "string", "title": "Status text" },
+          "status_variant": { "type": "string", "title": "Status variant (ok, warning)" },
+          "selected": { "type": "boolean", "title": "Selected" }
+        }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

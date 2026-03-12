@@ -1,0 +1,17 @@
+openapi: 3.0.3
+info:
+  title: Webu Auth & Customers (minimal)
+  version: v1
+paths:
+  /login:
+    post: {}
+  /register:
+    post: {}
+  /logout:
+    post: {}
+  /auth/{provider}:
+    get: {}
+  /panel/sites/{site}/booking/customers/search:
+    get: {}
+  /customers/me:
+    get: {}

@@ -1,0 +1,2005 @@
+Webu Builder Component Parameterization and Element Selection System
+
+Objective
+
+Improve the existing Webu builder so that all created components expose editable content through builder parameters and allow element-level editing through chat interaction.
+
+The goal is to make every component editable from the builder interface and enable direct element targeting from the chat system.
+
+Important Rules
+
+Do NOT create a new builder architecture.
+
+Do NOT replace existing component rendering logic.
+
+The task must analyze the existing component structure and extend it so editable content is exposed in component parameters.
+
+Phase 1 — Component Structure Analysis
+
+Perform a deep analysis of all existing builder components.
+
+Target directories
+
+src/components
+src/sections
+src/layouts
+
+For every component identify:
+
+editable text
+images
+logos
+links
+menus
+buttons
+icons
+headings
+descriptions
+
+Detect which content is currently hardcoded inside the component.
+
+Example
+
+Current component
+
+Header.tsx
+
+Hardcoded content
+
+logo
+navigation menu
+button label
+
+The system must detect these and move them into component parameters.
+
+Phase 2 — Component Parameter Extraction
+
+For every editable element create a corresponding parameter in the builder configuration.
+
+Example
+
+Header parameters
+
+logo
+menu selection
+button text
+button link
+
+Example structure
+
+componentConfig
+
+logo
+menu
+ctaText
+ctaLink
+
+These parameters must be exposed in the builder sidebar.
+
+The builder user must be able to change these values without modifying code.
+
+Example
+
+Header Component
+
+Before
+
+<img src="/logo.png">
+
+After
+
+<img src={props.logo}>
+
+Phase 3 — Universal Component Parameter System
+
+Create a consistent parameter structure for all components.
+
+Supported parameter types
+
+text
+image
+menu selector
+link
+icon
+boolean toggle
+color
+number
+
+Example
+
+HeroSection parameters
+
+title
+subtitle
+buttonText
+buttonLink
+backgroundImage
+
+All parameters must be editable through the builder UI.
+
+Phase 4 — Parameter Synchronization
+
+When a parameter is updated in the builder interface the change must immediately update the preview.
+
+Example
+
+User changes
+
+Hero title
+
+Preview updates instantly.
+
+Phase 5 — Element Selection System
+
+Implement a visual element targeting system inside the builder preview.
+
+When the user moves the mouse over elements in the preview:
+
+the element must highlight
+
+Example behavior
+
+hover element → outline appears
+
+This allows the user to visually identify editable elements.
+
+Example CSS
+
+outline: 2px dashed #6366f1
+
+Phase 6 — Element Click Detection
+
+When the user clicks an element in the preview the builder must detect which component and element was selected.
+
+Example
+
+User clicks
+
+Hero title
+
+System identifies
+
+component: HeroSection
+element: title
+
+Phase 7 — Chat Element Tagging
+
+When an element is clicked the system must automatically tag it in the AI chat context.
+
+Example
+
+Tagged element
+
+HeroSection.title
+
+Now when the user writes a request in chat:
+
+Change this title to “Best Restaurant in Town”
+
+The AI understands that the change must apply to
+
+HeroSection.title
+
+Phase 8 — Chat Editing Behavior
+
+When the AI receives a request it must modify the corresponding component parameter instead of modifying raw component code.
+
+Example
+
+AI action
+
+update parameter
+
+HeroSection.title
+
+This ensures changes remain builder-compatible.
+
+Phase 9 — Visual Selection Overlay
+
+Create a lightweight overlay layer inside the preview that tracks hover and click events.
+
+Responsibilities
+
+detect hovered element
+highlight element
+detect click target
+store selected element id
+
+Phase 10 — Builder Integration
+
+Selected elements must be reflected in both:
+
+builder sidebar
+AI chat context
+
+Example
+
+Selected element
+
+HeroSection.title
+
+Sidebar focuses the corresponding parameter.
+
+Phase 11 — Parameter Metadata
+
+Each component must define metadata describing its editable fields.
+
+Example
+
+HeroSection.config.ts
+
+fields
+
+title
+subtitle
+buttonText
+buttonLink
+backgroundImage
+
+The builder must use this metadata to render the parameter editor.
+
+Phase 12 — Stability Rules
+
+This implementation must not break:
+
+existing component rendering
+preview system
+component registry
+
+Existing components must remain compatible.
+
+Expected Result
+
+After implementing this system:
+
+All builder components expose editable parameters.
+
+Users can visually select elements in the preview.
+
+Selected elements are automatically tagged inside the AI chat.
+
+The AI can modify specific elements directly through parameters instead of editing raw component code.
+
+This will allow Webu to support precise AI-driven editing and builder-based customization simultaneously.
+ 
+
+Implement AI Visual DOM Mapper for Webu Builder
+
+Objective
+
+Extend the Webu builder with a Visual DOM Mapping system that allows the AI and the builder interface to understand the exact structure of elements rendered on the page.
+
+This system will create a structured map of all visible components and their editable elements.
+
+The purpose of this system is to allow precise element-level editing through both the builder UI and AI chat interaction.
+
+Important Rules
+
+Do NOT replace the current builder architecture.
+
+Do NOT modify the existing rendering system.
+
+The Visual DOM Mapper must work as a layer on top of the existing preview system.
+
+Phase 1 — DOM Structure Mapping
+
+Create a module that scans the rendered builder preview and builds a structured map of the page elements.
+
+Location
+
+src/builder/domMapper/
+
+Main file
+
+domMapper.ts
+
+Responsibilities
+
+The mapper must detect all rendered builder components and their internal editable elements.
+
+Example detected structure
+
+Page
+
+HomePage
+
+Sections
+
+HeroSection
+FeaturesSection
+TestimonialsSection
+
+Elements inside HeroSection
+
+title
+subtitle
+button
+backgroundImage
+
+Phase 2 — Element Identification System
+
+Each detected element must receive a unique identifier.
+
+Example
+
+HeroSection.title
+HeroSection.subtitle
+HeroSection.button
+
+These identifiers will be used by both the builder interface and the AI system.
+
+Phase 3 — Editable Element Detection
+
+The system must detect elements that correspond to editable parameters.
+
+Examples
+
+text nodes
+images
+buttons
+links
+icons
+headings
+
+Each editable element must be mapped to its component parameter.
+
+Example
+
+HeroSection.title → parameter: title
+HeroSection.button → parameter: buttonText
+
+Phase 4 — DOM to Component Mapping
+
+The system must connect the DOM element with its underlying component and parameter configuration.
+
+Example mapping
+
+DOM element
+
+h1 inside HeroSection
+
+Component mapping
+
+component: HeroSection
+parameter: title
+
+Phase 5 — Hover Detection
+
+When the user moves the mouse over elements in the preview the system must detect which mapped element is being hovered.
+
+Example behavior
+
+hover element → highlight
+
+The highlight must be rendered using a lightweight overlay.
+
+Example style
+
+outline: 2px dashed #6366f1
+
+Phase 6 — Click Targeting
+
+When the user clicks an element the system must identify the exact component and parameter.
+
+Example
+
+Clicked element
+
+HeroSection.title
+
+The system must send this identifier to the builder state.
+
+Phase 7 — AI Chat Context Integration
+
+When an element is selected it must automatically be attached to the AI chat context.
+
+Example
+
+Selected element
+
+HeroSection.title
+
+User writes in chat
+
+Change this title to "Best Restaurant in Town"
+
+The AI system must understand that the change applies to
+
+HeroSection.title
+
+Phase 8 — Parameter Editing Integration
+
+When the AI modifies the selected element the change must update the component parameter instead of modifying raw component code.
+
+Example
+
+AI action
+
+update parameter
+
+HeroSection.title
+
+This ensures builder compatibility.
+
+Phase 9 — DOM Map Cache
+
+The DOM structure should be cached to avoid rebuilding the entire map on every interaction.
+
+The map must refresh when
+
+component added
+component removed
+component reordered
+
+Phase 10 — Debug Visualization
+
+Create an optional debug mode to visualize the DOM mapping.
+
+Example
+
+Show component boundaries
+Show element identifiers
+
+This will help verify correct element mapping.
+
+Phase 11 — Performance Optimization
+
+The DOM mapper must avoid heavy DOM scans.
+
+Use mutation observers or builder events to update the map when the layout changes.
+
+Phase 12 — Integration With Builder
+
+The DOM mapper must work with
+
+component registry
+parameter system
+AI editing pipeline
+preview renderer
+
+No builder functionality should be broken.
+
+Expected Result
+
+After implementing this system the Webu builder will have a full visual map of all components and editable elements.
+
+Users will be able to
+
+hover elements to highlight them
+click elements to select them
+edit elements via builder parameters
+modify elements directly via AI chat
+
+The AI will understand the exact structure of the page and apply modifications precisely to the selected element.
+
+
+Implement AI Layout Refiner Engine for Webu Builder
+
+Objective
+
+Extend the existing Webu AI system with a Layout Refiner Engine that analyzes generated or edited pages and automatically improves layout quality.
+
+The purpose of this system is to ensure that all generated websites maintain professional visual quality, correct spacing, consistent alignment, and responsive behavior.
+
+Important Rules
+
+Do NOT create a new builder architecture.
+
+Do NOT modify the fundamental component system.
+
+The Layout Refiner must operate as a post-processing layer that analyzes existing components and improves their layout configuration.
+
+Location
+
+Create a module inside the AI system.
+
+src/ai/layoutRefiner/
+
+Main file
+
+layoutRefiner.ts
+
+Phase 1 — Layout Analysis
+
+The refiner must analyze the current page structure using the DOM Mapper and Codebase Scanner outputs.
+
+Information required
+
+page sections
+component hierarchy
+container alignment
+grid usage
+spacing values
+
+The system must detect layout inconsistencies.
+
+Examples
+
+sections without containers
+misaligned components
+inconsistent spacing
+incorrect grid distribution
+
+Phase 2 — Spacing Optimization
+
+The system must enforce consistent spacing rules across sections.
+
+Standard rules
+
+Large sections
+
+padding-top: 80px
+padding-bottom: 80px
+
+Medium sections
+
+padding-top: 60px
+padding-bottom: 60px
+
+Small sections
+
+padding-top: 40px
+padding-bottom: 40px
+
+Sections must follow consistent vertical rhythm.
+
+Phase 3 — Container Alignment Fix
+
+The refiner must ensure that all sections follow the same container alignment.
+
+Example container rule
+
+max-width: 1290px
+
+Correct structure
+
+<section>
+  <div class="container">
+  </div>
+</section>
+
+Incorrect layouts must be automatically corrected.
+
+Phase 4 — Grid Optimization
+
+Analyze grid layouts and fix column distribution.
+
+Examples
+
+Feature sections
+
+3 columns desktop
+2 columns tablet
+1 column mobile
+
+Product grids
+
+4 columns desktop
+2 columns tablet
+1 column mobile
+
+Ensure responsive collapse behavior.
+
+Phase 5 — Typography Refinement
+
+The refiner must enforce typography hierarchy.
+
+Standard typography scale
+
+H1
+
+48px desktop
+36px tablet
+28px mobile
+
+H2
+
+36px desktop
+28px tablet
+24px mobile
+
+Paragraph
+
+16px
+
+Ensure headings follow a logical hierarchy.
+
+Phase 6 — Responsive Corrections
+
+Analyze layouts across breakpoints.
+
+Breakpoints
+
+Desktop
+
+> 1024px
+
+Tablet
+
+768px – 1024px
+
+Mobile
+
+< 768px
+
+Ensure components collapse correctly and avoid overflow issues.
+
+Phase 7 — Visual Consistency
+
+The refiner must detect visual inconsistencies such as
+
+random margins
+inconsistent button styles
+misaligned icons
+uneven column spacing
+
+Apply corrections using the Webu Design Intelligence rules.
+
+Phase 8 — AI Assisted Refinement
+
+The Layout Refiner may use the active AI provider to evaluate layout improvements.
+
+Example prompt to AI
+
+Analyze this page structure and suggest layout improvements.
+
+The system must then apply safe modifications.
+
+Phase 9 — Preview Synchronization
+
+After refinement the preview must automatically reload so the user can see improvements instantly.
+
+Phase 10 — Non-Destructive Editing
+
+The refiner must never break the component structure.
+
+All refinements must modify
+
+component parameters
+layout classes
+spacing configuration
+
+Never rewrite entire components unless required.
+
+Phase 11 — Trigger Conditions
+
+The Layout Refiner should run automatically when
+
+new page generated
+section added
+layout modified
+user triggers “Optimize Layout”
+
+Phase 12 — Optimization Report
+
+After running the refiner the system must produce a report.
+
+Example
+
+Layout Optimization Complete
+
+Fixed spacing in 3 sections
+Aligned containers
+Improved responsive grid
+Corrected typography scale
+
+Expected Result
+
+After implementing the Layout Refiner Engine, Webu-generated websites must automatically improve their visual layout quality.
+
+The system will ensure consistent spacing, correct alignment, responsive layouts, and professional visual hierarchy.
+
+This transforms Webu from a simple AI generator into a professional AI website builder capable of producing polished websites automatically.
+
+
+1. Webu AI Autopilot System
+
+Task for Cursor:
+
+Implement Webu AI Autopilot System
+
+Objective
+
+Extend the existing Webu AI system so that a user can generate a complete website from a single prompt.
+
+The Autopilot system must orchestrate the already existing Webu AI modules and builder systems to automatically plan, generate, refine, and preview a full website.
+
+Important Rules
+
+Do NOT create a separate AI product.
+Do NOT create a new builder architecture.
+Do NOT bypass the existing Webu builder, component system, or project workspace.
+
+The Autopilot system must use and coordinate the already existing systems:
+
+AI providers
+
+codebase scanner
+
+site planner
+
+design intelligence
+
+component generator
+
+AI agent tools
+
+DOM mapper
+
+layout refiner
+
+preview system
+
+The goal is not to build a parallel system.
+The goal is to turn the current Webu AI into a full autonomous website generation workflow.
+
+Core Flow
+
+When the user submits a prompt such as:
+
+Create a website for a restaurant
+
+Webu AI Autopilot must execute the following sequence:
+
+Analyze current project state
+
+Scan existing project structure
+
+Generate full site plan
+
+Match or generate required components
+
+Create or update pages
+
+Populate component parameters and content
+
+Apply design rules
+
+Run layout refinement
+
+Reload preview
+
+Return structured execution summary
+
+Phase 1 — Project Awareness
+
+Before generation starts, the system must inspect the active project.
+
+It must determine:
+
+existing pages
+
+existing components
+
+existing sections
+
+existing layouts
+
+existing design rules
+
+global header and footer
+
+If the project is empty, the system should initialize a clean project structure using the current Webu project conventions.
+
+Phase 2 — Site Planning
+
+The Autopilot system must invoke the existing Site Planner.
+
+Input:
+
+user prompt
+
+Example:
+
+Create website for restaurant
+
+Output must include:
+
+site name
+
+page list
+
+section list per page
+
+recommended layout order
+
+global components needed
+
+Example:
+
+Pages
+
+Home
+
+About
+
+Menu
+
+Gallery
+
+Contact
+
+Home sections
+
+Header
+
+HeroSection
+
+FeaturesSection
+
+TestimonialsSection
+
+CTASection
+
+Footer
+
+Phase 3 — Component Reuse First
+
+Before generating new components, the system must inspect the component registry and existing sections.
+
+Rule:
+
+Always reuse existing components first.
+
+Only if the required section does not exist, the system may call the Component Generator.
+
+This prevents duplication and keeps the builder clean.
+
+Phase 4 — Page Creation and Assembly
+
+Autopilot must create missing pages using the existing Webu page creation conventions.
+
+Examples:
+
+src/pages/home/Page.tsx
+
+src/pages/about/Page.tsx
+
+src/pages/contact/Page.tsx
+
+Then it must assemble each page using existing or generated sections.
+
+It must also ensure:
+
+global header is reused
+
+global footer is reused
+
+container rules are applied consistently
+
+section order is logical
+
+Phase 5 — Content and Parameter Population
+
+For each inserted component, the system must automatically populate builder parameters.
+
+Examples:
+
+HeroSection
+
+title
+
+subtitle
+
+buttonText
+
+buttonLink
+
+image
+
+Header
+
+logo
+
+selected menu
+
+CTA button text
+
+Footer
+
+contact info
+
+social links
+
+copyright
+
+All content must be written into the existing parameter system, not hardcoded.
+
+Phase 6 — Design Intelligence
+
+After structure creation, the system must apply the existing Webu Design Intelligence rules.
+
+It must ensure:
+
+max-width rules
+
+spacing consistency
+
+typography hierarchy
+
+responsive layout rules
+
+consistent header/footer alignment
+
+Phase 7 — Layout Refinement
+
+After page generation, the system must run the existing Layout Refiner.
+
+The refiner must:
+
+fix spacing
+
+align sections
+
+optimize grid layouts
+
+correct typography hierarchy
+
+fix responsive collapse issues
+
+Phase 8 — Preview Synchronization
+
+After generation and refinement, the preview must reload automatically.
+
+The user must immediately see the complete generated website.
+
+Phase 9 — Execution Logging
+
+Every Autopilot run must generate a structured log.
+
+The log must include:
+
+user prompt
+
+pages created
+
+components reused
+
+components generated
+
+files created
+
+files updated
+
+timestamp
+
+Phase 10 — Execution Summary
+
+The final AI response must not be generic.
+
+It must return a structured summary such as:
+
+Website created successfully
+
+Pages created:
+
+Home
+
+About
+
+Menu
+
+Gallery
+
+Contact
+
+Components reused:
+
+Header
+
+HeroSection
+
+CTASection
+
+Footer
+
+Components generated:
+
+MenuSection
+
+GallerySection
+
+Preview updated successfully.
+
+Expected Result
+
+After implementation, Webu AI must be able to generate a complete multi-page website from a single prompt by orchestrating the existing Webu systems.
+
+The system must feel like a real AI website builder, not a simple chat assistant.
+
+2. Generate Full Real Project Code for Every AI-Created Website
+
+Task for Cursor:
+
+Implement Full Project Code Generation for AI-Created Websites in Webu
+
+Objective
+
+Ensure that every website created by Webu AI results in a full real project codebase inside the active project workspace.
+
+The generated website must not exist only as virtual builder state, temporary runtime output, or preview-only structure.
+
+The result must be a real editable code project with actual files that represent the website.
+
+Important Rules
+
+Do NOT create a separate export system as the primary source of truth.
+Do NOT keep the website only in temporary generated runtime structures.
+
+The source of truth must be the actual project files inside the current Webu project workspace.
+
+The generated code must remain fully compatible with:
+
+the existing Webu builder
+
+the existing component registry
+
+the existing parameter system
+
+the existing preview system
+
+the existing AI editing pipeline
+
+Core Principle
+
+When Webu AI creates a website, it must generate:
+
+real page files
+
+real layout files
+
+real section/component files
+
+real style files where needed
+
+real configuration/state files used by the builder
+
+The website must exist as a real project codebase, similar to how modern AI builders generate actual editable code.
+
+Project Output Structure
+
+Use the existing Webu project conventions, but ensure the final website is represented in real files.
+
+Example structure:
+
+/projects/{project_id}/
+
+src/
+pages/
+home/Page.tsx
+about/Page.tsx
+services/Page.tsx
+contact/Page.tsx
+components/
+Header.tsx
+Footer.tsx
+sections/
+HeroSection.tsx
+FeaturesSection.tsx
+TestimonialsSection.tsx
+CTASection.tsx
+layouts/
+SiteLayout.tsx
+styles/
+globals.css
+public/
+images/
+.webu/
+index.json
+page-structure.json
+
+Page File Generation
+
+For every generated page, the system must create a real page file.
+
+Example:
+
+src/pages/home/Page.tsx
+
+The file must contain real React/TypeScript code using the project’s existing conventions.
+
+Example structure:
+
+export default function HomePage() {
+return (
+<SiteLayout>
+<HeroSection />
+<FeaturesSection />
+<TestimonialsSection />
+<CTASection />
+</SiteLayout>
+);
+}
+
+Component and Section Generation
+
+If a component or section is missing and needed for the site, it must be created as a real file in the proper location.
+
+Examples:
+
+src/sections/MenuSection.tsx
+
+src/sections/GallerySection.tsx
+
+All generated files must follow:
+
+existing Webu coding patterns
+
+React functional component conventions
+
+TypeScript syntax
+
+Webu design system rules
+
+Global Layout Generation
+
+The system must ensure that global layout files are also real and editable.
+
+Examples:
+
+SiteLayout.tsx
+
+Header.tsx
+
+Footer.tsx
+
+Header and footer must be reusable across all pages.
+
+Builder Compatibility
+
+The builder must read from and stay synchronized with these real project files.
+
+Rule:
+
+Do NOT generate files that are disconnected from the builder.
+
+The builder, AI, and preview must all operate on the same real codebase.
+
+Source of Truth
+
+The source of truth must be the real project files.
+
+The following must stay synchronized:
+
+builder state
+
+project files
+
+preview output
+
+AI context
+
+If needed, update internal builder metadata files such as:
+
+.webu/index.json
+
+.webu/page-structure.json
+
+But these must support the real codebase, not replace it.
+
+Code Quality Rules
+
+Generated code must be:
+
+valid
+
+structured
+
+readable
+
+reusable
+
+aligned with existing project style
+
+Avoid:
+
+temporary wrappers
+
+hidden generated-only layers
+
+virtual-only pages
+
+duplicated structures
+
+File Verification
+
+After generation, the system must verify that the files were actually created or updated.
+
+It must confirm:
+
+file exists
+
+file content is valid
+
+imports resolve correctly
+
+preview can render successfully
+
+If a file was not created successfully, the AI must report failure clearly.
+
+Regeneration and Editing
+
+After a site is generated, the same files must remain editable through:
+
+Webu builder
+
+Webu AI chat
+
+parameter panel
+
+element selection system
+
+This ensures long-term maintainability.
+
+Execution Summary
+
+After full generation, the response must include:
+
+pages created
+
+sections created
+
+files created
+
+files updated
+
+whether preview rendered successfully
+
+Example:
+
+Website code generated successfully
+
+Files created:
+
+src/pages/home/Page.tsx
+
+src/pages/about/Page.tsx
+
+src/pages/contact/Page.tsx
+
+src/sections/HeroSection.tsx
+
+src/sections/TestimonialsSection.tsx
+
+Files updated:
+
+src/components/Header.tsx
+
+src/components/Footer.tsx
+
+.webu/index.json
+
+Preview rendered successfully.
+
+Expected Result
+
+After implementation, every website created by Webu AI must exist as a complete real project codebase.
+
+The generated website must be editable, maintainable, builder-compatible, and represented in actual files inside the project workspace.
+
+This makes Webu a true AI website builder that generates professional real-code websites rather than temporary preview-only sites. 
+
+ასევე გიგზავნი გაერტიანებულ თასქებად რაც ზემოთ მოგწერე ეს ყველაფერი სრულფასოვნად უნდ ამოვარგოთ ჩვენს სისტემას! კარგად შევისწავლოთ არსბეული მდგომაროება და მოვარგოთ რომ მიზნებს მივაღწიოთ! 
+
+Webu AI Autonomous Website Builder System
+
+Primary Objective
+
+Transform the existing Webu builder into a full AI-powered website generation system capable of creating, editing, and refining complete websites using natural language.
+
+The system must not replace the existing Webu architecture.
+
+Instead it must analyze, extend, and refine the existing codebase so that all AI capabilities integrate directly with the current builder, component system, preview system, and project file structure.
+
+This system must allow users to generate and modify professional websites entirely through AI interaction while keeping the builder fully functional.
+
+Critical Rule
+
+Before implementing any new functionality the system must perform a full analysis of the existing Webu codebase.
+
+The analysis must determine:
+
+how the builder renders components
+how pages are stored
+how components are registered
+how parameters are handled
+how preview rendering works
+how AI providers are integrated
+how project files are structured
+
+The goal is to refine and extend the existing system, not create parallel systems.
+
+Phase 1 — Codebase Analysis and Cleanup
+
+Perform a deep inspection of the entire Webu codebase.
+
+Identify:
+
+builder architecture
+AI modules
+component system
+parameter system
+preview renderer
+file operations
+project workspace structure
+
+Remove or refactor:
+
+unused code
+duplicate utilities
+temporary debugging code
+dead modules
+
+Ensure the system remains stable and clean.
+
+Phase 2 — AI Provider System
+
+Ensure Webu supports multiple AI providers.
+
+Supported providers
+
+OpenAI
+Claude
+
+Claude must be integrated as an additional provider using the existing provider interface.
+
+No new provider architecture should be created.
+
+Phase 3 — Codebase Scanner
+
+Implement a project scanning system that analyzes the active project.
+
+The scanner must detect:
+
+pages
+sections
+components
+layouts
+styles
+imports
+
+This data must be converted into structured context for the AI.
+
+Example output
+
+pages
+
+home
+about
+contact
+
+sections
+
+HeroSection
+FeaturesSection
+TestimonialsSection
+
+Phase 4 — AI Site Planner
+
+Create a planning layer that converts a user prompt into a full website structure.
+
+Example prompt
+
+Create website for restaurant
+
+Planner output
+
+Pages
+
+Home
+About
+Menu
+Gallery
+Contact
+
+Sections
+
+HeroSection
+FeaturesSection
+TestimonialsSection
+CTASection
+Footer
+
+The planner must reuse existing components when possible.
+
+Phase 5 — Component Generator
+
+If the planner requires a section that does not exist, the AI must generate a reusable component.
+
+Generated components must follow Webu design rules and be placed in the sections directory.
+
+Example
+
+src/sections/TestimonialsSection.tsx
+
+Existing components must always be reused first.
+
+Phase 6 — Builder Component Parameterization
+
+All builder components must expose editable parameters.
+
+Editable content must include:
+
+text
+images
+menus
+logos
+links
+icons
+buttons
+headings
+descriptions
+
+These must be editable from the builder sidebar.
+
+Example
+
+Header parameters
+
+logo
+menu
+ctaText
+ctaLink
+
+Hardcoded content must be converted to parameters.
+
+Phase 7 — Visual DOM Mapping
+
+Implement a DOM mapping system that detects all components and elements rendered in the preview.
+
+Example structure
+
+HomePage
+
+HeroSection
+title
+subtitle
+button
+
+FeaturesSection
+featureCards
+
+TestimonialsSection
+testimonialItems
+
+Each element must receive a unique identifier.
+
+Example
+
+HeroSection.title
+HeroSection.button
+
+Phase 8 — Element Selection System
+
+When the user hovers over elements in the preview they must be visually highlighted.
+
+When the user clicks an element the system must detect:
+
+component name
+element identifier
+parameter reference
+
+Example
+
+HeroSection.title
+
+Phase 9 — AI Chat Element Targeting
+
+When an element is selected the AI chat must automatically receive its identifier.
+
+Example
+
+Selected element
+
+HeroSection.title
+
+User request
+
+Change this title to “Best Restaurant in Town”
+
+The AI must update the corresponding parameter instead of rewriting component code.
+
+Phase 10 — AI Agent Tools
+
+The AI must interact with the project using controlled tools.
+
+Tools
+
+readFile
+writeFile
+createFile
+updateFile
+deleteFile
+listFiles
+searchFiles
+reloadPreview
+
+All tools must operate only inside the active project directory.
+
+Phase 11 — Design Intelligence System
+
+Define global design rules that the AI must follow when generating layouts.
+
+Rules include:
+
+container width
+
+max-width: 1290px
+
+section spacing
+
+80px large
+60px medium
+40px small
+
+typography hierarchy
+
+H1
+H2
+H3
+Paragraph
+
+responsive grid rules
+
+desktop
+tablet
+mobile breakpoints
+
+These rules ensure consistent visual design.
+
+Phase 12 — Layout Refiner Engine
+
+After a website is generated the Layout Refiner must analyze and improve the layout.
+
+Tasks include:
+
+spacing correction
+alignment fixes
+grid optimization
+responsive fixes
+typography hierarchy corrections
+
+This ensures professional visual output.
+
+Phase 13 — Webu AI Autopilot System
+
+Implement a workflow that allows full website generation from a single prompt.
+
+Example
+
+User prompt
+
+Create website for restaurant
+
+Execution flow
+
+scan project
+generate site plan
+reuse components
+generate missing components
+create pages
+populate parameters
+apply design rules
+run layout refinement
+reload preview
+
+Phase 14 — Real Project Code Generation
+
+All generated websites must exist as real code inside the project workspace.
+
+The system must create actual files.
+
+Example structure
+
+/projects/{project_id}
+
+src
+
+pages
+
+home/Page.tsx
+about/Page.tsx
+contact/Page.tsx
+
+sections
+
+HeroSection.tsx
+FeaturesSection.tsx
+TestimonialsSection.tsx
+
+components
+
+Header.tsx
+Footer.tsx
+
+layouts
+
+SiteLayout.tsx
+
+styles
+
+globals.css
+
+public
+
+images
+
+The generated site must not exist only as preview state.
+
+It must be represented as a real editable codebase.
+
+Phase 15 — Builder Synchronization
+
+The builder interface must stay synchronized with the real project files.
+
+Changes made by AI must update:
+
+builder state
+component parameters
+preview rendering
+
+Changes made in the builder must update the same project files.
+
+Phase 16 — Execution Logging
+
+Every AI operation must be logged.
+
+Logs must include
+
+user prompt
+files created
+files updated
+components generated
+components reused
+timestamp
+
+This ensures traceability and debugging.
+
+Expected Result
+
+After completing this implementation Webu becomes a fully autonomous AI website builder capable of generating complete professional websites from natural language prompts.
+
+The system must:
+
+understand project structure
+generate site architecture
+create reusable components
+modify project files
+maintain builder compatibility
+enforce design rules
+refine layout quality
+produce a complete real project codebase
+
+The Webu AI system must function as a true AI development agent integrated directly into the Webu builder ecosystem.
+
+
+Implement AI Memory and Design Learning Engine for Webu
+
+Objective
+
+Extend the existing Webu AI system with a Memory and Design Learning Engine that allows the platform to learn from previously created websites, layouts, and user-approved edits.
+
+The goal is to make Webu progressively smarter over time so that future website generations become more accurate, more visually polished, and more aligned with successful patterns already used inside Webu.
+
+Important Rules
+
+Do NOT create a separate AI product.
+Do NOT replace the current Webu architecture.
+Do NOT create a parallel builder system.
+
+This engine must integrate into the existing Webu AI workflow and enhance the current planning, generation, refinement, and editing systems.
+
+Core Principle
+
+Webu must be able to remember and reuse successful website structures, component combinations, design choices, and user-approved modifications.
+
+The system must learn from:
+
+- websites generated previously
+- layouts accepted by users
+- component structures reused often
+- design adjustments approved by users
+- content patterns selected by users
+- builder edits made after generation
+
+The purpose is not to memorize raw code blindly.
+The purpose is to extract useful patterns and reuse them intelligently.
+
+Phase 1 — Existing Project and Output Analysis
+
+Analyze previously generated Webu projects and identify recurring successful patterns.
+
+The system must detect:
+
+- common page structures
+- common section order
+- common header/footer combinations
+- common spacing patterns
+- common typography choices
+- common responsive fixes
+- common component combinations
+
+Examples
+
+Restaurant websites may commonly use:
+
+HeroSection
+FeaturesSection
+MenuSection
+GallerySection
+TestimonialsSection
+ContactSection
+
+SaaS websites may commonly use:
+
+HeroSection
+FeaturesGrid
+LogoCloud
+PricingSection
+TestimonialsSection
+CTASection
+
+This analysis must produce structured reusable knowledge.
+
+Phase 2 — Memory Storage Layer
+
+Create a memory storage system inside the existing Webu architecture.
+
+Example location
+
+.webu/memory/
+.webu/design-memory.json
+.webu/layout-memory.json
+
+The memory layer must store structured patterns, not only raw outputs.
+
+Examples of memory entities
+
+- website type
+- page structure
+- section order
+- preferred component combinations
+- design rules used
+- user-approved variants
+- layout refinements applied
+
+Example memory record
+
+websiteType: restaurant
+pages:
+- home
+- about
+- menu
+- gallery
+- contact
+
+homeSections:
+- HeroSection
+- FeaturesSection
+- GalleryPreview
+- TestimonialsSection
+- CTASection
+
+approvedDesignRules:
+- max-width 1290
+- section spacing 80/60/40
+- image-heavy hero layout
+
+Phase 3 — Pattern Extraction
+
+Implement a pattern extraction module that reviews generated projects and extracts reusable patterns.
+
+The extractor must analyze:
+
+- builder structure
+- page files
+- section usage
+- layout refiner outputs
+- final accepted designs
+
+It must identify patterns such as:
+
+- frequently reused sections
+- best-performing section order
+- visually balanced layout combinations
+- recurring responsive fixes
+- common text/content structures
+
+The extractor must avoid storing one-off noisy data.
+
+Phase 4 — User Approval Signals
+
+The engine must learn only from useful or approved outcomes.
+
+Signals may include:
+
+- site published
+- user kept generated layout
+- user made only minor edits
+- user accepted refined layout
+- component reused multiple times
+- page version marked as final
+
+The system must give higher weight to approved patterns and lower weight to discarded ones.
+
+Phase 5 — Integration With Site Planner
+
+The Site Planner must consult the memory engine before generating a new website plan.
+
+Workflow
+
+User prompt
+→ detect website type
+→ check memory for relevant patterns
+→ load previous successful structures
+→ combine with current prompt intent
+→ generate improved site plan
+
+Example
+
+User prompt
+
+Create website for restaurant
+
+Planner should first look up:
+
+restaurant website patterns
+
+Then propose a stronger structure using learned best practices.
+
+Phase 6 — Integration With Design Intelligence
+
+The Design Intelligence System must also use learned patterns.
+
+It must be able to reuse:
+
+- preferred spacing patterns
+- preferred typography scales
+- preferred hero compositions
+- preferred grid combinations
+- preferred image-to-text ratios
+
+This ensures generated sites become more visually consistent and more polished over time.
+
+Phase 7 — Integration With Component Reuse
+
+The memory engine must help component selection.
+
+Example
+
+If the system learned that restaurant homepages commonly perform better with:
+
+HeroSection + GalleryPreview + TestimonialsSection + CTASection
+
+then the planner should prioritize this known-good pattern instead of creating random combinations.
+
+Phase 8 — Learning From Builder Edits
+
+If a user manually adjusts a generated website in the builder, the system must analyze those edits and determine whether they reflect an improvement pattern.
+
+Examples
+
+- user consistently increases section spacing
+- user changes all CTA buttons to a specific style
+- user replaces compact hero layouts with image-heavy hero layouts
+
+If similar edits happen repeatedly, the engine should learn from them.
+
+Phase 9 — Learning From AI Chat Edits
+
+The engine must also observe AI chat-driven changes.
+
+Examples
+
+- repeated requests to make headings shorter
+- repeated requests to simplify layouts
+- repeated requests to align sections more consistently
+- repeated requests to improve CTA visibility
+
+These recurring edits should become signals for future generations.
+
+Phase 10 — Memory Retrieval Rules
+
+The memory engine must retrieve only relevant patterns.
+
+Relevance factors
+
+- website category
+- project type
+- number of pages
+- layout style
+- business niche
+- design density
+- visual style
+
+Example
+
+A SaaS memory pattern should not be applied directly to a restaurant site unless there is strong similarity.
+
+Phase 11 — Safe Learning Constraints
+
+Do NOT allow memory to cause uncontrolled duplication.
+Do NOT allow memory to override current prompt intent.
+Do NOT blindly reuse old code.
+
+Memory must be advisory, not destructive.
+
+The current user prompt and current project context must always remain the primary source of truth.
+
+Phase 12 — Versioned Memory
+
+Store memory with version metadata.
+
+Each memory pattern should include:
+
+- source project id
+- creation date
+- number of successful reuses
+- confidence score
+- website type
+- design style label
+
+This allows ranking and future cleanup.
+
+Phase 13 — Cleanup and Pruning
+
+Implement memory cleanup rules.
+
+Remove or downgrade:
+
+- low-confidence patterns
+- outdated patterns
+- patterns from discarded projects
+- duplicated entries
+- irrelevant noisy structures
+
+This prevents the memory system from becoming bloated.
+
+Phase 14 — AI Usage Example
+
+User prompt
+
+Create a modern dental clinic website
+
+System flow
+
+- classify project as medical business website
+- retrieve relevant clinic/medical patterns
+- reuse known-good page structure
+- apply known design rules for trust-focused layouts
+- generate website using existing components
+- refine layout
+- save approved result back into memory
+
+Phase 15 — Logging and Observability
+
+Every learning and retrieval action must be logged.
+
+Logs must include:
+
+- retrieved pattern ids
+- applied memory patterns
+- ignored memory patterns
+- reason for reuse
+- confidence score
+- timestamp
+
+This ensures transparency and debugging.
+
+Phase 16 — Expected Result
+
+After implementation, Webu AI must improve with usage.
+
+The system must become better at:
+
+- planning websites
+- choosing page structures
+- selecting sections
+- applying design logic
+- reusing successful patterns
+- producing polished websites faster
+
+This transforms Webu from a one-time AI generator into a learning AI website builder that continuously improves based on successful outputs and user-approved refinements.
+
+
+ დაიწყე მუსოაბა და არ გაჩერდე! კარგად გადაანაწილე ეს თასქები თასქებდა და იყევი შეასრულე ყველა ტასქი და მოარგე არსებულ პრეოქტს სრულფასოვნად! 

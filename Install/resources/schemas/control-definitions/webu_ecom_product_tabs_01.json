@@ -1,0 +1,11 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_product_tabs_01",
+  "label": "Product tabs",
+  "description": "Tab labels and description body editable in builder.",
+  "content": {
+    "tabs": { "type": "array", "title": "Tab labels", "items": { "type": "string" } },
+    "description": { "type": "string", "title": "Description / panel content" }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

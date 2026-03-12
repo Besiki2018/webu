@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source_spec_ref", "gap_audit_ref", "coverage_status", "mapping_count", "mappings"],
+  "properties": {
+    "version": { "const": "v1" },
+    "source_spec_ref": { "type": "string" },
+    "gap_audit_ref": {
+      "const": "Install/docs/qa/UNIVERSAL_COMPONENT_LIBRARY_SPEC_COMPONENT_COVERAGE_GAP_AUDIT_BASELINE.md"
+    },
+    "coverage_status": {
+      "type": "string",
+      "enum": ["complete_exact_plus_equivalent", "partial", "missing"]
+    },
+    "mapping_count": { "type": "integer" },
+    "mappings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mappingRow" }
+    }
+  },
+  "$defs": {
+    "mappingRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_component_key", "coverage", "canonical_builder_keys"],
+      "properties": {
+        "source_component_key": {
+          "type": "string",
+          "pattern": "^[a-z]+\\.[a-zA-Z][\\w]*$"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": ["exact", "equivalent", "partial", "missing"]
+        },
+        "canonical_builder_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

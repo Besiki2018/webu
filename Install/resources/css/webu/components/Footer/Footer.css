@@ -1,0 +1,282 @@
+/**
+ * Webu Footer — logo, ლინკები, contact, copyright.
+ * Root: .webu-footer
+ * ფონი სრულსიგანის, კონტენტი კონტეინერში (1290px); ფედინგები/გრადიენტი არ გამოიყენება.
+ */
+
+.webu-footer {
+  width: 100%;
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-accent);
+  background-image: none;
+  box-shadow: none;
+  mask-image: none;
+  padding: var(--section-spacing) 0;
+  margin-top: auto;
+}
+
+.webu-footer--landing {
+  background-color: var(--color-background);
+  background-image: none;
+}
+
+.webu-footer__inner {
+  max-width: var(--container-width);
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+.webu-footer__inner--landing {
+  max-width: var(--container-width);
+  padding: 3.5rem 1rem;
+}
+@media (min-width: 640px) {
+  .webu-footer__inner--landing {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .webu-footer__inner--landing {
+    padding: 4rem 2rem;
+  }
+}
+
+.webu-footer--footer-1 {
+  border-top: 0;
+  background-color: #f4f4f1;
+  background-image: none;
+  box-shadow: none;
+  mask-image: none;
+  color: #111111;
+  padding: clamp(4rem, 6vw, 5.75rem) 0 2rem;
+}
+
+.webu-footer--footer-1 .webu-footer__inner {
+  max-width: var(--container-width);
+  padding: 0 clamp(1.5rem, 4vw, 2.75rem);
+}
+
+.webu-footer--footer-1 .webu-footer__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) repeat(3, minmax(160px, 0.72fr));
+  gap: clamp(2rem, 5vw, 7rem);
+  align-items: start;
+  margin-bottom: clamp(3rem, 5vw, 5rem);
+}
+
+.webu-footer--footer-1 .webu-footer__newsletter-block {
+  display: grid;
+  gap: 1.5rem;
+  align-content: start;
+}
+
+.webu-footer--footer-1 .webu-footer__nav {
+  display: grid;
+  gap: 1.5rem;
+  align-content: start;
+}
+
+.webu-footer--footer-1 .webu-footer__heading {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #111111;
+}
+
+.webu-footer--footer-1 .webu-footer__newsletter-copy {
+  max-width: 34rem;
+  margin: 0;
+  font-size: clamp(1rem, 1.15vw, 1.15rem);
+  line-height: 1.75;
+  color: #111111;
+}
+
+.webu-footer--footer-1 .webu-footer__support-text {
+  margin: -0.5rem 0 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #636363;
+}
+
+.webu-footer--footer-1 .webu-footer__newsletter-form {
+  max-width: 40rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border: 1px solid #202020;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.webu-footer--footer-1 .webu-footer__newsletter-form:focus-within {
+  box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.08);
+}
+
+.webu-footer--footer-1 .webu-footer__newsletter-input {
+  min-width: 0;
+  min-height: 4.65rem;
+  border: 0;
+  background: transparent;
+  padding: 0 1.6rem;
+  font-size: 0.95rem;
+  color: #111111;
+}
+
+.webu-footer--footer-1 .webu-footer__newsletter-input::placeholder {
+  color: #8b8b8b;
+  opacity: 1;
+}
+
+.webu-footer--footer-1 .webu-footer__newsletter-input:focus {
+  outline: 0;
+}
+
+.webu-footer--footer-1 .webu-footer__newsletter-button {
+  min-height: 4.65rem;
+  border: 0;
+  background: transparent;
+  padding: 0 2rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #111111;
+  cursor: pointer;
+}
+
+.webu-footer--footer-1 .webu-footer__payments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 0.75rem;
+}
+
+.webu-footer--footer-1 .webu-footer__payments-label {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #111111;
+}
+
+.webu-footer--footer-1 .webu-footer__payment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.webu-footer--footer-1 .webu-footer__payment-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.25rem;
+  min-height: 2rem;
+  padding: 0 0.6rem;
+  border: 1px solid #dddddd;
+  border-radius: 0.25rem;
+  background: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #111111;
+}
+
+.webu-footer--footer-1 .webu-footer__payment-chip--amex {
+  background: #0a76d9;
+  border-color: #0a76d9;
+  color: #ffffff;
+}
+
+.webu-footer--footer-1 .webu-footer__payment-chip--mastercard {
+  color: #e11937;
+}
+
+.webu-footer--footer-1 .webu-footer__payment-chip--visa {
+  color: #173ea7;
+}
+
+.webu-footer--footer-1 .webu-footer__payment-chip--paypal {
+  color: #1b4fd3;
+}
+
+.webu-footer--footer-1 .webu-footer__payment-chip--applepay {
+  background: #111111;
+  border-color: #111111;
+  color: #ffffff;
+}
+
+.webu-footer--footer-1 .webu-footer__payment-chip--klarna {
+  background: #f7b3c5;
+  border-color: #f7b3c5;
+  color: #111111;
+}
+
+.webu-footer--footer-1 .webu-footer__menu {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.webu-footer--footer-1 .webu-footer__link {
+  color: #111111;
+  text-decoration: none;
+  font-size: clamp(1rem, 1.05vw, 1.1rem);
+  line-height: 1.45;
+  transition: opacity 0.2s ease;
+}
+
+.webu-footer--footer-1 .webu-footer__link:hover {
+  opacity: 0.65;
+}
+
+.webu-footer--footer-1 .webu-footer__bottom {
+  display: flex;
+  justify-content: center;
+  padding-top: clamp(1.5rem, 2.4vw, 2.25rem);
+  border-top: 1px solid #e2e0dc;
+}
+
+.webu-footer--footer-1 .webu-footer__copyright {
+  font-size: clamp(1rem, 1vw, 1.1rem);
+  color: #111111;
+  text-align: center;
+}
+
+@media (max-width: 1200px) {
+  .webu-footer--footer-1 .webu-footer__grid {
+    grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+    gap: 2.5rem;
+  }
+}
+
+@media (max-width: 960px) {
+  .webu-footer--footer-1 .webu-footer__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .webu-footer--footer-1 .webu-footer__newsletter-block {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .webu-footer--footer-1 {
+    padding-top: 3rem;
+  }
+
+  .webu-footer--footer-1 .webu-footer__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .webu-footer--footer-1 .webu-footer__newsletter-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webu-footer--footer-1 .webu-footer__newsletter-button {
+    border-top: 1px solid #202020;
+  }
+
+  .webu-footer--footer-1 .webu-footer__payments {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

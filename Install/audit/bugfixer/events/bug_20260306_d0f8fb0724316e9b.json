@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_d0f8fb0724316e9b",
+    "timestamp": "2026-03-06T13:35:46+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/admin\/settings",
+    "event": "[console.error] [vite] Failed to reload \/resources\/js\/components\/Chat\/VisualBuilderPanel.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "d0f8fb0724316e9b",
+    "frequency": 1
+}

@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260310_25046100dad65df5",
+    "timestamp": "2026-03-10T21:50:09+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbe17-dd88-728e-940f-da7443accae2\/cms",
+    "event": "[console.error] [vite] Failed to reload \/resources\/js\/components\/design-system\/webu-header\/variants\/header-3.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "25046100dad65df5",
+    "frequency": 1
+}

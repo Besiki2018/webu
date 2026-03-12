@@ -1,0 +1,14 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_product_search_01",
+  "label": "Product search",
+  "description": "Search bar labels and trending chips editable in builder.",
+  "content": {
+    "search_label": { "type": "string", "title": "Search label" },
+    "query_preview": { "type": "string", "title": "Query placeholder / preview" },
+    "scope_label": { "type": "string", "title": "Scope label" },
+    "scope_options": { "type": "array", "title": "Scope options", "items": { "type": "string" } },
+    "trending": { "type": "array", "title": "Trending chips", "items": { "type": "string" } }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

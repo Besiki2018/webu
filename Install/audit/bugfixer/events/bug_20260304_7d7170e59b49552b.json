@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260304_7d7170e59b49552b",
+    "timestamp": "2026-03-04T21:34:36+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/admin\/users",
+    "event": "[console.error] Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and\/or omitted — the behavior is unsupported and could change in a future version.%s 0_plan \n    at tr\n    at TableRow (http:\/\/127.0.0.1:5173\/resources\/js\/components\/ui\/table.tsx:101:21)\n    at tbody\n    at TableBody (http:\/\/127.0.0.1:5173\/resources\/js\/components\/ui\/table.tsx:60:22)\n    at table\n    at div\n    at Table (http:\/\/127.0.0.1:5173\/resources\/js\/components\/ui\/table.tsx:18:18)\n    at div\n    at div\n    at DataTable (http:\/\/127.0.0.1:5173\/resources\/js\/components\/ui\/data-table.tsx:48:3)\n    at div\n    at main\n    at div\n    at main\n    at _c9 (http:\/\/127.0.0.1:5173\/resources\/js\/components\/ui\/sidebar.tsx:422:48)\n    at div\n    at Provider2 (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=0ec34260:61:15)\n    at TooltipProvider (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=0ec34260:257:5)\n    at TooltipProvider (http:\/\/127.0.0.1:5173\/resources\/js\/components\/ui\/tooltip.tsx:21:3)\n    at http:\/\/127.0.0.1:5173\/resources\/js\/components\/ui\/sidebar.tsx:60:7\n    at Provider2 (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=0ec34260:61:15)\n    at TooltipProvider (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=0ec34260:257:5)\n    at TooltipProvider (http:\/\/127.0.0.1:5173\/resources\/js\/c",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "7d7170e59b49552b",
+    "frequency": 1
+}

@@ -1,0 +1,62 @@
+@charset "UTF-8";
+
+/*---------------------------------------------------------------------------------
+    Skin Color-03 SCSS
+-----------------------------------------------------------------------------------*/
+
+// Utilities ( Import Utilities )
+@use "utilities/_variables";
+
+$main-primary-color: #ff764b; // Site main color
+$main-secondary-color: #333; // Site main text hover color
+
+// Utilities ( Import Utilities )
+@use "utilities/_mixins";
+
+// Components ( Import Required Components )
+@use "components/_helper";
+@use "components/_common";
+@use "components/_popup-model";
+@use "components/_breadcrumb";
+
+// Layout ( Import Required Layout )
+@use "layout/_header";
+@use "layout/_mainslider";
+@use "layout/_product-tab";
+@use "layout/_banner";
+@use "layout/_category";
+@use "layout/_specials";
+@use "layout/_services";
+@use "layout/_offer";
+@use "layout/_new-product";
+@use "layout/_testimonial";
+@use "layout/_brand";
+@use "layout/_instagram";
+@use "layout/_footer";
+@use "layout/_quickview";
+
+// Pages ( Import CSS for Pages )
+@use "pages/_shop-page";
+@use "pages/_login-page";
+@use "pages/_register-page";
+@use "pages/_aboutus-page";
+@use "pages/_term-page";
+@use "pages/_contactus-page";
+@use "pages/_faq-page";
+@use "pages/_single-pro-page";
+@use "pages/_blog-page";
+@use "pages/_cart-page";
+@use "pages/_compare-page";
+@use "pages/_track-order-page";
+@use "pages/_checkout-page";
+@use "pages/_elements-tabs";
+@use "pages/_elemets-categories";
+@use "pages/_elements-buttons";
+@use "pages/_elements-products";
+@use "pages/_elements-title";
+@use "pages/_coming-soon";
+@use "pages/_elements-blog";
+@use "pages/_elements-typography";
+@use "pages/_vendor-pages";
+@use "pages/_user-pages";
+@use "pages/_hot-offer";

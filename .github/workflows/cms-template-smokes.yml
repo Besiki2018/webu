@@ -1,0 +1,63 @@
+name: CMS Template Smokes
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  cms-template-smokes:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Install
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, sqlite3, pdo_sqlite, fileinfo, dom
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Install/package-lock.json
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Prepare application env
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
+      - name: Template import + runtime validation contracts
+        run: |
+          php artisan test --filter=TemplateImportContractServiceTest
+          php artisan test --filter=CmsPreviewPublishAlignmentTest
+
+      - name: Template smoke tests (preview/published/provisioning/storefront)
+        run: |
+          php artisan test --filter=TemplateProvisioningSmokeTest
+          php artisan test --filter=TemplatePreviewRenderSmokeTest
+          php artisan test --filter=TemplateAppPreviewRenderSmokeTest
+          php artisan test --filter=TemplatePublishedRenderSmokeTest
+          php artisan test --filter=TemplateStorefrontE2eFlowMatrixSmokeTest
+
+      - name: CMS UI contract smokes
+        run: |
+          node ./node_modules/vitest/vitest.mjs run \
+            resources/js/Pages/Project/__tests__/CmsLayoutStability.contract.test.ts \
+            resources/js/Pages/Project/__tests__/CmsDynamicAndThemeUx.contract.test.ts \
+            resources/js/Pages/Project/__tests__/CmsLearningExperimentsAdminUi.contract.test.ts

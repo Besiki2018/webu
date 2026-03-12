@@ -1,0 +1,20 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ekka_header_01",
+  "label": "Header",
+  "content": {
+    "logo_url": { "type": "string", "format": "uri", "title": "Logo URL" },
+    "logo_alt": { "type": "string", "title": "Logo alt" },
+    "cta_label": { "type": "string", "title": "CTA button label" },
+    "cta_url": { "type": "string", "title": "CTA button URL" }
+  },
+  "style": {
+    "desktop": { "paddingTop": "string", "paddingBottom": "string", "background_color": "string", "sticky": "boolean" },
+    "tablet": { "paddingTop": "string", "paddingBottom": "string" },
+    "mobile": { "paddingTop": "string", "paddingBottom": "string" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" },
+    "z_index": { "type": "integer", "title": "z-index" }
+  }
+}

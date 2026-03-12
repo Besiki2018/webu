@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260311_3dcc51eeae8a8e6a",
+    "timestamp": "2026-03-11T12:48:36+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cdcb4-5e47-7085-ba6f-2bcfa97c9f79?debug=inspect&tab=inspect",
+    "event": "[console.warn] [WebuInspectLifecycle] handleInspectClick {\"clientX\":515,\"clientY\":172,\"elementAtPoint\":null,\"section\":null,\"mention\":{\"id\":\"hero.title\",\"tagName\":\"h2\",\"selector\":\"[data-webu-section-local-id=\\\"section-0\\\"] [data-webu-field=\\\"title\\\"]\",\"textPreview\":\"Hero\",\"sectionKey\":\"hero\",\"sectionLocalId\":\"section-0\",\"placement\":null,\"parameterName\":\"title\",\"componentPath\":\"title\",\"elementId\":\"hero.title\"}}",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "3dcc51eeae8a8e6a",
+    "frequency": 3
+}

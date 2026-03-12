@@ -1,0 +1,16 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_general_newsletter_01",
+  "label": "Newsletter",
+  "description": "Newsletter signup. All content editable in builder.",
+  "content": {
+    "title": { "type": "string", "title": "Title" },
+    "text": { "type": "string", "title": "Text" },
+    "subtitle": { "type": "string", "title": "Subtitle (alias)" },
+    "placeholder": { "type": "string", "title": "Email placeholder" },
+    "button_label": { "type": "string", "title": "Button label" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

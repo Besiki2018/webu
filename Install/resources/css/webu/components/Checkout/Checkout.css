@@ -1,0 +1,16 @@
+/**
+ * Webu Checkout — ფორმის კონტეინერი.
+ * Root: .webu-checkout
+ */
+
+.webu-checkout {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+}
+
+.webu-checkout__title {
+  font-size: var(--heading-section);
+  font-weight: 600;
+  margin-bottom: 2rem;
+}

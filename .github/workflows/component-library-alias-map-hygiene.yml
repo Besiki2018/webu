@@ -1,0 +1,51 @@
+name: Component Library Alias Map Hygiene
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  component-library-alias-map-hygiene:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Install
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, sqlite3, pdo_sqlite, fileinfo, dom
+          coverage: none
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare application env
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
+      - name: Alias map CI preset + export smoke
+        run: |
+          php artisan cms:component-library-alias-map-validate --ci-baseline
+          php artisan cms:component-library-alias-map-validate --fingerprints --json
+          php artisan cms:component-library-alias-map-validate --strict-export-schema --json
+          php artisan cms:component-library-alias-map-validate --export-json --output=ci/alias-map.json --overwrite
+          php artisan cms:component-library-alias-map-validate --export-csv --output=ci/alias-map.csv --overwrite
+          php artisan cms:component-library-alias-map-validate --export-md --output=ci/alias-map.md --overwrite
+
+      - name: Alias map contract + completion lock tests
+        run: |
+          php artisan test --filter=CmsComponentLibraryAliasMapValidationCommandTest
+          php artisan test --filter=CmsComponentLibrarySpecEquivalenceAliasMapServiceTest
+          php artisan test --filter=UniversalComponentLibrarySpecEquivalenceAliasMapTest
+          php artisan test --filter=UniversalComponentLibrarySpecEquivalenceAliasMapSchemaTest
+          php artisan test --filter=UniversalComponentLibrarySpecEquivalenceAliasMapExportSchemaTest
+          php artisan test --filter=UniversalComponentLibrarySourceSpecCompletionSummaryTest

@@ -1,0 +1,10 @@
+{
+  "section_type": "content",
+  "cms_fields": [
+    { "key": "body", "label": "Content", "type": "richtext" }
+  ],
+  "content_json": {
+    "body": ""
+  },
+  "style_json": {}
+}

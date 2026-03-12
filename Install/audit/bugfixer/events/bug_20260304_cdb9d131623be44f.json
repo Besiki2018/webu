@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260304_cdb9d131623be44f",
+    "timestamp": "2026-03-04T20:47:27+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/",
+    "event": "[console.warn] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "cdb9d131623be44f",
+    "frequency": 1
+}

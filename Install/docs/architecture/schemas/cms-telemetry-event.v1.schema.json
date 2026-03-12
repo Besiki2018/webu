@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cms.telemetry.event.v1",
+  "type": "object",
+  "description": "CMS telemetry event payload (cms.telemetry.event.v1)",
+  "required": ["source", "events"],
+  "properties": {
+    "source": { "type": "string", "enum": ["builder", "runtime"] },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_name": { "type": "string" },
+          "flow": { "type": "string" },
+          "meta": { "type": "object" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,118 @@
+/*-------------------------------------------------
+  Compare Page CSS
+---------------------------------------------------*/
+// Utilities ( Import Utilities )
+@use "utilities/_variables";
+@use "utilities/_mixins";
+
+.ec-compare-leftside {
+	.ec-sidebar-wrap {
+		min-height: 355px;
+		margin-bottom: 30px;
+		display: flex;
+		align-items: variables.$textcenter;
+		justify-content: center;
+	}
+
+	.ec-compare-title {
+		line-height: 23px;
+		font-size: 18px;
+		font-weight: 600;
+		position: variables.$relative;
+		display: block;
+		color: variables.$main-secondary-color;
+		font-family: 'Montserrat';
+		letter-spacing: 0;
+		margin: 0 auto;
+		text-align: center;
+	}
+}
+
+.ec-compare-inner {
+	.ec-com-remove {
+		position: variables.$absolute;
+		width: 24px;
+		height: 24px;
+		top: 11px;
+		left: auto;
+		right: 11px;
+		border-radius: 100%;
+		text-align: variables.$textcenter;
+		display: flex;
+		align-items: variables.$textcenter;
+		justify-content: center;
+		background: variables.$main-secondary-color;
+		z-index: 8;
+
+		&:hover {
+			background: variables.$main-primary-color;
+		}
+
+		a {
+			font-size: 18px;
+			color: #ffffff;
+			font-weight: 500;
+			line-height: 5px;
+			padding-bottom: 1px;
+			letter-spacing: 0;
+		}
+	}
+}
+
+.ec-compare-table {
+	order: 7;
+
+	form {
+		border: 1px solid variables.$border-color-1;
+	}
+
+	.table {
+		tbody {
+			border: none;
+
+			tr {
+				&:nth-child(even) {
+					background: #eeeeee;
+				}
+
+				&:nth-child(odd) {
+					background: variables.$card-bg-white;
+				}
+
+				td {
+					text-align: variables.$textleft;
+					border: none;
+					padding: 19px 30px;
+					vertical-align: middle;
+					font-size: 14px;
+					color: variables.$main-text-color;
+					letter-spacing: 0;
+					line-height: 1.1;
+				}
+
+				td.first-column {
+					font-size: 15px;
+					font-weight: 500;
+					text-align: variables.$textleft;
+					text-transform: variables.$capitalize;
+				}
+			}
+		}
+	}
+}
+
+.ec-com-tab-heading {
+	display: flex;
+	line-height: 28px;
+	text-align: center;
+	font-size: 17px;
+	justify-content: center;
+	align-items: variables.$textcenter;
+	color: variables.$white-color;
+	font-family: 'Montserrat';
+	background-color: variables.$main-primary-color;
+	letter-spacing: 0;
+	padding: 15px;
+	font-weight: 600;
+	margin-bottom: 5px;
+}

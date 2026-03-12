@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_38d3068427352a88",
+    "timestamp": "2026-03-07T16:31:25+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc\/cms?embedded=sidebar&tab=editor",
+    "event": "[console.error] Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and\/or omitted — the behavior is unsupported and could change in a future version.%s -1000 \n    at div\n    at div\n    at div\n    at aside\n    at div\n    at DndContext2 (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-FAQIS4S3.js?v=ee191eb0:2521:5)\n    at div\n    at div\n    at main\n    at div\n    at div\n    at Provider2 (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=ee191eb0:61:15)\n    at TooltipProvider (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=ee191eb0:257:5)\n    at TooltipProvider (http:\/\/[::1]:5174\/resources\/js\/components\/ui\/tooltip.tsx:21:3)\n    at AdminLayout (http:\/\/[::1]:5174\/resources\/js\/Layouts\/AdminLayout.tsx?t=1772879826561:42:3)\n    at Cms (http:\/\/[::1]:5174\/resources\/js\/Pages\/Project\/Cms.tsx?t=1772898104377:6491:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/LanguageContext.tsx?t=1772879825435:683:36)\n    at AppWrapper (http:\/\/[::1]:5174\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=ee191eb0:14984:3)\n    at BugfixerErrorBoundary (http:",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "38d3068427352a88",
+    "frequency": 1
+}

@@ -1,0 +1,28 @@
+{
+    "The :attribute field is required.": "Das Feld :attribute ist erforderlich.",
+    "The :attribute must be unique.": ":attribute muss eindeutig sein.",
+    "The :attribute must be a valid email address.": ":attribute muss eine gültige E-Mail-Adresse sein.",
+    "The :attribute must be at least :min characters.": ":attribute muss mindestens :min Zeichen lang sein.",
+    "The :attribute must not be greater than :max characters.": ":attribute darf nicht mehr als :max Zeichen lang sein.",
+    "The :attribute confirmation does not match.": "Die Bestätigung von :attribute stimmt nicht überein.",
+    "The :attribute has already been taken.": ":attribute ist bereits vergeben.",
+    "The :attribute format is invalid.": "Das Format von :attribute ist ungültig.",
+    "The :attribute must be a number.": ":attribute muss eine Nummer sein.",
+    "The :attribute must be an integer.": ":attribute muss eine Ganzzahl sein.",
+    "The :attribute must be a valid URL.": ":attribute muss eine gültige URL sein.",
+    "The :attribute must be a valid date.": ":attribute muss ein gültiges Datum sein.",
+    "The :attribute must be a file of type: :values.": ":attribute muss eine Datei vom Typ :values sein.",
+    "The :attribute must not be greater than :max kilobytes.": ":attribute darf nicht mehr als :max Kilobytes groß sein.",
+    "The selected :attribute is invalid.": "Das ausgewählte :attribute ist ungültig.",
+    "The :attribute must be accepted.": ":attribute muss akzeptiert werden.",
+    "The :attribute must be a valid JSON string.": ":attribute muss ein gültiger JSON-String sein.",
+
+    "This field is required": "Dieses Feld ist erforderlich",
+    "Invalid email address": "Ungültige E-Mail-Adresse",
+    "Password is too short": "Passwort ist zu kurz",
+    "Passwords do not match": "Passwörter stimmen nicht überein",
+    "Invalid value": "Ungültiger Wert",
+    "Please select an option": "Bitte wählen Sie eine Option",
+    "File too large": "Datei zu groß",
+    "Invalid file type": "Ungültiger Dateityp"
+}

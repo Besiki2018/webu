@@ -1,0 +1,34 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_order_detail_01",
+  "label": "Order detail",
+  "description": "Headers, items, timeline editable in builder.",
+  "content": {
+    "headers": { "type": "array", "title": "Table headers", "items": { "type": "string" } },
+    "items": {
+      "type": "array",
+      "title": "Order items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "qty": { "type": "string", "title": "Qty" },
+          "price": { "type": "string", "title": "Price" }
+        }
+      }
+    },
+    "timeline_title": { "type": "string", "title": "Timeline title" },
+    "timeline": {
+      "type": "array",
+      "title": "Timeline",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "value": { "type": "string", "title": "Value" }
+        }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

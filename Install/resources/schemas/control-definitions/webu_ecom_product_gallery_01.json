@@ -1,0 +1,22 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_product_gallery_01",
+  "label": "Product gallery",
+  "description": "Main image and thumbnails. All image URLs and alts editable in builder.",
+  "content": {
+    "main_image_url": { "type": "string", "format": "uri", "title": "Main image URL" },
+    "main_image_alt": { "type": "string", "title": "Main image alt" },
+    "gallery_items": {
+      "type": "array",
+      "title": "Gallery thumbnails",
+      "items": {
+        "type": "object",
+        "properties": {
+          "image_url": { "type": "string", "title": "Image URL" },
+          "alt": { "type": "string", "title": "Alt text" }
+        }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

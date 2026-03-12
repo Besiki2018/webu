@@ -1,0 +1,28 @@
+{
+    "The :attribute field is required.": "Le champ :attribute est requis.",
+    "The :attribute must be unique.": ":attribute doit être unique.",
+    "The :attribute must be a valid email address.": ":attribute doit être une adresse e-mail valide.",
+    "The :attribute must be at least :min characters.": ":attribute doit contenir au moins :min caractères.",
+    "The :attribute must not be greater than :max characters.": ":attribute ne doit pas dépasser :max caractères.",
+    "The :attribute confirmation does not match.": "La confirmation de :attribute ne correspond pas.",
+    "The :attribute has already been taken.": ":attribute est déjà pris.",
+    "The :attribute format is invalid.": "Le format de :attribute est invalide.",
+    "The :attribute must be a number.": ":attribute doit être un nombre.",
+    "The :attribute must be an integer.": ":attribute doit être un entier.",
+    "The :attribute must be a valid URL.": ":attribute doit être une URL valide.",
+    "The :attribute must be a valid date.": ":attribute doit être une date valide.",
+    "The :attribute must be a file of type: :values.": ":attribute doit être un fichier de type :values",
+    "The :attribute must not be greater than :max kilobytes.": ":attribute ne doit pas dépasser :max kilo-octets.",
+    "The selected :attribute is invalid.": "Le :attribute sélectionné est invalide.",
+    "The :attribute must be accepted.": ":attribute doit être accepté.",
+    "The :attribute must be a valid JSON string.": ":attribute doit être une chaîne JSON valide.",
+
+    "This field is required": "Ce champ est requis",
+    "Invalid email address": "Adresse e-mail invalide",
+    "Password is too short": "Mot de passe trop court",
+    "Passwords do not match": "Les mots de passe ne correspondent pas",
+    "Invalid value": "Valeur invalide",
+    "Please select an option": "Veuillez sélectionner une option",
+    "File too large": "Fichier trop volumineux",
+    "Invalid file type": "Type de fichier invalide"
+}

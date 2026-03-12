@@ -1,0 +1,143 @@
+.webu-offcanvas-menu[data-slot="sheet-content"],
+.webu-offcanvas-menu.webu-offcanvas-menu--sheet {
+  gap: 0;
+  width: min(24.5rem, 88vw);
+  border-inline: 0;
+  background: #ffffff;
+  padding: 0;
+  box-shadow: 0 28px 70px rgba(17, 24, 39, 0.14);
+}
+
+.webu-offcanvas-menu__trigger-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  border: 1px solid #111111;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #111111;
+  padding: 0.85rem 1.2rem;
+  cursor: pointer;
+  font-size: 0.96rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.webu-offcanvas-menu__trigger-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.webu-offcanvas-menu.webu-offcanvas-menu--sheet > button {
+  top: 1.1rem;
+  inset-inline-end: 1.1rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #111111;
+  opacity: 1;
+}
+
+.webu-offcanvas-menu__header,
+.webu-offcanvas-menu__footer {
+  padding: 1.5rem 1.45rem;
+}
+
+.webu-offcanvas-menu__header {
+  border-bottom: 1px solid #ececec;
+}
+
+.webu-offcanvas-menu__heading {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.webu-offcanvas-menu__eyebrow {
+  color: #18554b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.webu-offcanvas-menu__title {
+  margin: 0;
+  color: #111111;
+  font-size: 1.52rem;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+}
+
+.webu-offcanvas-menu__subtitle {
+  margin: 0;
+  max-width: 18rem;
+  color: #667085;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.webu-offcanvas-menu__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 1rem 1.2rem 1.35rem;
+}
+
+.webu-offcanvas-menu__nav {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.webu-offcanvas-menu__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: 1rem;
+  background: #f7f7f7;
+  color: #111111;
+  text-decoration: none;
+  padding: 0.92rem 1rem;
+}
+
+.webu-offcanvas-menu__link-copy {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.webu-offcanvas-menu__link-label {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.webu-offcanvas-menu__link-description {
+  color: #667085;
+  font-size: 0.82rem;
+}
+
+.webu-offcanvas-menu__link-icon {
+  width: 1rem;
+  height: 1rem;
+  color: #98a2b3;
+}
+
+.webu-offcanvas-menu__footer {
+  border-top: 1px solid #ececec;
+}
+
+.webu-offcanvas-menu__footer-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3.2rem;
+  border-radius: 999px;
+  background: #111111;
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 0.96rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}

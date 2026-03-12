@@ -1,0 +1,14 @@
+{
+  "section_type": "gallery",
+  "cms_fields": [
+    { "key": "heading", "label": "Heading", "type": "text" },
+    { "key": "images", "label": "Images", "type": "images" }
+  ],
+  "content_json": {
+    "heading": "",
+    "images": []
+  },
+  "style_json": {
+    "columns": 3
+  }
+}

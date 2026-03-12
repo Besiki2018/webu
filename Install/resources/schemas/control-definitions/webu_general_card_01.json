@@ -1,0 +1,13 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_general_card_01",
+  "label": "Card",
+  "description": "Card title, body text, and button editable in builder.",
+  "content": {
+    "title": { "type": "string", "title": "Title" },
+    "body": { "type": "string", "title": "Body text" },
+    "button": { "type": "string", "title": "Button label" },
+    "button_url": { "type": "string", "title": "Button URL" }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

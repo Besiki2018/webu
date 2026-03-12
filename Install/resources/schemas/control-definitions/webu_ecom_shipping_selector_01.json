@@ -1,0 +1,21 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_shipping_selector_01",
+  "label": "Shipping selector",
+  "description": "Shipping options (label, price) editable in builder.",
+  "content": {
+    "options": {
+      "type": "array",
+      "title": "Shipping options",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "price": { "type": "string", "title": "Price" },
+          "selected": { "type": "boolean", "title": "Selected" }
+        }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

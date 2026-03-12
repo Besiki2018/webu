@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260308_cdeabf1be64b58ea",
+    "timestamp": "2026-03-08T21:32:19+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019ccf50-6618-70fc-b63a-0cdbcb29fe1f?tab=inspect",
+    "event": "Failed to execute 'observe' on 'ResizeObserver': parameter 1 is not of type 'Element'.",
+    "stack": "TypeError: parameter 1 is not of type 'Element'.\n    at http:\/\/[::1]:5174\/resources\/js\/components\/Preview\/InspectPreview.tsx?t=1773005413298:838:20\n    at commitHookEffectListMount (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d876f633:16963:34)\n    at commitPassiveMountOnFiber (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d876f633:18206:19)\n    at commitPassiveMountEffects_complete (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d876f633:18179:17)\n    at commitPassiveMountEffects_begin (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d876f633:18169:15)\n    at commitPassiveMountEffects (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d876f633:18159:11)\n    at flushPassiveEffectsImpl (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d876f633:19543:11)\n    at flushPassiveEffects (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d876f633:19500:22)\n    at commitRootImpl (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d876f633:19469:13)\n    at commitRoot (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d876f633:19330:13)",
+    "context": {
+        "sectionId": null,
+        "componentStack": "at InspectPreview (http:\/\/[::1]:5174\/resources\/js\/components\/Preview\/InspectPreview.tsx?t=1773005413298:81:3)\n    at div\n    at div\n    at div\n    at div\n    at Chat (http:\/\/[::1]:5174\/resources\/js\/Pages\/Chat.tsx?t=1773005413298:308:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5174\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/LanguageContext.tsx?t=1772976384285:715:36)\n    at AppWrapper (http:\/\/[::1]:5174\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5174\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=d876f633:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5174\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5174\/resources\/js\/contexts\/ThemeContext.tsx:41:33)"
+    },
+    "dedupKey": "cdeabf1be64b58ea",
+    "frequency": 1
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_cart_icon_01",
+  "label": "Cart icon",
+  "description": "Cart summary box. Labels and chips editable in builder.",
+  "content": {
+    "items_label": { "type": "string", "title": "Items label" },
+    "items_count": { "type": "string", "title": "Items count (or leave for runtime)" },
+    "subtotal_label": { "type": "string", "title": "Subtotal label" },
+    "estimated_subtotal": { "type": "string", "title": "Estimated subtotal (or leave for runtime)" },
+    "chips": { "type": "array", "title": "Chips", "items": { "type": "string" } }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

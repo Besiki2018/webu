@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260308_9146f8c70055803d",
+    "timestamp": "2026-03-09T13:52:44+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019ccf50-6618-70fc-b63a-0cdbcb29fe1f?tab=inspect",
+    "event": "[console.error] Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "9146f8c70055803d",
+    "frequency": 24
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_checkout_form_01",
+  "label": "Checkout form",
+  "bindings": {
+    "source": "checkout"
+  },
+  "content": {
+    "title": { "type": "string", "title": "Form title" },
+    "variant": { "type": "string", "enum": ["combined", "stepped", "single"], "title": "Layout variant" },
+    "terms_checkbox_text": { "type": "string", "title": "Terms checkbox label" },
+    "place_order_label": { "type": "string", "title": "Place order button label" },
+    "fields": {
+      "type": "array",
+      "title": "Form fields",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "value": { "type": "string", "title": "Placeholder / value" },
+          "full_width": { "type": "boolean", "title": "Full width" }
+        }
+      }
+    }
+  },
+  "style": {
+    "desktop": { "paddingTop": "string", "paddingBottom": "string", "maxWidth": "string" },
+    "tablet": { "paddingTop": "string", "paddingBottom": "string" },
+    "mobile": { "paddingTop": "string", "paddingBottom": "string" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

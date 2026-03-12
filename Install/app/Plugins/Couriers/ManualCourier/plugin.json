@@ -1,0 +1,14 @@
+{
+    "name": "Manual Courier",
+    "slug": "manual-courier",
+    "description": "Base courier plugin with flat-rate shipping and manual shipment lifecycle.",
+    "type": "courier",
+    "version": "1.0.0",
+    "author": "System",
+    "main_class": "ManualCourierPlugin.php",
+    "namespace": "App\\Plugins\\Couriers\\ManualCourier\\ManualCourierPlugin",
+    "icon": "plugins/manual-courier/icon.svg",
+    "requirements": {
+        "php": ">=8.4"
+    }
+}

@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260304_fbed21938376c5f8",
+    "timestamp": "2026-03-04T21:30:01+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/create",
+    "event": "[console.error] [vite] Failed to reload \/resources\/js\/Pages\/Admin\/Bugfixer\/Index.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "fbed21938376c5f8",
+    "frequency": 1
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_account_dashboard_01",
+  "label": "Account dashboard",
+  "description": "Dashboard cards (title, value) editable in builder.",
+  "content": {
+    "cards": {
+      "type": "array",
+      "title": "Cards",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "title": "Card title" },
+          "value": { "type": "string", "title": "Card value" }
+        }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

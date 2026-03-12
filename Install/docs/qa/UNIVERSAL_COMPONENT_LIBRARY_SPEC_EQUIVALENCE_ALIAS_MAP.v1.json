@@ -1,0 +1,505 @@
+{
+    "version": "v1",
+    "source_spec_ref": "PROJECT_ROADMAP_TASKS_KA.md:6439-6878",
+    "gap_audit_ref": "Install/docs/qa/UNIVERSAL_COMPONENT_LIBRARY_SPEC_COMPONENT_COVERAGE_GAP_AUDIT_BASELINE.md",
+    "coverage_status": "complete_exact_plus_equivalent",
+    "mapping_count": 70,
+    "mappings": [
+        {
+            "source_component_key": "layout.section",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_section_01"
+            ]
+        },
+        {
+            "source_component_key": "layout.hero",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_hero_01"
+            ]
+        },
+        {
+            "source_component_key": "layout.footer",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_footer_01"
+            ]
+        },
+        {
+            "source_component_key": "layout.grid",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_grid_01"
+            ]
+        },
+        {
+            "source_component_key": "layout.container",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_container_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.text",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_text_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.image",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_image_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.list",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_list_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.headingPrimary",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_heading_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.paragraph",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_paragraph_01"
+            ]
+        },
+        {
+            "source_component_key": "nav.logo",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_general_nav_logo_01"
+            ]
+        },
+        {
+            "source_component_key": "nav.cartIcon",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_cart_icon_01"
+            ]
+        },
+        {
+            "source_component_key": "nav.menu",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_nav_menu_01"
+            ]
+        },
+        {
+            "source_component_key": "nav.burger",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_nav_burger_01"
+            ]
+        },
+        {
+            "source_component_key": "auth.security",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_account_security_01"
+            ]
+        },
+        {
+            "source_component_key": "auth.login",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_auth_login_01"
+            ]
+        },
+        {
+            "source_component_key": "auth.signup",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_auth_signup_01"
+            ]
+        },
+        {
+            "source_component_key": "ecom.cartSummary",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_cart_summary_01"
+            ]
+        },
+        {
+            "source_component_key": "ecom.checkout",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_checkout_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.component20",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_component20_01"
+            ]
+        },
+        {
+            "source_component_key": "nav.component21",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_nav_component21_01"
+            ]
+        },
+        {
+            "source_component_key": "ecom.component22",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_component22_01"
+            ]
+        },
+        {
+            "source_component_key": "auth.component23",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_auth_component23_01"
+            ]
+        },
+        {
+            "source_component_key": "misc.component24",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_misc_component24_01"
+            ]
+        },
+        {
+            "source_component_key": "content.component25",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_content_component25_01"
+            ]
+        },
+        {
+            "source_component_key": "form.component26",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_form_component26_01"
+            ]
+        },
+        {
+            "source_component_key": "blog.component27",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_blog_component27_01"
+            ]
+        },
+        {
+            "source_component_key": "layout.component28",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_component28_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.component29",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_component29_01"
+            ]
+        },
+        {
+            "source_component_key": "nav.component30",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_nav_component30_01"
+            ]
+        },
+        {
+            "source_component_key": "ecom.component31",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_component31_01"
+            ]
+        },
+        {
+            "source_component_key": "auth.component32",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_auth_component32_01"
+            ]
+        },
+        {
+            "source_component_key": "misc.component33",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_misc_component33_01"
+            ]
+        },
+        {
+            "source_component_key": "content.component34",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_content_component34_01"
+            ]
+        },
+        {
+            "source_component_key": "form.component35",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_form_component35_01"
+            ]
+        },
+        {
+            "source_component_key": "blog.component36",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_blog_component36_01"
+            ]
+        },
+        {
+            "source_component_key": "layout.component37",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_component37_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.component38",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_component38_01"
+            ]
+        },
+        {
+            "source_component_key": "nav.component39",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_nav_component39_01"
+            ]
+        },
+        {
+            "source_component_key": "ecom.component40",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_component40_01"
+            ]
+        },
+        {
+            "source_component_key": "auth.component41",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_auth_component41_01"
+            ]
+        },
+        {
+            "source_component_key": "misc.component42",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_misc_component42_01"
+            ]
+        },
+        {
+            "source_component_key": "content.component43",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_content_component43_01"
+            ]
+        },
+        {
+            "source_component_key": "form.component44",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_form_component44_01"
+            ]
+        },
+        {
+            "source_component_key": "blog.component45",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_blog_component45_01"
+            ]
+        },
+        {
+            "source_component_key": "layout.component46",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_component46_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.component47",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_component47_01"
+            ]
+        },
+        {
+            "source_component_key": "nav.component48",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_nav_component48_01"
+            ]
+        },
+        {
+            "source_component_key": "ecom.component49",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_component49_01"
+            ]
+        },
+        {
+            "source_component_key": "auth.component50",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_auth_component50_01"
+            ]
+        },
+        {
+            "source_component_key": "misc.component51",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_misc_component51_01"
+            ]
+        },
+        {
+            "source_component_key": "content.component52",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_content_component52_01"
+            ]
+        },
+        {
+            "source_component_key": "form.component53",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_form_component53_01"
+            ]
+        },
+        {
+            "source_component_key": "blog.component54",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_blog_component54_01"
+            ]
+        },
+        {
+            "source_component_key": "layout.component55",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_component55_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.component56",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_component56_01"
+            ]
+        },
+        {
+            "source_component_key": "nav.component57",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_nav_component57_01"
+            ]
+        },
+        {
+            "source_component_key": "ecom.component58",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_component58_01"
+            ]
+        },
+        {
+            "source_component_key": "auth.component59",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_auth_component59_01"
+            ]
+        },
+        {
+            "source_component_key": "misc.component60",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_misc_component60_01"
+            ]
+        },
+        {
+            "source_component_key": "content.component61",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_content_component61_01"
+            ]
+        },
+        {
+            "source_component_key": "form.component62",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_form_component62_01"
+            ]
+        },
+        {
+            "source_component_key": "blog.component63",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_blog_component63_01"
+            ]
+        },
+        {
+            "source_component_key": "layout.component64",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_layout_component64_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.component65",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_component65_01"
+            ]
+        },
+        {
+            "source_component_key": "misc.statsBlock",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_misc_stats_counter_01"
+            ]
+        },
+        {
+            "source_component_key": "ecom.productDetail",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_ecom_product_detail_01",
+                "webu_ecom_add_to_cart_button_01",
+                "webu_ecom_product_tabs_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.heading",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_heading_01",
+                "webu_basic_subheading_01",
+                "webu_basic_lead_01"
+            ]
+        },
+        {
+            "source_component_key": "basic.button",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_basic_button_01",
+                "webu_basic_link_01",
+                "webu_basic_icon_01"
+            ]
+        },
+        {
+            "source_component_key": "misc.statsCounter",
+            "coverage": "equivalent",
+            "canonical_builder_keys": [
+                "webu_misc_stats_counter_01"
+            ]
+        }
+    ]
+}

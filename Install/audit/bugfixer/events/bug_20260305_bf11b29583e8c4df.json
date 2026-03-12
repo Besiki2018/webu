@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260305_bf11b29583e8c4df",
+    "timestamp": "2026-03-05T14:48:39+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/",
+    "event": "[console.error] Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and\/or omitted — the behavior is unsupported and could change in a future version.%s პორტფოლიოები \n    at div\n    at div\n    at section\n    at CategoryGallery (http:\/\/[::1]:5173\/resources\/js\/components\/Landing\/CategoryGallery.tsx:23:17)\n    at section\n    at AnimatedSection (http:\/\/[::1]:5173\/resources\/js\/components\/Landing\/AnimatedSection.tsx:20:35)\n    at main\n    at div\n    at Landing (http:\/\/[::1]:5173\/resources\/js\/Pages\/Landing.tsx:68:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/LanguageContext.tsx:685:36)\n    at AppWrapper (http:\/\/[::1]:5173\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=71b2b4f7:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5173\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/ThemeContext.tsx:41:33)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "bf11b29583e8c4df",
+    "frequency": 1
+}

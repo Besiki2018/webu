@@ -1,0 +1,112 @@
+/**
+ * Global Layout System – containers, grids, spacing.
+ * Structure: SiteLayout > GlobalHeader > PageSections (Section > .webu-container > content) > GlobalFooter
+ * Depends on: tokens.css (--container-width-*, --breakpoint-*, --section-spacing)
+ */
+
+/* Global container: used by all sections and components. Desktop 1290px → Laptop 1140px → Tablet 960px → Mobile 100% + padding */
+.webu-container {
+  width: 100%;
+  max-width: var(--container-width-desktop);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (max-width: 1140px) {
+  .webu-container {
+    max-width: var(--container-width-laptop);
+  }
+}
+
+@media (max-width: 1024px) {
+  .webu-container {
+    max-width: var(--container-width-tablet);
+  }
+}
+
+@media (max-width: 640px) {
+  .webu-container {
+    max-width: var(--container-width-mobile);
+    padding-left: var(--container-padding-mobile);
+    padding-right: var(--container-padding-mobile);
+  }
+}
+
+.webu-container--narrow {
+  max-width: var(--container-narrow);
+}
+
+/* Section: full-width wrapper; content must sit inside .webu-container (section > container > content) */
+.webu-section {
+  width: 100%;
+  margin-bottom: var(--section-spacing);
+}
+
+.webu-section .webu-container {
+  margin-bottom: 0;
+}
+
+.webu-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.webu-grid--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.webu-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.webu-grid--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 1024px) {
+  .webu-grid--3,
+  .webu-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .webu-grid--2,
+  .webu-grid--3,
+  .webu-grid--4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.webu-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.webu-stack--sm {
+  gap: 0.5rem;
+}
+
+.webu-stack--lg {
+  gap: 1.5rem;
+}
+
+.webu-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Storefront: ფუტერი ყოველთვის გვერდის ქვედა ნაწილში (sticky footer) */
+.webu-storefront-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.webu-storefront-layout > main {
+  flex: 1 0 auto;
+}

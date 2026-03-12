@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_e5e358c7f9532798",
+    "timestamp": "2026-03-06T20:28:07+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc?tab=inspect",
+    "event": "[console.warn] [WebuInspect] handleInspectClick no section under cursor",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "e5e358c7f9532798",
+    "frequency": 12
+}

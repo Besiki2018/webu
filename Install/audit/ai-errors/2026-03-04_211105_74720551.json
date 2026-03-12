@@ -1,0 +1,9 @@
+{
+    "timestamp": "2026-03-04T21:11:05+00:00",
+    "message": "OpenAI-compatible internal AI call failed",
+    "context": {
+        "provider": "openai",
+        "status": 400,
+        "response_truncated": "{\n  \"error\": {\n    \"message\": \"Unsupported value: 'temperature' does not support 0.7 with this model. Only the default (1) value is supported.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"temperature\",\n    \"code\": \"unsupported_value\"\n  }\n}"
+    }
+}

@@ -1,0 +1,54 @@
+{
+  "runId": "2026-03-04T19-11-38",
+  "passed": true,
+  "failedStep": null,
+  "results": [
+    {
+      "step": "lint",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "typecheck",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "test:unit",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "build",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "audit:schemas",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "audit:ai-regression",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "test:smoke",
+      "passed": true,
+      "status": 1,
+      "skipped": true
+    },
+    {
+      "step": "audit:bundle-validate",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "audit:security",
+      "passed": true,
+      "status": 0
+    }
+  ],
+  "timestamp": "2026-03-04T19:12:56.532Z"
+}

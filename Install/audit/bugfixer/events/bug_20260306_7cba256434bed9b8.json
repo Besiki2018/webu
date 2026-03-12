@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_7cba256434bed9b8",
+    "timestamp": "2026-03-06T20:31:13+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce1-c7f2-700b-a288-39c1397479bc?tab=inspect",
+    "event": "[console.warn] [WebuInspect] resolveSectionTarget: no section at cursor localX= 89.8046875 localY= 64.5 clientX= 473 clientY= 133 sectionsInDoc= 0",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "7cba256434bed9b8",
+    "frequency": 1
+}

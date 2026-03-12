@@ -1,0 +1,39 @@
+# CD: Deploy to staging on merge to main (customize for your infra)
+name: CD Staging
+
+on:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: Install
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: Install/package-lock.json
+      - name: Build artifacts
+        run: |
+          composer install --no-dev --no-interaction --prefer-dist
+          npm ci && npm run build
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache 2>/dev/null || true
+      # Add your deploy step: rsync, SSH, or push to your container registry / server
+      # - name: Deploy to staging
+      #   run: |
+      #     # e.g. rsync to server, or kubectl set image, or trigger your deploy pipeline
+      #     echo "Deploy to your staging server here"

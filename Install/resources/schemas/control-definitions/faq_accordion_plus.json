@@ -1,0 +1,20 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "faq_accordion_plus",
+  "label": "FAQ",
+  "description": "FAQ items (question, answer) editable in builder.",
+  "content": {
+    "items": {
+      "type": "array",
+      "title": "FAQ items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "q": { "type": "string", "title": "Question" },
+          "a": { "type": "string", "title": "Answer" }
+        }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

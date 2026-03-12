@@ -1,0 +1,12 @@
+{
+  "section_type": "heading",
+  "cms_fields": [
+    { "key": "title", "label": "Title", "type": "text" },
+    { "key": "subtitle", "label": "Subtitle", "type": "textarea" }
+  ],
+  "content_json": {
+    "title": "",
+    "subtitle": ""
+  },
+  "style_json": {}
+}

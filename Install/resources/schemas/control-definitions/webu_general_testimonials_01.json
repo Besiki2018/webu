@@ -1,0 +1,26 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_general_testimonials_01",
+  "label": "Testimonials",
+  "description": "Testimonial items: photo, quote, author name editable in builder.",
+  "content": {
+    "items": {
+      "type": "array",
+      "title": "Testimonials",
+      "items": {
+        "type": "object",
+        "properties": {
+          "image_url": { "type": "string", "format": "uri", "title": "Photo URL" },
+          "avatar_url": { "type": "string", "format": "uri", "title": "Avatar URL (alias)" },
+          "quote": { "type": "string", "title": "Quote" },
+          "text": { "type": "string", "title": "Text (alias)" },
+          "body": { "type": "string", "title": "Body (alias)" },
+          "author": { "type": "string", "title": "Author name" },
+          "name": { "type": "string", "title": "Name (alias)" }
+        }
+      }
+    },
+    "testimonials": { "type": "array", "title": "Testimonials (alias)", "items": { "type": "object" } }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

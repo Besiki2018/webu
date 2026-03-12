@@ -1,0 +1,16 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_product_carousel_01",
+  "label": "Product carousel",
+  "description": "Product carousel. Title and labels editable in builder; products from bindings.",
+  "content": {
+    "title": { "type": "string", "title": "Section title" },
+    "subtitle": { "type": "string", "title": "Subtitle" },
+    "add_to_cart_label": { "type": "string", "title": "Add to cart label" },
+    "empty_title": { "type": "string", "title": "Empty state title" },
+    "empty_description": { "type": "string", "title": "Empty state description" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

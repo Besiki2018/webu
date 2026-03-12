@@ -1,0 +1,18 @@
+{
+  "runId": "2026-03-04T19-05-25",
+  "passed": false,
+  "failedStep": "typecheck",
+  "results": [
+    {
+      "step": "lint",
+      "passed": true,
+      "status": 0
+    },
+    {
+      "step": "typecheck",
+      "passed": false,
+      "status": 2
+    }
+  ],
+  "timestamp": "2026-03-04T19:05:54.786Z"
+}

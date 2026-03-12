@@ -1,0 +1,110 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_header_01",
+  "label": "Header 01",
+  "description": "",
+  "content": {
+    "menu_source": { "type": "string", "title": "Menu Source", "description": "Select a navigation menu from the site. Leave empty to use menu items below.", "default": "header", "control_group": "content" },
+    "logo_text": { "type": "string", "title": "Logo text" },
+    "logo_url": { "type": "string", "title": "Logo URL" },
+    "menu_items": {
+      "type": "array",
+      "title": "Menu items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "url": { "type": "string", "title": "URL" }
+        }
+      }
+    },
+    "cta_label": { "type": "string", "title": "CTA label" },
+    "cta_url": { "type": "string", "title": "CTA URL" },
+    "top_strip_text": { "type": "string", "title": "Top strip text" },
+    "strip_right_links": {
+      "type": "array",
+      "title": "Utility links",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "url": { "type": "string", "title": "URL" }
+        }
+      }
+    },
+    "announcement_text": { "type": "string", "title": "Announcement text" },
+    "announcement_cta_label": { "type": "string", "title": "Announcement CTA label" },
+    "announcement_cta_url": { "type": "string", "title": "Announcement CTA URL" },
+    "top_bar_login_label": { "type": "string", "title": "Login label" },
+    "top_bar_login_url": { "type": "string", "title": "Login URL" },
+    "top_bar_social_links": {
+      "type": "array",
+      "title": "Social links",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "url": { "type": "string", "title": "URL" },
+          "icon": { "type": "string", "title": "Icon" }
+        }
+      }
+    },
+    "top_bar_location_text": { "type": "string", "title": "Location text" },
+    "top_bar_location_url": { "type": "string", "title": "Location URL" },
+    "top_bar_email_text": { "type": "string", "title": "Email text" },
+    "top_bar_email_url": { "type": "string", "title": "Email URL" },
+    "hotline_eyebrow": { "type": "string", "title": "Hotline eyebrow" },
+    "hotline_label": { "type": "string", "title": "Hotline label" },
+    "hotline_url": { "type": "string", "title": "Hotline URL" },
+    "top_bar_left_text": { "type": "string", "title": "Utility left text" },
+    "top_bar_left_cta": { "type": "string", "title": "Utility left CTA" },
+    "top_bar_left_cta_url": { "type": "string", "title": "Utility left CTA URL" },
+    "social_followers": { "type": "string", "title": "Social followers label" },
+    "social_url": { "type": "string", "title": "Social URL" },
+    "top_bar_right_tracking": { "type": "string", "title": "Order tracking label" },
+    "top_bar_right_tracking_url": { "type": "string", "title": "Order tracking URL" },
+    "top_bar_right_lang": { "type": "string", "title": "Language label" },
+    "top_bar_right_currency": { "type": "string", "title": "Currency label" },
+    "search_placeholder": { "type": "string", "title": "Search placeholder" },
+    "search_category_label": { "type": "string", "title": "Search category label" },
+    "search_button_label": { "type": "string", "title": "Search button label" },
+    "department_label": { "type": "string", "title": "Departments label" },
+    "department_menu_items": {
+      "type": "array",
+      "title": "Departments menu",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "url": { "type": "string", "title": "URL" },
+          "description": { "type": "string", "title": "Description" }
+        }
+      }
+    },
+    "promo_eyebrow": { "type": "string", "title": "Promo eyebrow" },
+    "promo_label": { "type": "string", "title": "Promo label" },
+    "promo_url": { "type": "string", "title": "Promo URL" },
+    "account_eyebrow": { "type": "string", "title": "Account eyebrow" },
+    "account_label": { "type": "string", "title": "Account label" },
+    "cart_label": { "type": "string", "title": "Cart label" },
+    "menu_drawer_side": { "type": "string", "title": "Menu drawer side" },
+    "menu_drawer_title": { "type": "string", "title": "Menu drawer title" },
+    "menu_drawer_subtitle": { "type": "string", "title": "Menu drawer subtitle" },
+    "account_url": { "type": "string", "title": "Account URL" },
+    "search_url": { "type": "string", "title": "Search URL" },
+    "wishlist_url": { "type": "string", "title": "Wishlist URL" },
+    "cart_url": { "type": "string", "title": "Cart URL" },
+    "wishlist_count": { "type": "integer", "title": "Wishlist count" },
+    "cart_count": { "type": "integer", "title": "Cart count" },
+    "cart_total": { "type": "string", "title": "Cart total" },
+    "layout_variant": { "type": "string", "title": "Layout variant" }
+  },
+  "style": {
+    "desktop": { "paddingTop": "string", "paddingBottom": "string", "background_color": "string" },
+    "tablet": { "paddingTop": "string", "paddingBottom": "string" },
+    "mobile": { "paddingTop": "string", "paddingBottom": "string" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

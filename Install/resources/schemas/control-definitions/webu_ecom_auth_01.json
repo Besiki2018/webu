@@ -1,0 +1,23 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_ecom_auth_01",
+  "label": "Auth (Login / Register)",
+  "description": "Login and register section titles editable in builder.",
+  "content": {
+    "login": {
+      "type": "object",
+      "title": "Login",
+      "properties": {
+        "title": { "type": "string", "title": "Login title" }
+      }
+    },
+    "register": {
+      "type": "object",
+      "title": "Register",
+      "properties": {
+        "title": { "type": "string", "title": "Register title" }
+      }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

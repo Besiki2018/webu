@@ -1,0 +1,15 @@
+{
+    "name": "OnWay",
+    "slug": "onway",
+    "description": "OnWay courier integration plugin for shipping quotes, shipments and tracking.",
+    "type": "courier",
+    "version": "1.0.0",
+    "author": "System",
+    "main_class": "OnWayCourierPlugin.php",
+    "namespace": "App\\Plugins\\Couriers\\OnWay\\OnWayCourierPlugin",
+    "icon": "plugins/onway/icon.svg",
+    "requirements": {
+        "php": ">=8.4"
+    }
+}
+

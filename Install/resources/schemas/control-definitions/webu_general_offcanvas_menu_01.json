@@ -1,0 +1,41 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_general_offcanvas_menu_01",
+  "label": "Offcanvas Menu",
+  "description": "Reusable side drawer menu for desktop hamburger navigation and mobile menus.",
+  "content": {
+    "trigger_label": { "type": "string", "title": "Trigger label", "default": "Open menu" },
+    "title": { "type": "string", "title": "Panel title", "default": "Shop navigation" },
+    "subtitle": { "type": "string", "title": "Panel subtitle", "default": "Reusable drawer for desktop hamburger and mobile navigation." },
+    "description": { "type": "string", "title": "Preview description", "default": "Trigger and panel are bundled so the same component can be reused in headers, sidebars and mobile menus." },
+    "side": { "type": "string", "title": "Side", "default": "left" },
+    "open_by_default": { "type": "boolean", "title": "Open by default (preview)", "default": true },
+    "show_close": { "type": "boolean", "title": "Show close button", "default": true },
+    "footer_label": { "type": "string", "title": "Footer CTA label", "default": "Shop all" },
+    "footer_url": { "type": "string", "title": "Footer CTA URL", "default": "/shop" },
+    "menu_items": {
+      "type": "array",
+      "title": "Menu items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "url": { "type": "string", "title": "URL" },
+          "description": { "type": "string", "title": "Description" }
+        }
+      }
+    }
+  },
+  "style": {
+    "desktop": {
+      "background_color": "string",
+      "text_color": "string",
+      "accent_color": "string"
+    },
+    "tablet": {},
+    "mobile": {}
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_46af845c26c147cd",
+    "timestamp": "2026-03-07T20:00:43+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cc456-9919-72f7-b916-247f74d98266\/cms?embedded=sidebar&tab=editor",
+    "event": "[console.warn] Collapsible is changing from uncontrolled to controlled. Components should not switch from controlled to uncontrolled (or vice versa). Decide between using a controlled or uncontrolled value for the lifetime of the component.",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "46af845c26c147cd",
+    "frequency": 1
+}

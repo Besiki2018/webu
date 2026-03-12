@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260304_4ee9d029fab9c47e",
+    "timestamp": "2026-03-04T21:24:41+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbabc-c8c2-70ee-96a6-4606aa0e768f",
+    "event": "useScramble is not defined",
+    "stack": "ReferenceError: useScramble is not defined\n    at Create (http:\/\/127.0.0.1:5173\/resources\/js\/Pages\/Create.tsx?t=1772659480234:109:56)\n    at renderWithHooks (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:11596:26)\n    at mountIndeterminateComponent (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:14974:21)\n    at beginWork (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:15962:22)\n    at beginWork$1 (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:19806:22)\n    at performUnitOfWork (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:19251:20)\n    at workLoopSync (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:19190:13)\n    at renderRootSync (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:19169:15)\n    at recoverFromConcurrentError (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:18786:28)\n    at performSyncWorkOnRoot (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=fac1e020:18932:28)",
+    "context": {
+        "sectionId": null,
+        "componentStack": "at Create (http:\/\/127.0.0.1:5173\/resources\/js\/Pages\/Create.tsx?t=1772659480234:50:3)\n    at DisabledReCaptchaProvider (http:\/\/127.0.0.1:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/127.0.0.1:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/127.0.0.1:5173\/resources\/js\/contexts\/LanguageContext.tsx?t=1772659479225:594:36)\n    at AppWrapper (http:\/\/127.0.0.1:5173\/resources\/js\/app.tsx?t=1772659479225:30:23)\n    at App (http:\/\/127.0.0.1:5173\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=3be44cfe:14984:3)\n    at BugfixerErrorBoundary (http:\/\/127.0.0.1:5173\/resources\/js\/components\/BugfixerErrorBoundary.tsx?t=1772658901256:7:5)\n    at ThemeProvider (http:\/\/127.0.0.1:5173\/resources\/js\/contexts\/ThemeContext.tsx:41:33)"
+    },
+    "dedupKey": "4ee9d029fab9c47e",
+    "frequency": 2
+}

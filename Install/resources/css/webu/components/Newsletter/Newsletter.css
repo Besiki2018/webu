@@ -1,0 +1,17 @@
+/**
+ * Webu Newsletter — სათაური, ტექსტი, ფორმის placeholder.
+ * Root: .webu-newsletter
+ */
+
+.webu-newsletter__title {
+  font-size: var(--heading-section);
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.5rem;
+}
+
+.webu-newsletter__text {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  margin: 0;
+}

@@ -1,0 +1,58 @@
+/**
+ * Animations – keyframes and transition utilities.
+ * Depends on: tokens.css (optional for durations)
+ */
+
+@keyframes webu-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes webu-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes webu-typing-dot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.webu-transition {
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.webu-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.webu-animate-fade-in {
+  animation: webu-fade-in 0.2s ease-out;
+}
+
+.webu-animated-section {
+  transition-property: opacity, transform;
+  transition-duration: 0.7s;
+  transition-timing-function: ease-out;
+}
+
+.webu-typing-dot {
+  animation: webu-typing-dot 1.4s infinite ease-in-out;
+}
+
+.webu-typing-dot:nth-child(1) { animation-delay: 0s; }
+.webu-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.webu-typing-dot:nth-child(3) { animation-delay: 0.4s; }

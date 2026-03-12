@@ -1,0 +1,5 @@
+{
+    "autoFixEnabled": true,
+    "severityThreshold": "low",
+    "humanApprovalRequired": false
+}

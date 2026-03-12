@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260305_cda178ab8966c6b2",
+    "timestamp": "2026-03-05T13:33:30+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/admin\/component-library",
+    "event": "[console.error] The above error occurred in the <Collapsible> component:\n\n    at http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-collapsible.js?v=dcb23b0b:239:7\n    at Collapsible (http:\/\/[::1]:5173\/resources\/js\/components\/ui\/collapsible.tsx:20:6)\n    at div\n    at div\n    at http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=7e498bcd:159:13\n    at http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=7e498bcd:313:13\n    at div\n    at http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=7e498bcd:159:13\n    at Provider (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=7e498bcd:180:15)\n    at http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-scroll-area.js?v=7e498bcd:251:7\n    at ScrollArea (http:\/\/[::1]:5173\/resources\/js\/components\/ui\/scroll-area.tsx:21:3)\n    at div\n    at div\n    at _c17 (http:\/\/[::1]:5173\/resources\/js\/components\/ui\/sidebar.tsx:533:51)\n    at div\n    at div\n    at div\n    at http:\/\/[::1]:5173\/resources\/js\/components\/ui\/sidebar.tsx:159:7\n    at AppSidebar (http:\/\/[::1]:5173\/resources\/js\/components\/Sidebar\/AppSidebar.tsx?t=1772717608637:145:30)\n    at div\n    at Provider2 (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=7e498bcd:56:15)\n    at TooltipProvider (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@radix-ui_react-tooltip.js?v=7e498bcd:419:5)\n    at TooltipProvider (http:\/\/[::1]:5173\/resources\/js\/components\/ui\/tooltip.tsx:21:3)\n    at http:\/\/",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "cda178ab8966c6b2",
+    "frequency": 1
+}

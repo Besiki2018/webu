@@ -1,0 +1,24 @@
+{
+  "feature_key": "loyalty",
+  "category": "Account",
+  "context": "customer",
+  "entities": [
+    {
+      "name": "points",
+      "fields": {
+        "balance": "number"
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "name": "GetPoints",
+      "method": "GET",
+      "path": "/loyalty"
+    }
+  ],
+  "ui": {
+    "primary": "balance",
+    "secondary": ["history"]
+  }
+}

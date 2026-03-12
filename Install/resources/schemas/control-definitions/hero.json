@@ -1,0 +1,66 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "hero",
+  "label": "Hero",
+  "description": "Hero / heading block. Headline, image, CTA, overlay card, and stat content editable in builder.",
+  "content": {
+    "headline": { "type": "string", "title": "Headline", "default": "Shopping with style" },
+    "subheading": { "type": "string", "title": "Subheading", "default": "Big screens in incredibly slim designs in your hand." },
+    "subtitle": { "type": "string", "title": "Subtitle", "default": "Big screens in incredibly slim designs in your hand." },
+    "eyebrow": { "type": "string", "title": "Eyebrow", "default": "The feature of health" },
+    "badge_text": { "type": "string", "title": "Badge text", "default": "Weekend Discount" },
+    "hero_image_url": { "type": "string", "format": "uri", "title": "Hero image URL", "default": "/demo/hero/hero-1.svg" },
+    "image_url": { "type": "string", "format": "uri", "title": "Image URL (alias)", "default": "/demo/hero/hero-1.svg" },
+    "hero_image_alt": { "type": "string", "title": "Hero image alt", "default": "Fashion hero" },
+    "image_alt": { "type": "string", "title": "Image alt (alias)", "default": "Fashion hero" },
+    "hero_overlay_image_url": { "type": "string", "format": "uri", "title": "Hero 7: Overlay image URL" },
+    "overlay_image_url": { "type": "string", "format": "uri", "title": "Overlay image URL (alias)" },
+    "hero_overlay_image_alt": { "type": "string", "title": "Hero 7: Overlay image alt" },
+    "overlay_image_alt": { "type": "string", "title": "Overlay image alt (alias)" },
+    "hero_cta_label": { "type": "string", "title": "Primary CTA label", "default": "Shop Now" },
+    "cta_label": { "type": "string", "title": "CTA label (alias)", "default": "Shop Now" },
+    "hero_cta_url": { "type": "string", "title": "Primary CTA URL", "default": "/shop" },
+    "cta_url": { "type": "string", "title": "CTA URL (alias)", "default": "/shop" },
+    "hero_cta_secondary_label": { "type": "string", "title": "Secondary CTA label" },
+    "cta_secondary_label": { "type": "string", "title": "Secondary CTA label (alias)" },
+    "hero_cta_secondary_url": { "type": "string", "title": "Secondary CTA URL" },
+    "cta_secondary_url": { "type": "string", "title": "Secondary CTA URL (alias)" },
+    "hero_stat_value": { "type": "string", "title": "Hero 7: Stat value" },
+    "stat_value": { "type": "string", "title": "Stat value (alias)" },
+    "hero_stat_unit": { "type": "string", "title": "Hero 7: Stat unit" },
+    "stat_unit": { "type": "string", "title": "Stat unit (alias)" },
+    "hero_stat_label": { "type": "string", "title": "Hero 7: Stat label" },
+    "stat_label": { "type": "string", "title": "Stat label (alias)" },
+    "hero_stat_avatars": {
+      "type": "array",
+      "title": "Hero 7: Stat avatars",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "title": "Image URL" },
+          "alt": { "type": "string", "title": "Alt text" }
+        }
+      }
+    },
+    "stat_avatars": {
+      "type": "array",
+      "title": "Stat avatars (alias)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "title": "Image URL" },
+          "alt": { "type": "string", "title": "Alt text" }
+        }
+      }
+    }
+  },
+  "style": {
+    "desktop": {
+      "layout_variant": { "type": "string", "title": "Layout variant (hero-1 … hero-7)", "default": "hero-1" },
+      "hero_variant": { "type": "string", "title": "Layout variant (alias)" },
+      "left_background_color": { "type": "string", "title": "Left background color", "default": "#f2eeee" },
+      "right_background_color": { "type": "string", "title": "Right background color", "default": "#f2eeee" }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "banner",
+  "label": "Banner",
+  "description": "CTA banner. All content editable in builder.",
+  "content": {
+    "title": { "type": "string", "title": "Title" },
+    "headline": { "type": "string", "title": "Headline (alias)" },
+    "subtitle": { "type": "string", "title": "Subtitle" },
+    "subheading": { "type": "string", "title": "Subheading (alias)" },
+    "cta_label": { "type": "string", "title": "Button label" },
+    "cta_url": { "type": "string", "title": "Button URL" }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

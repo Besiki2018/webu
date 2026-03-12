@@ -1,0 +1,40 @@
+/**
+ * Base styles – typography, body.
+ * Depends on: tokens.css (--font-main, --color-text, etc.)
+ * App body is themed in app.css (--background, --foreground); use .webu-base for token-driven sections.
+ */
+
+body {
+  font-family: var(--font-main);
+}
+
+.webu-base,
+.webu-base * {
+  font-family: var(--font-main);
+}
+
+.webu-base {
+  font-size: var(--text-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+  background-color: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+}
+
+.webu-base h1,
+.webu-heading-hero {
+  font-size: var(--heading-hero);
+  line-height: var(--line-height-tight);
+  font-weight: 700;
+}
+
+.webu-base h2,
+.webu-heading-section {
+  font-size: var(--heading-section);
+  line-height: var(--line-height-tight);
+  font-weight: 600;
+}
+
+.webu-base .webu-muted {
+  color: var(--color-muted);
+}

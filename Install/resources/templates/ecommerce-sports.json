@@ -1,0 +1,37 @@
+{
+  "name": "Sports Equipment Storefront",
+  "theme_preset": "bold_startup",
+  "default_pages": [
+    {
+      "slug": "home",
+      "title": "Home",
+      "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "Push Your Limits", "subtitle": "Gear for every athlete. Performance-first, built to last.", "layout_variant": "centered", "style_variant": "minimal" } },
+        { "key": "webu_general_cta_banner_01", "props": { "headline": "Free shipping on orders over 100 GEL" } },
+        { "key": "webu_ecom_product_grid_01", "props": { "title": "Featured Gear", "products_per_page": 8, "show_filters": false, "show_sort": false, "layout_variant": "standard", "style_variant": "softshadow" } },
+        { "key": "webu_general_heading_01", "props": { "headline": "Shop by Sport", "subtitle": "Running, gym, outdoor, team sports.", "layout_variant": "centered", "style_variant": "minimal" } },
+        { "key": "webu_ecom_product_grid_01", "props": { "title": "Best Sellers", "products_per_page": 6, "show_filters": false, "show_sort": false, "layout_variant": "standard", "style_variant": "softshadow" } },
+        { "key": "webu_general_testimonials_01", "props": { "title": "What Athletes Say", "layout_variant": "carousel", "style_variant": "card" } }
+      ]
+    },
+    { "slug": "shop", "title": "Shop", "sections": [
+        { "key": "webu_ecom_product_search_01", "props": { "title": "Search", "variant": "inline" } },
+        { "key": "webu_ecom_product_grid_01", "props": { "title": "All Products", "show_filters": true, "show_sort": true, "pagination_mode": "pagination" } }
+    ]},
+    { "slug": "product", "title": "Product", "sections": [
+        { "key": "webu_ecom_product_gallery_01", "props": { "product_slug": "{{route.params.slug}}" } },
+        { "key": "webu_ecom_product_detail_01", "props": { "product_slug": "{{route.params.slug}}" } },
+        { "key": "webu_ecom_product_tabs_01", "props": { "product_slug": "{{route.params.slug}}" } }
+    ]},
+    { "slug": "cart", "title": "Cart", "sections": [
+        { "key": "webu_ecom_cart_page_01", "props": { "title": "Your Cart", "show_coupon_slot": true, "show_order_summary": true } }
+    ]},
+    { "slug": "checkout", "title": "Checkout", "sections": [
+        { "key": "webu_ecom_checkout_form_01", "props": { "title": "Secure Checkout", "variant": "combined" } }
+    ]},
+    { "slug": "contact", "title": "Contact", "sections": [
+        { "key": "webu_general_heading_01", "props": { "headline": "We'd Love to Hear From You", "subtitle": "Sizing, gear advice, or support.", "layout_variant": "centered", "style_variant": "minimal" } },
+        { "key": "webu_general_text_01", "props": { "title": "Get in touch", "body": "For orders, returns, or any questions, reach out by email or phone. We typically respond within 24 hours." } }
+    ]}
+  ]
+}

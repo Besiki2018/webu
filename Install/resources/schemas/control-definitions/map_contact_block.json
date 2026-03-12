@@ -1,0 +1,14 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "map_contact_block",
+  "label": "Map / contact block",
+  "description": "Image (map), title, address, chips editable in builder.",
+  "content": {
+    "image_url": { "type": "string", "format": "uri", "title": "Image / map URL" },
+    "image_alt": { "type": "string", "title": "Image alt" },
+    "title": { "type": "string", "title": "Title" },
+    "address": { "type": "string", "title": "Address" },
+    "chips": { "type": "array", "title": "Chips", "items": { "type": "string" } }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

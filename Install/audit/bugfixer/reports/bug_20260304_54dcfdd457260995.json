@@ -1,0 +1,9 @@
+{
+  "bugId": "bug_20260304_54dcfdd457260995",
+  "status": "fixed",
+  "timestamp": "2026-03-04T23:55:36.890Z",
+  "resolution": "manually_resolved",
+  "sourceSeverity": "high",
+  "sourceRoute": "/admin/settings?tab=integrations",
+  "note": "Resolved during admin bugfixer bulk cleanup."
+}

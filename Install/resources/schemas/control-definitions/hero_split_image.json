@@ -1,0 +1,54 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "hero_split_image",
+  "label": "Hero Split Image",
+  "description": "Slider left, static image right. All content and slides editable in builder.",
+  "content": {
+    "right_image_url": { "type": "string", "title": "Right image URL", "default": "/demo/hero/hero-1.svg" },
+    "right_image_alt": { "type": "string", "title": "Right image alt text", "default": "Fashion hero" },
+    "slides": {
+      "type": "array",
+      "title": "Slides",
+      "default": [
+        {
+          "badge_text": "Weekend Discount",
+          "eyebrow": "The feature of health",
+          "headline": "Shopping with style",
+          "description": "Big screens in incredibly slim designs in your hand.",
+          "cta_label": "Shop Now",
+          "cta_url": "/shop",
+          "image_url": "/demo/hero/hero-1.svg",
+          "image_alt": "Fashion hero"
+        }
+      ],
+      "items": {
+        "type": "object",
+        "properties": {
+          "eyebrow": { "type": "string", "title": "Eyebrow" },
+          "badge_text": { "type": "string", "title": "Badge text" },
+          "headline": { "type": "string", "title": "Headline" },
+          "description": { "type": "string", "title": "Description" },
+          "cta_label": { "type": "string", "title": "Button label" },
+          "cta_url": { "type": "string", "title": "Button URL" },
+          "image_url": { "type": "string", "title": "Slide image URL" },
+          "image_alt": { "type": "string", "title": "Slide image alt" }
+        }
+      }
+    }
+  },
+  "style": {
+    "desktop": {
+      "layout_variant": {
+        "type": "string",
+        "enum": ["hero-1", "hero-2", "hero-3", "hero-4", "hero-5", "hero-6"],
+        "title": "Layout variant",
+        "default": "hero-1"
+      },
+      "left_background_color": { "type": "string", "title": "Left background", "default": "#f2eeee" },
+      "right_background_color": { "type": "string", "title": "Right background", "default": "#f2eeee" }
+    }
+  },
+  "advanced": {
+    "custom_class": { "type": "string", "title": "Custom CSS class" }
+  }
+}

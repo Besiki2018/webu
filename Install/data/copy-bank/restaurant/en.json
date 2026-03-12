@@ -1,0 +1,23 @@
+{
+  "hero_headlines": [
+    "Restaurant",
+    "Delicious dishes",
+    "Get in touch",
+    "Our menu",
+    "Culinary experience"
+  ],
+  "about_lines": [
+    "We create taste and atmosphere.",
+    "Fresh ingredients, traditional recipes.",
+    "Join us for dinner."
+  ],
+  "cta_labels": [
+    "Book a table",
+    "Menu",
+    "Contact us"
+  ],
+  "service_descriptions": [
+    "Full service.",
+    "Great atmosphere."
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "timestamp": "2026-03-04T18:55:49.329Z",
+  "checks": [
+    {
+      "name": "no-eval",
+      "passed": true
+    },
+    {
+      "name": "safe-json",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

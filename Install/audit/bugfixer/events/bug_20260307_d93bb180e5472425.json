@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260307_d93bb180e5472425",
+    "timestamp": "2026-03-07T00:55:18+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbce7-ac45-711a-9e9e-1c53bcac527e\/cms?embedded=sidebar&tab=editor",
+    "event": "[console.error] [vite] Failed to reload \/resources\/js\/builder\/visual\/BuilderCanvas.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "d93bb180e5472425",
+    "frequency": 1
+}

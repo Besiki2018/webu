@@ -1,0 +1,17 @@
+{
+    "name": "Bank of Georgia",
+    "slug": "bank-of-georgia",
+    "description": "Bank of Georgia payment gateway with one-time and installment checkout support",
+    "version": "1.0.0",
+    "author": "System",
+    "author_url": "",
+    "type": "payment_gateway",
+    "icon": "plugins/bank-of-georgia/icon.svg",
+    "main_class": "BankOfGeorgiaPlugin.php",
+    "namespace": "App\\Plugins\\PaymentGateways\\BankOfGeorgia\\BankOfGeorgiaPlugin",
+    "requirements": {
+        "php": ">=8.4",
+        "laravel": ">=12.0"
+    },
+    "migrations": []
+}

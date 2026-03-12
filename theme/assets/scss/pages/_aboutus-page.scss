@@ -1,0 +1,30 @@
+/*-------------------------------------------------
+  About Us Page CSS
+---------------------------------------------------*/
+// Utilities ( Import Utilities )
+@use "utilities/_variables";
+@use "utilities/_mixins";
+
+.ec-cms-block {
+	background-color: variables.$card-bg-white;
+
+	.ec-cms-block-title {
+		margin-bottom: 14px;
+		color: variables.$text-color-777;
+		font-size: variables.$fontsize-18px;
+		line-height: 24px;
+		font-weight: variables.$font-weight-700;
+		letter-spacing: 0;
+		text-align: left;
+		font-family: 'Montserrat';
+	}
+
+	p {
+		font-size: 14px;
+		color: variables.$main-second-text-color;
+		line-height: 26px;
+		font-weight: 300;
+		letter-spacing: 0;
+		text-align: left;
+	}
+}

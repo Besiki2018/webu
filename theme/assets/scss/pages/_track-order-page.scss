@@ -1,0 +1,216 @@
+/*-------------------------------------------------
+  Track Order Page CSS
+---------------------------------------------------*/
+// Utilities ( Import Utilities )
+@use "utilities/_variables";
+@use "utilities/_mixins";
+
+.track_order_page {
+	.ec-page-content {
+		.section-title {
+			margin-bottom: 22px;
+
+			.ec-title {
+				padding: 0 64px;
+
+				&:after {
+					width: 50px;
+				}
+
+				&:before {
+					width: 50px;
+				}
+			}
+
+		}
+	}
+}
+
+.ec-trackorder-inner {
+	background: #f9f9f9;
+	padding: 50px;
+	overflow: hidden;
+	border: 1px solid variables.$border-color-1;
+}
+
+.ec-trackorder-top {
+	display: flex;
+	align-items: variables.$textcenter;
+	justify-content: space-between;
+
+	.ec-order-id {
+		font-family: 'Montserrat';
+		font-size: 25px;
+		font-weight: 600;
+		line-height: 40px;
+		margin-bottom: 0;
+		color: variables.$main-secondary-color;
+		letter-spacing: 0;
+		position: variables.$relative;
+		text-transform: variables.$capitalize;
+	}
+
+	.ec-order-detail {
+		font-size: 15px;
+		color: variables.$main-text-color;
+		letter-spacing: 0;
+		line-height: 1.1;
+
+		div {
+			&:first-child {
+				margin-bottom: 7px;
+			}
+		}
+
+		span {
+			color: variables.$main-primary-color;
+			text-transform: variables.$uppercase;
+			font-weight: variables.$font-weight-600;
+		}
+	}
+}
+
+#ec-progressbar {
+	overflow: hidden;
+	margin: 58px -9% 5px;
+
+	li {
+		list-style-type: none;
+		font-size: variables.$fontsize-14px;
+		width: 20%;
+		float: variables.$floatleft;
+		position: variables.$relative;
+		font-weight: variables.$font-weight-400;
+		text-align: variables.$textcenter;
+
+		.ec-progressbar-track {
+			position: variables.$relative;
+			display: block;
+
+			&:before {
+				width: 50px;
+				height: 50px;
+				line-height: 50px;
+				display: block;
+				font-size: 26px;
+				background: #deddff;
+				border-radius: 50%;
+				margin: auto;
+				padding: 0px;
+				display: flex;
+				align-items: variables.$textcenter;
+				justify-content: center;
+				color: variables.$white-color;
+				z-index: 9;
+				position: variables.$relative;
+			}
+
+			&:after {
+				content: '';
+				width: variables.$width-100;
+				height: 12px;
+				background: #deddff;
+				position: variables.$absolute;
+				left: 0;
+				top: 19px;
+			}
+		}
+
+		.ec-track-icon {
+			display: block;
+			margin-bottom: 11px;
+		}
+
+		.ec-track-title {
+			position: variables.$relative;
+			color: variables.$main-text-color;
+			font-size: 15px;
+			text-transform: variables.$capitalize;
+			font-weight: 500;
+			line-height: 24px;
+			max-width: 50%;
+			display: block;
+			margin: 0 auto;
+			text-align: variables.$textcenter;
+			letter-spacing: 0;
+			margin-top: 16px;
+			word-break: break-all;
+		}
+
+		&:first-child {
+			.ec-progressbar-track {
+				&:after {
+					content: none;
+					border-top-left-radius: 10px;
+					border-bottom-left-radius: 10px;
+					position: variables.$absolute;
+					left: 50%;
+					border-top-left-radius: 10px;
+					border-bottom-left-radius: 10px;
+				}
+			}
+		}
+
+		&:last-child {
+			.ec-progressbar-track {
+				&:after {
+					border-top-right-radius: 10px;
+					border-bottom-right-radius: 10px;
+					position: variables.$absolute;
+					left: -50%;
+					border-top-right-radius: 10px;
+					border-bottom-right-radius: 10px;
+				}
+			}
+		}
+
+		&:nth-child(2) {
+			.ec-progressbar-track {
+				&:after {
+					left: -50%;
+				}
+			}
+		}
+
+		&:nth-child(3) {
+			.ec-progressbar-track {
+				&:after {
+					left: -50%;
+				}
+			}
+		}
+
+		&:nth-child(4) {
+			.ec-progressbar-track {
+				&:after {
+					left: -50%;
+				}
+			}
+		}
+	}
+
+	li.active {
+		.ec-progressbar-track {
+			&:before {
+				background: #deddff;
+				background: variables.$main-primary-color;
+				font-family: variables.$EcIcons;
+				content: "\f00c";
+				z-index: 2;
+			}
+
+			&:after {
+				background: variables.$main-primary-color;
+			}
+		}
+	}
+
+	.step0 {
+		.ec-progressbar-track {
+			&:before {
+				font-family: variables.$EcIcons;
+				content: "\f10c";
+			}
+		}
+	}
+}

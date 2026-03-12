@@ -1,0 +1,14 @@
+{
+  "section_type": "contact",
+  "cms_fields": [
+    { "key": "heading", "label": "Heading", "type": "text" },
+    { "key": "email", "label": "Email", "type": "text" },
+    { "key": "phone", "label": "Phone", "type": "text" }
+  ],
+  "content_json": {
+    "heading": "Contact",
+    "email": "",
+    "phone": ""
+  },
+  "style_json": {}
+}

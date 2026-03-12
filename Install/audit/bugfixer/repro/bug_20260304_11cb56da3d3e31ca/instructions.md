@@ -1,0 +1,10 @@
+# Repro: bug_20260304_11cb56da3d3e31ca
+Severity: high | Source: frontend
+## Steps to reproduce
+1. Ensure app is running (e.g. npm run start).
+2. Navigate to route: /create
+3. Perform the action that triggered the error (see event message below).
+## Event
+```
+[console.error] [vite] Failed to reload /resources/js/components/Dashboard/PromptInput.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+```

@@ -1,0 +1,20 @@
+/**
+ * Webu Global — ყველა კომპონენტის CSS აქ იკრიბება.
+ * App იყენებს: design-system იმპორტებს ამ ფაილს.
+ * კომპონენტების რედაქტირება: components/[Name]/[Name].css
+ */
+
+@import "./components/Header/Header.css";
+@import "./components/OffcanvasMenu/OffcanvasMenu.css";
+@import "./components/Hero/Hero.css";
+@import "./components/Banner/Banner.css";
+@import "./components/ProductCard/ProductCard.css";
+@import "./components/ProductGrid/ProductGrid.css";
+@import "./components/CategoryCard/CategoryCard.css";
+@import "./components/CategoryGrid/CategoryGrid.css";
+@import "./components/Footer/Footer.css";
+@import "./components/Cart/Cart.css";
+@import "./components/Newsletter/Newsletter.css";
+@import "./components/Placeholder/Placeholder.css";
+@import "./components/Checkout/Checkout.css";
+@import "./components/ProductDetails/ProductDetails.css";

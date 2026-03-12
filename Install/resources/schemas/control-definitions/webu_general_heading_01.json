@@ -1,0 +1,20 @@
+{
+  "$schema": "../../control-schema.json",
+  "type": "webu_general_heading_01",
+  "label": "Heading",
+  "description": "Heading block. Eyebrow, headline, subtitle editable in builder.",
+  "content": {
+    "eyebrow": { "type": "string", "title": "Eyebrow / Badge" },
+    "headline": { "type": "string", "title": "Heading" },
+    "title": { "type": "string", "title": "Title (alias)" },
+    "subtitle": { "type": "string", "title": "Subtitle" },
+    "description": { "type": "string", "title": "Description" }
+  },
+  "style": {
+    "desktop": {
+      "color": { "type": "string", "title": "Text color" },
+      "background_color": { "type": "string", "title": "Background color" }
+    }
+  },
+  "advanced": { "custom_class": { "type": "string", "title": "Custom CSS class" } }
+}

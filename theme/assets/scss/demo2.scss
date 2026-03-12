@@ -1,0 +1,21 @@
+@charset "UTF-8";
+
+/*---------------------------------------------------------------------------------
+    Included CSS INDEX
+-----------------------------------------------------------------------------------
+
+01. Typography
+02. Utilities
+03. demo 2 css
+04. Responsive css
+-----------------------------------------------------------------------------------*/
+
+// Typography ( Import Typography )
+@use "base/_typography";
+
+// Components ( Import Required Components )
+@use "components/_helper";
+@use "components/_chatboat";
+@use "layout/_header_demo_2";
+@use "layout/_footer_demo_2";
+@use "pages/_demo2";

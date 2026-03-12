@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260304_0403919015f14ed5",
+    "timestamp": "2026-03-04T23:58:53+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbb49-40c5-72ca-b56d-afbb40ba7e2d",
+    "event": "[console.warn] Resource \"http:\/\/127.0.0.1:8000\/public\/sites\/019cbb49-40dd-721a-87bc-ced26559a05e\/assets\/site-media\/019cbb49-40dd-721a-87bc-ced26559a05e\/demo\/demo-product-a.svg\" not found",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "0403919015f14ed5",
+    "frequency": 1
+}

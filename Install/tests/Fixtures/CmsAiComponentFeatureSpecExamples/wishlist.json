@@ -1,0 +1,42 @@
+{
+  "feature_key": "wishlist",
+  "title": "Wishlist",
+  "category": "E-commerce",
+  "context": "customer",
+  "entities": [
+    {
+      "name": "wishlistItem",
+      "fields": {
+        "id": "number",
+        "product_id": "number",
+        "name": "string",
+        "image": "string",
+        "price": "number"
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "name": "GetWishlist",
+      "method": "GET",
+      "path": "/wishlist",
+      "auth": "customer"
+    },
+    {
+      "name": "Add",
+      "method": "POST",
+      "path": "/wishlist/items",
+      "auth": "customer"
+    },
+    {
+      "name": "Remove",
+      "method": "DELETE",
+      "path": "/wishlist/items/{id}",
+      "auth": "customer"
+    }
+  ],
+  "ui": {
+    "primary": "list",
+    "secondary": ["button", "counter"]
+  }
+}

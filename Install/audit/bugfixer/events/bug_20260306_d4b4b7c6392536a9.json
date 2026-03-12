@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260306_d4b4b7c6392536a9",
+    "timestamp": "2026-03-06T08:35:51+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/admin\/component-library",
+    "event": "[console.error] [vite] Failed to reload \/resources\/js\/Pages\/Admin\/WebuComponents\/Index.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "d4b4b7c6392536a9",
+    "frequency": 1
+}
