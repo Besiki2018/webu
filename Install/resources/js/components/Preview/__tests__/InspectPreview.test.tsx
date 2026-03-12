@@ -405,7 +405,7 @@ describe('InspectPreview', () => {
         );
 
         const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
-        const { iframeDoc, blankChild } = createRepeatedCardsPreviewDocument();
+        const { iframeDoc, section, blankChild } = createRepeatedCardsPreviewDocument();
         attachIframeEnvironment(iframe, iframeDoc);
 
         fireEvent.load(iframe);
@@ -414,7 +414,19 @@ describe('InspectPreview', () => {
             expect(iframeDoc.querySelector('[data-webu-field], [data-webu-field-url], [data-webu-field-scope]')).toBeTruthy();
         });
 
-        blankChild.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        const hitLayer = iframe.parentElement?.querySelector<HTMLDivElement>('div[aria-hidden="true"]');
+        expect(hitLayer).toBeTruthy();
+
+        Object.defineProperty(iframeDoc, 'elementsFromPoint', {
+            configurable: true,
+            value: vi.fn(() => [blankChild, section]),
+        });
+        Object.defineProperty(iframeDoc, 'elementFromPoint', {
+            configurable: true,
+            value: vi.fn(() => blankChild),
+        });
+
+        fireEvent.click(hitLayer!, { clientX: 24, clientY: 24 });
 
         let mention: ElementMention | null = null;
         await waitFor(() => {

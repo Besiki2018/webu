@@ -82,7 +82,6 @@ use App\Http\Controllers\PreviewController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\GenerateWebsiteController;
 use App\Http\Controllers\ProjectController;
-use App\Http\Controllers\ProjectBuilderController;
 use App\Http\Controllers\RequirementCollectionController;
 use App\Http\Controllers\TemplatePackController;
 use App\Http\Controllers\ProjectCmsController;
@@ -224,7 +223,6 @@ Route::middleware('installed')->group(function () {
     // Project chat routes
     Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/project/{project}', [ChatController::class, 'show'])->name('chat');
-        Route::get('/project/{project}/builder', [ProjectBuilderController::class, 'show'])->name('project.builder');
         Route::post('/project/send', [ChatController::class, 'send'])->name('chat.send');
         Route::post('/panel/projects/{project}/chat-propose-patch', [ChatController::class, 'proposePatch'])->name('panel.projects.chat-propose-patch');
         Route::post('/panel/projects/{project}/chat-apply-patch', [ChatController::class, 'applyPatch'])->name('panel.projects.chat-apply-patch');
@@ -236,16 +234,6 @@ Route::middleware('installed')->group(function () {
 
     // Project Settings
     Route::middleware(['auth', 'verified'])->group(function () {
-        Route::get('/api/projects/{project}/builder-document', [ProjectBuilderController::class, 'document'])
-            ->name('api.projects.builder-document.show');
-        Route::put('/api/projects/{project}/builder-document', [ProjectBuilderController::class, 'updateDocument'])
-            ->name('api.projects.builder-document.update');
-        Route::post('/api/projects/{project}/builder-mutations', [ProjectBuilderController::class, 'applyMutations'])
-            ->name('api.projects.builder-mutations.store');
-        Route::post('/api/projects/{project}/publish', [ProjectBuilderController::class, 'publish'])
-            ->name('api.projects.builder.publish');
-        Route::post('/api/projects/{project}/builder-ai/suggest', [ProjectBuilderController::class, 'suggestMutations'])
-            ->name('api.projects.builder-ai.suggest');
         Route::get('/project/{project}/assets/{path}', [ProjectThemeAssetController::class, 'serve'])
             ->where('path', '.*')
             ->name('project.assets.serve');

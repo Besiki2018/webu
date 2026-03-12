@@ -7764,8 +7764,7 @@ export default function Cms({
         const params = new URLSearchParams(page.url.slice(queryIndex + 1));
         return params.get('embedded');
     }, [page.url]);
-    // TODO(builder-v2): remove embedded sidebar/preview modes once the visual builder runs in one
-    // React runtime. Cms should stop acting as an iframe-hosted inspector transport layer.
+    // Cms runs both full-page management UI and the embedded inspect sidebar/preview transport.
     const isEmbeddedMode = embeddedMode === '1' || embeddedMode === 'sidebar' || embeddedMode === 'preview';
     const isEmbeddedSidebarMode = embeddedMode === 'sidebar';
     const isEmbeddedPreviewMode = embeddedMode === 'preview';
@@ -25488,9 +25487,6 @@ ${showRules}
         editableSchemaFields: selectedSectionEditableSchemaFields,
         editableSchemaFieldsForDisplay: selectedSectionEditableSchemaFieldsForDisplay,
         inspectorTarget: selectedSectionInspectorTarget,
-        schemaKey: selectedSectionInspectorSchemaKey,
-        inspectorPropPaths: selectedSectionInspectorPropPaths,
-        nodeId: selectedSectionInspectorNodeId,
         usesSafeFallbackInspector: selectedSectionUsesSafeFallbackInspector,
         usesEcommerceProductsBinding: selectedSectionUsesEcommerceProductsBinding,
         usesEcommerceProductDetailBinding: selectedSectionUsesEcommerceProductDetailBinding,
@@ -25520,34 +25516,6 @@ ${showRules}
         selectedSectionEffectiveType,
         selectedSectionSchemaHtmlTemplate,
         selectedSectionSchemaProperties,
-    ]);
-    const selectedSectionInspectorDebugPropPaths = useMemo(() => {
-        const propPaths = selectedSectionInspectorPropPaths.length > 0
-            ? selectedSectionInspectorPropPaths
-            : selectedSectionEditableSchemaFieldsForDisplay.map((field) => field.path.join('.'));
-
-        return propPaths.join('|');
-    }, [selectedSectionEditableSchemaFieldsForDisplay, selectedSectionInspectorPropPaths]);
-    useEffect(() => {
-        if (!import.meta.env.DEV || !selectedSectionDraft) {
-            return;
-        }
-
-        const componentKey = normalizeSectionTypeKey(selectedSectionEffectiveType || selectedSectionDraft.type);
-        const propPaths = selectedSectionInspectorDebugPropPaths.split('|').filter(Boolean);
-
-        console.debug('[builder:inspector-selection]', {
-            nodeId: selectedSectionInspectorNodeId ?? selectedSectionDraft.localId,
-            componentKey,
-            schemaKey: selectedSectionInspectorSchemaKey,
-            propPaths,
-        });
-    }, [
-        selectedSectionDraft,
-        selectedSectionEffectiveType,
-        selectedSectionInspectorDebugPropPaths,
-        selectedSectionInspectorNodeId,
-        selectedSectionInspectorSchemaKey,
     ]);
     const selectedSectionControlGroupAuditRows = useMemo(
         () => buildCanonicalControlGroupAuditRows(selectedSectionEditableSchemaFieldsForDisplay),

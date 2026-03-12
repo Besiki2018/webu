@@ -119,7 +119,7 @@ export interface InspectPreviewProps {
     projectId?: string;  // For thumbnail capture
     captureThumbnailTrigger?: number;  // Change this value to trigger thumbnail capture
     // Inspect mode callbacks (optional when mode !== 'inspect')
-    onElementSelect?: (element: ElementMention) => void;
+    onElementSelect?: (element: ElementMention | null) => void;
     onElementEdit?: (edit: PendingEdit) => void;
     pendingEdits?: PendingEdit[];
     onSaveAllEdits?: () => Promise<void>;
@@ -199,8 +199,6 @@ export function InspectPreview({
     const containerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<HTMLDivElement>(null);
     const frameRef = useRef<HTMLDivElement>(null);
-    // TODO(builder-v2): drop the preview iframe and render the builder canvas in the same React
-    // runtime as the inspector. Hit-testing, overlays, and live mutations should read store state directly.
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const hitLayerRef = useRef<HTMLDivElement | null>(null);
     const wasBuilding = useRef(false);
@@ -269,7 +267,6 @@ export function InspectPreview({
         hoveredOverlay,
         selectedOverlay,
         setSelectedOverlay,
-        buildElementMention,
         clearHoveredSection,
         measureSectionOverlay,
         overlaysMatch,

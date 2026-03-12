@@ -569,7 +569,7 @@ button.workspace-publish-button:hover {
   min-height: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  padding: 0.75rem 0.5rem 0;
+  padding: 0.75rem 0.625rem 0.625rem;
 }
 
 .workspace-builder-inline-shell {
@@ -582,8 +582,9 @@ button.workspace-publish-button:hover {
   height: 100%;
   overflow: hidden;
   border-radius: 24px;
-  background: #fff;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  border: 1px solid #e4ddd2;
+  background: linear-gradient(180deg, #fffdfa 0%, #ffffff 100%);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
 }
 
 .workspace-builder-library-shell,
@@ -607,7 +608,7 @@ button.workspace-publish-button:hover {
 
 .workspace-builder-library-shell {
   overflow-y: auto;
-  padding: 0.75rem;
+  padding: 0.875rem;
   scrollbar-gutter: stable;
 }
 
@@ -858,7 +859,7 @@ button.workspace-visual-edit-button--active {
 }
 
 .workspace-preview-panel {
-  background: #f9f9f9;
+  background: linear-gradient(180deg, #f8f7f4 0%, #f4f4f1 100%);
   flex: 1 1 0%;
   min-width: 240px;
   width: 0;
@@ -1517,9 +1518,9 @@ button.workspace-pending-remove {
   min-width: 0;
   overflow: hidden;
   border-radius: 24px;
-  border: 1px solid #e6e1d8;
+  border: 1px solid #ddd7ce;
   background: #fffdf9;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 18px 40px rgba(15, 23, 42, 0.06);
 }
 
 .workspace-preview-frame--inspect {
@@ -1555,14 +1556,15 @@ button.workspace-pending-remove {
 }
 
 .workspace-preview-hover-target {
-  border: 1px solid rgba(37, 99, 235, 0.9);
-  background: transparent;
-  box-shadow: none;
+  border: 1px solid rgba(79, 70, 229, 0.92);
+  background: rgba(99, 102, 241, 0.06);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.92) inset;
 }
 
 .workspace-preview-selected-target {
-  border: 1px solid #2563eb;
-  box-shadow: none;
+  border: 2px solid #2563eb;
+  background: rgba(37, 99, 235, 0.04);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.92) inset, 0 10px 24px rgba(37, 99, 235, 0.12);
 }
 
 .workspace-preview-drop-target {

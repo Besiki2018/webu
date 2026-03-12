@@ -25,6 +25,13 @@ const INITIAL_STRUCTURE_PANEL_POSITION = { x: 24, y: 72 } as const;
 
 type SetStateActionLike<T> = SetStateAction<T>;
 
+function hasOwnKey<T extends object>(
+    value: T,
+    key: PropertyKey,
+): boolean {
+    return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 function resolveStateAction<T>(current: T, next: SetStateActionLike<T>): T {
     return typeof next === 'function'
         ? (next as (value: T) => T)(current)
@@ -76,6 +83,16 @@ function deriveHoveredTargetId(target: BuilderEditableTarget | null, fallback: s
     return target?.targetId ?? deriveHoveredElementId(target, fallback);
 }
 
+function deriveHoveredState(
+    target: BuilderEditableTarget | null,
+    fallback: string | null,
+): Pick<BuilderEditingStoreState, 'hoveredTargetId' | 'hoveredElementId'> {
+    return {
+        hoveredTargetId: deriveHoveredTargetId(target, fallback),
+        hoveredElementId: deriveHoveredElementId(target, fallback),
+    };
+}
+
 function hasSectionLocalId(
     sectionsDraft: SectionDraft[],
     sectionLocalId: string | null,
@@ -99,7 +116,7 @@ function reconcileBuilderTarget(
     return hasSectionLocalId(sectionsDraft, sectionLocalId) ? target : null;
 }
 
-function shouldKeepCurrentSelectedBuilderTarget(
+function shouldKeepCurrentBuilderTarget(
     current: BuilderEditableTarget | null,
     next: BuilderEditableTarget | null,
 ): boolean {
@@ -260,7 +277,7 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
             const selectedSectionLocalId = selectedBuilderTarget?.sectionLocalId ?? state.selectedSectionLocalId;
             if (
                 state.selectedSectionLocalId === selectedSectionLocalId
-                && shouldKeepCurrentSelectedBuilderTarget(state.selectedBuilderTarget, selectedBuilderTarget)
+                && shouldKeepCurrentBuilderTarget(state.selectedBuilderTarget, selectedBuilderTarget)
             ) {
                 return state;
             }
@@ -277,7 +294,7 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
             const selectedSectionLocalId = target?.sectionLocalId ?? null;
             if (
                 state.selectedSectionLocalId === selectedSectionLocalId
-                && shouldKeepCurrentSelectedBuilderTarget(state.selectedBuilderTarget, target)
+                && shouldKeepCurrentBuilderTarget(state.selectedBuilderTarget, target)
             ) {
                 return state;
             }
@@ -293,21 +310,40 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
     setHoveredBuilderTarget: (next) => {
         set((state) => {
             const hoveredBuilderTarget = resolveStateAction(state.hoveredBuilderTarget, next);
+            const builderHoveredElementId = hoveredBuilderTarget ? state.builderHoveredElementId : null;
+
+            if (
+                shouldKeepCurrentBuilderTarget(state.hoveredBuilderTarget, hoveredBuilderTarget)
+                && state.builderHoveredElementId === builderHoveredElementId
+            ) {
+                return state;
+            }
 
             return {
                 hoveredBuilderTarget,
-                hoveredTargetId: deriveHoveredTargetId(hoveredBuilderTarget, state.builderHoveredElementId),
-                hoveredElementId: deriveHoveredElementId(hoveredBuilderTarget, state.builderHoveredElementId),
+                builderHoveredElementId,
+                ...deriveHoveredState(hoveredBuilderTarget, builderHoveredElementId),
             };
         });
     },
     hoverTarget: (target) => {
-        set((state) => ({
-            hoveredBuilderTarget: target,
-            hoveredTargetId: deriveHoveredTargetId(target, state.builderHoveredElementId),
-            hoveredElementId: deriveHoveredElementId(target, state.builderHoveredElementId),
-            lastSyncedAt: Date.now(),
-        }));
+        set((state) => {
+            const builderHoveredElementId = target ? state.builderHoveredElementId : null;
+
+            if (
+                shouldKeepCurrentBuilderTarget(state.hoveredBuilderTarget, target)
+                && state.builderHoveredElementId === builderHoveredElementId
+            ) {
+                return state;
+            }
+
+            return {
+                hoveredBuilderTarget: target,
+                builderHoveredElementId,
+                ...deriveHoveredState(target, builderHoveredElementId),
+                lastSyncedAt: Date.now(),
+            };
+        });
     },
     setActiveDragId: (next) => {
         set((state) => ({
@@ -318,10 +354,13 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
         set((state) => {
             const builderHoveredElementId = resolveStateAction(state.builderHoveredElementId, next);
 
+            if (state.builderHoveredElementId === builderHoveredElementId) {
+                return state;
+            }
+
             return {
                 builderHoveredElementId,
-                hoveredTargetId: deriveHoveredTargetId(state.hoveredBuilderTarget, builderHoveredElementId),
-                hoveredElementId: deriveHoveredElementId(state.hoveredBuilderTarget, builderHoveredElementId),
+                ...deriveHoveredState(state.hoveredBuilderTarget, builderHoveredElementId),
             };
         });
     },
@@ -426,19 +465,18 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
             }
 
             const nextSectionsDraft = state.sectionsDraft.filter((section) => section.localId !== state.selectedSectionLocalId);
+            const shouldClearHover = state.hoveredBuilderTarget?.sectionLocalId === state.selectedSectionLocalId
+                || state.builderHoveredElementId === state.selectedSectionLocalId;
+            const hoveredBuilderTarget = shouldClearHover ? null : state.hoveredBuilderTarget;
+            const builderHoveredElementId = shouldClearHover ? null : state.builderHoveredElementId;
+
             return {
                 sectionsDraft: nextSectionsDraft,
                 selectedSectionLocalId: null,
                 selectedBuilderTarget: null,
-                hoveredBuilderTarget: state.hoveredBuilderTarget?.sectionLocalId === state.selectedSectionLocalId
-                    ? null
-                    : state.hoveredBuilderTarget,
-                hoveredTargetId: state.hoveredBuilderTarget?.sectionLocalId === state.selectedSectionLocalId
-                    ? null
-                    : state.hoveredTargetId,
-                hoveredElementId: state.hoveredBuilderTarget?.sectionLocalId === state.selectedSectionLocalId
-                    ? null
-                    : state.hoveredElementId,
+                hoveredBuilderTarget,
+                builderHoveredElementId,
+                ...deriveHoveredState(hoveredBuilderTarget, builderHoveredElementId),
                 ...deriveSelectedState(null, null),
                 lastMutationId: mutationId,
                 lastSyncedAt: Date.now(),
@@ -455,38 +493,62 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
             lastSyncedAt: Date.now(),
         }));
     },
-    syncFromRemote: ({
-        sectionsDraft,
-        selectedSectionLocalId,
-        selectedBuilderTarget,
-        hoveredBuilderTarget,
-        currentBreakpoint,
-        currentInteractionState,
-        builderMode,
-        syncedAt = null,
-        mutationId = null,
-    }) => {
+    syncFromRemote: (payload) => {
         set((state) => {
-            const nextSelectedSectionLocalId = selectedBuilderTarget?.sectionLocalId
-                ?? selectedSectionLocalId
-                ?? state.selectedSectionLocalId;
-            const nextSelectedTarget = selectedBuilderTarget ?? state.selectedBuilderTarget;
-            const nextHoveredTarget = hoveredBuilderTarget ?? state.hoveredBuilderTarget;
+            const nextSectionsDraft = payload.sectionsDraft
+                ? normalizeBuilderSectionDrafts(payload.sectionsDraft)
+                : state.sectionsDraft;
+            const hasSelectedSectionLocalIdUpdate = hasOwnKey(payload, 'selectedSectionLocalId');
+            const hasSelectedBuilderTargetUpdate = hasOwnKey(payload, 'selectedBuilderTarget');
+            const hasHoveredBuilderTargetUpdate = hasOwnKey(payload, 'hoveredBuilderTarget');
+            const explicitSelectedSectionLocalId = hasSelectedSectionLocalIdUpdate
+                ? payload.selectedSectionLocalId ?? null
+                : undefined;
+
+            let nextSelectedTarget = hasSelectedBuilderTargetUpdate
+                ? payload.selectedBuilderTarget ?? null
+                : state.selectedBuilderTarget;
+
+            if (!hasSelectedBuilderTargetUpdate && explicitSelectedSectionLocalId !== undefined) {
+                nextSelectedTarget = explicitSelectedSectionLocalId !== null
+                    && state.selectedBuilderTarget?.sectionLocalId === explicitSelectedSectionLocalId
+                    ? state.selectedBuilderTarget
+                    : null;
+            }
+
+            nextSelectedTarget = reconcileBuilderTarget(nextSelectedTarget, nextSectionsDraft);
+
+            const nextSelectedSectionLocalId = explicitSelectedSectionLocalId !== undefined
+                ? (
+                    hasSectionLocalId(nextSectionsDraft, explicitSelectedSectionLocalId)
+                        ? explicitSelectedSectionLocalId
+                        : (nextSelectedTarget?.sectionLocalId ?? null)
+                )
+                : (
+                    nextSelectedTarget?.sectionLocalId
+                    ?? (hasSectionLocalId(nextSectionsDraft, state.selectedSectionLocalId) ? state.selectedSectionLocalId : null)
+                );
+
+            const nextHoveredTarget = reconcileBuilderTarget(
+                hasHoveredBuilderTargetUpdate ? payload.hoveredBuilderTarget ?? null : state.hoveredBuilderTarget,
+                nextSectionsDraft,
+            );
+            const builderHoveredElementId = nextHoveredTarget ? state.builderHoveredElementId : null;
 
             return {
-                sectionsDraft: sectionsDraft ? normalizeBuilderSectionDrafts(sectionsDraft) : state.sectionsDraft,
+                sectionsDraft: nextSectionsDraft,
                 selectedSectionLocalId: nextSelectedSectionLocalId,
                 selectedBuilderTarget: nextSelectedTarget,
                 hoveredBuilderTarget: nextHoveredTarget,
-                hoveredTargetId: deriveHoveredTargetId(nextHoveredTarget, state.builderHoveredElementId),
-                hoveredElementId: deriveHoveredElementId(nextHoveredTarget, state.builderHoveredElementId),
-                currentBreakpoint: currentBreakpoint ?? state.currentBreakpoint,
-                currentInteractionState: currentInteractionState ?? state.currentInteractionState,
-                builderMode: builderMode ?? state.builderMode,
-                builderSidebarMode: builderMode ?? state.builderSidebarMode,
+                builderHoveredElementId,
+                ...deriveHoveredState(nextHoveredTarget, builderHoveredElementId),
+                currentBreakpoint: payload.currentBreakpoint ?? state.currentBreakpoint,
+                currentInteractionState: payload.currentInteractionState ?? state.currentInteractionState,
+                builderMode: payload.builderMode ?? state.builderMode,
+                builderSidebarMode: payload.builderMode ?? state.builderSidebarMode,
                 ...deriveSelectedState(nextSelectedTarget, nextSelectedSectionLocalId),
-                lastMutationId: mutationId,
-                lastSyncedAt: syncedAt ?? Date.now(),
+                lastMutationId: payload.mutationId ?? null,
+                lastSyncedAt: payload.syncedAt ?? Date.now(),
             };
         });
     },
@@ -513,14 +575,15 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
                 ? next.selectedSectionLocalId
                 : (selectedBuilderTarget?.sectionLocalId ?? null);
             const hoveredBuilderTarget = reconcileBuilderTarget(state.hoveredBuilderTarget, normalizedSectionsDraft);
+            const builderHoveredElementId = hoveredBuilderTarget ? state.builderHoveredElementId : null;
 
             return {
                 sectionsDraft: normalizedSectionsDraft,
                 selectedSectionLocalId,
                 selectedBuilderTarget,
                 hoveredBuilderTarget,
-                hoveredTargetId: deriveHoveredTargetId(hoveredBuilderTarget, state.builderHoveredElementId),
-                hoveredElementId: deriveHoveredElementId(hoveredBuilderTarget, state.builderHoveredElementId),
+                builderHoveredElementId,
+                ...deriveHoveredState(hoveredBuilderTarget, builderHoveredElementId),
                 ...deriveSelectedState(selectedBuilderTarget, selectedSectionLocalId),
                 lastMutationId: next.mutationId ?? null,
                 lastSyncedAt: Date.now(),
@@ -528,10 +591,14 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
         });
     },
     clearSelection: () => {
-        set((state) => ({
+        set(() => ({
             selectedSectionLocalId: null,
             selectedBuilderTarget: null,
-            hoveredBuilderTarget: state.hoveredBuilderTarget,
+            hoveredBuilderTarget: null,
+            builderHoveredElementId: null,
+            builderCurrentDropTarget: null,
+            activeDragId: null,
+            ...deriveHoveredState(null, null),
             ...deriveSelectedState(null, null),
             lastSyncedAt: Date.now(),
         }));

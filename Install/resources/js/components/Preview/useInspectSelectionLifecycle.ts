@@ -7,6 +7,7 @@ import {
     resolvePlacementTarget as resolvePlacementTargetInIframe,
     resolvePreviewTargetAtPoint as resolvePreviewTargetAtPointInIframe,
     resolvePreviewTargetFromElement,
+    resolveSectionTarget as resolveSectionTargetInIframe,
     type ResolvedPreviewTarget,
     resolveSectionOnlyFallbackTarget as resolveSectionOnlyFallbackTargetInIframe,
     type InspectPreviewDropPlacement,
@@ -23,14 +24,6 @@ function inspectLifecycleLog(...args: unknown[]): void {
     if (DEBUG_INSPECT) {
         console.warn('[WebuInspectLifecycle]', ...args);
     }
-}
-
-function isInspectableElement(value: unknown): value is HTMLElement {
-    return Boolean(value)
-        && typeof value === 'object'
-        && 'nodeType' in (value as Node)
-        && (value as Node).nodeType === 1
-        && typeof (value as Element).closest === 'function';
 }
 
 export interface PreviewOverlayBox {
@@ -161,7 +154,7 @@ export interface UseInspectSelectionLifecycleOptions {
     selectedElementMention: ElementMention | null;
     liveStructureItems: LiveStructureItem[];
     pendingLibraryItem: { key: string; label: string } | null;
-    onElementSelect?: (element: ElementMention) => void;
+    onElementSelect?: (element: ElementMention | null) => void;
     onLibraryItemPlace?: (sectionKey: string, target: ElementMention | null) => void;
 }
 
@@ -197,7 +190,6 @@ export function useInspectSelectionLifecycle(
         scale,
         mode,
         isBuilding,
-        iframeReady,
         highlightSectionKey,
         highlightSectionLocalId,
         selectedElementMention,
@@ -355,15 +347,6 @@ export function useInspectSelectionLifecycle(
         return resolveSectionOnlyFallbackTargetInIframe(getActiveIframe(), scale, opts);
     }, [getActiveIframe, scale]);
 
-    const resolveParentClientPoint = useCallback((clientX: number, clientY: number) => {
-        const iframeRect = getActiveIframe()?.getBoundingClientRect();
-        if (!iframeRect) return null;
-        return {
-            clientX: iframeRect.left + (clientX * scale),
-            clientY: iframeRect.top + (clientY * scale),
-        };
-    }, [getActiveIframe, scale]);
-
     const handlePlacementPointerMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         if (!pendingLibraryItem) return;
         const resolvedTarget = resolvePlacementTarget(event.target, event.clientX, event.clientY);
@@ -412,10 +395,14 @@ export function useInspectSelectionLifecycle(
         });
 
         if (pointResolution.status === 'missing-backing-node') {
-            inspectLifecycleLog('ignored-hover-target-missing-backing-node', {
-                clientX: event.clientX,
-                clientY: event.clientY,
-            });
+            const fallbackSection = resolveSectionTargetInIframe(
+                getActiveIframe(),
+                scale,
+                event.target,
+                event.clientX,
+                event.clientY,
+            );
+            updateHoveredSection(fallbackSection);
             return;
         }
 
@@ -439,14 +426,6 @@ export function useInspectSelectionLifecycle(
             clientY: event.clientY,
         });
 
-        if (pointResolution.status === 'missing-backing-node') {
-            inspectLifecycleLog('ignored-click-target-missing-backing-node', {
-                clientX: event.clientX,
-                clientY: event.clientY,
-            });
-            return;
-        }
-
         const resolvedTarget = pointResolution.status === 'resolved'
             ? pointResolution.target
             : null;
@@ -461,11 +440,19 @@ export function useInspectSelectionLifecycle(
         }
 
         const selectedSection = resolvedTarget?.section
-            ?? resolveSectionOnlyFallbackTarget({
-                target: event.target,
-                clientX: event.clientX,
-                clientY: event.clientY,
-            });
+            ?? (pointResolution.status === 'missing-backing-node'
+                ? resolveSectionTargetInIframe(
+                    getActiveIframe(),
+                    scale,
+                    event.target,
+                    event.clientX,
+                    event.clientY,
+                )
+                : resolveSectionOnlyFallbackTarget({
+                    target: event.target,
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                }));
         const mention = buildElementMentionFromResolvedTarget(resolvedTarget)
             ?? (selectedSection ? buildSectionElementMention(selectedSection) : null);
         inspectLifecycleLog('handleInspectClick', {
@@ -478,122 +465,33 @@ export function useInspectSelectionLifecycle(
             parameterPath: resolvedTarget?.parameterPath ?? null,
             mention,
         });
-        if (!mention) return;
+        if (!mention) {
+            setSelectedOverlay(null);
+            clearHoveredSection();
+            onElementSelect?.(null);
+            return;
+        }
         setSelectedOverlay((current) => {
             const nextOverlay = selectedSection ? measureSectionOverlay(selectedSection) : null;
             return overlaysMatch(current, nextOverlay) ? current : nextOverlay;
         });
+        clearHoveredSection();
         onElementSelect?.(mention);
-    }, [buildSectionElementMention, getActiveIframe, isBuilding, liveStructureItems, measureSectionOverlay, mode, onElementSelect, overlaysMatch, resolveSectionOnlyFallbackTarget, scale]);
+    }, [buildSectionElementMention, clearHoveredSection, getActiveIframe, isBuilding, liveStructureItems, measureSectionOverlay, mode, onElementSelect, overlaysMatch, resolveSectionOnlyFallbackTarget, scale]);
 
     useEffect(() => {
-        if (!pendingLibraryItem) clearHoveredSection();
-    }, [clearHoveredSection, pendingLibraryItem]);
+        if (pendingLibraryItem) {
+            return;
+        }
 
-    useEffect(() => {
-        if (mode !== 'inspect' || !iframeReady || pendingLibraryItem) return;
-        const iframe = getActiveIframe();
-        const iframeDoc = iframe?.contentDocument;
-        const iframeWin = iframe?.contentWindow;
-        if (!iframeDoc || !iframeWin) return;
+        const timeoutId = window.setTimeout(() => {
+            clearHoveredSection();
+        }, 0);
 
-        const onIframeMouseMove = (e: MouseEvent) => {
-            const target = e.target as Node | null;
-            if (!target || !iframeDoc.contains(target)) return;
-            const targetElement = isInspectableElement(target) ? target : (target as Node).parentElement;
-            if (!targetElement) return;
-            const point = resolveParentClientPoint(e.clientX, e.clientY);
-            const pointResolution = point
-                ? resolvePreviewTargetAtPointInIframe(getActiveIframe(), scale, {
-                    target: targetElement,
-                    clientX: point.clientX,
-                    clientY: point.clientY,
-                })
-                : resolvePreviewTargetFromElement(targetElement);
-
-            if (pointResolution.status === 'missing-backing-node') {
-                inspectLifecycleLog('ignored-iframe-hover-target-missing-backing-node', {
-                    clientX: e.clientX,
-                    clientY: e.clientY,
-                });
-                return;
-            }
-
-            const hoveredSection = pointResolution.status === 'resolved'
-                ? pointResolution.target?.section ?? null
-                : resolveSectionOnlyFallbackTarget({ target: targetElement, clientX: point?.clientX, clientY: point?.clientY });
-            updateHoveredSection(hoveredSection);
-        };
-        const onIframeMouseLeave = () => clearHoveredSection();
-        const onIframeClick = (e: MouseEvent) => {
-            const target = e.target as Node | null;
-            if (!target || !iframeDoc.contains(target)) return;
-            const targetElement = isInspectableElement(target) ? target : (target as Node).parentElement;
-            if (!targetElement) return;
-            const section = targetElement?.closest<HTMLElement>('[data-webu-section]') ?? null;
-            if (!section) return;
-            e.preventDefault();
-            e.stopPropagation();
-            const point = resolveParentClientPoint(e.clientX, e.clientY);
-            const pointResolution = point
-                ? resolvePreviewTargetAtPointInIframe(getActiveIframe(), scale, {
-                    target: targetElement,
-                    clientX: point.clientX,
-                    clientY: point.clientY,
-                })
-                : resolvePreviewTargetFromElement(targetElement);
-
-            if (pointResolution.status === 'missing-backing-node') {
-                inspectLifecycleLog('ignored-iframe-click-target-missing-backing-node', {
-                    tag: targetElement.tagName,
-                });
-                return;
-            }
-
-            const resolvedTarget = pointResolution.status === 'resolved'
-                ? pointResolution.target
-                : null;
-
-            if (resolvedTarget && !hasBackingStructureTarget(resolvedTarget, liveStructureItems)) {
-                inspectLifecycleLog('ignored-iframe-click-target-without-live-structure-node', {
-                    targetId: resolvedTarget.targetId,
-                });
-                return;
-            }
-
-            const selectedSection = resolvedTarget?.section
-                ?? resolveSectionOnlyFallbackTarget({ target: targetElement, clientX: point?.clientX, clientY: point?.clientY });
-            if (!selectedSection) {
-                return;
-            }
-            const mention = buildElementMentionFromResolvedTarget(resolvedTarget) ?? buildSectionElementMention(selectedSection);
-            inspectLifecycleLog('onIframeClick', {
-                targetTag: targetElement?.tagName ?? null,
-                resolutionStatus: pointResolution.status,
-                resolutionReason: pointResolution.reason,
-                targetId: resolvedTarget?.targetId ?? null,
-                mention,
-            });
-            if (mention) {
-                const overlay = measureSectionOverlay(selectedSection);
-                setSelectedOverlay((current) => (overlaysMatch(current, overlay) ? current : overlay));
-                onElementSelect?.(mention);
-            }
-        };
-        iframeDoc.addEventListener('mousemove', onIframeMouseMove, { passive: true });
-        iframeDoc.addEventListener('mouseleave', onIframeMouseLeave);
-        iframeDoc.addEventListener('click', onIframeClick, { capture: true });
         return () => {
-            iframeDoc.removeEventListener('mousemove', onIframeMouseMove);
-            iframeDoc.removeEventListener('mouseleave', onIframeMouseLeave);
-            iframeDoc.removeEventListener('click', onIframeClick, { capture: true });
+            window.clearTimeout(timeoutId);
         };
-    }, [
-        mode, iframeReady, pendingLibraryItem,
-        updateHoveredSection, clearHoveredSection, buildSectionElementMention, measureSectionOverlay,
-        onElementSelect, overlaysMatch, resolveParentClientPoint,
-        resolveSectionOnlyFallbackTarget, getActiveIframe, liveStructureItems, scale,
-    ]);
+    }, [clearHoveredSection, pendingLibraryItem]);
 
     return {
         hoveredOverlay,
@@ -606,9 +504,9 @@ export function useInspectSelectionLifecycle(
         measureSectionOverlay,
         overlaysMatch,
         setHoveredOverlayFromSection,
-    resolveSelectedSectionNode,
-    resolveSelectedPreviewTarget,
-    handlePlacementPointerMove,
+        resolveSelectedSectionNode,
+        resolveSelectedPreviewTarget,
+        handlePlacementPointerMove,
         handlePlacementLeave,
         handlePlacementClick,
         handlePlacementDragOver,

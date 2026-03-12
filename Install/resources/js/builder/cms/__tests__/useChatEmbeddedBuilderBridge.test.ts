@@ -43,6 +43,7 @@ function buildOptions(overrides: Partial<Parameters<typeof useChatEmbeddedBuilde
         lastBuilderSnapshotSignatureRef: { current: null as string | null },
         latestBuilderStateCursorRef: { current: null as { pageId: number | null; pageSlug: string | null; stateVersion: number | null; revisionVersion: number | null } | null },
         structureSnapshotPageRef: { current: { pageId: null, pageSlug: null, pageTitle: null } },
+        setStructureSnapshotPageIdentity: vi.fn(),
         preferPersistedStructureStateRef: { current: false },
         justPlacedSectionRef: { current: false },
         setPreviewViewport: vi.fn(),

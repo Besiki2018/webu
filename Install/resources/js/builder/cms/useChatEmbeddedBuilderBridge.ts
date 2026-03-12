@@ -84,6 +84,7 @@ interface UseChatEmbeddedBuilderBridgeOptions {
     lastBuilderSnapshotSignatureRef: MutableRefObject<string | null>;
     latestBuilderStateCursorRef: MutableRefObject<BuilderBridgeStateCursor | null>;
     structureSnapshotPageRef: MutableRefObject<BuilderBridgePageIdentity>;
+    setStructureSnapshotPageIdentity: (page: BuilderBridgePageIdentity) => void;
     preferPersistedStructureStateRef: MutableRefObject<boolean>;
     justPlacedSectionRef: MutableRefObject<boolean>;
     setPreviewViewport: (viewport: PreviewViewport) => void;
@@ -133,6 +134,7 @@ export function useChatEmbeddedBuilderBridge({
     lastBuilderSnapshotSignatureRef,
     latestBuilderStateCursorRef,
     structureSnapshotPageRef,
+    setStructureSnapshotPageIdentity,
     preferPersistedStructureStateRef,
     justPlacedSectionRef,
     setPreviewViewport,
@@ -383,9 +385,7 @@ export function useChatEmbeddedBuilderBridge({
             currentInteractionState: previewInteractionState,
         });
     }, [
-        activeBuilderPageIdentity.pageId,
-        activeBuilderPageIdentity.pageSlug,
-        activeBuilderPageIdentity.pageTitle,
+        activeBuilderPageIdentity,
         builderStructureItems,
         previewInteractionState,
         previewViewport,
@@ -735,6 +735,7 @@ export function useChatEmbeddedBuilderBridge({
                     });
 
                     structureSnapshotPageRef.current = snapshotPage;
+                    setStructureSnapshotPageIdentity(snapshotPage);
                     latestBuilderStateCursorRef.current = nextBuilderStateCursor;
                     lastBuilderSnapshotSignatureRef.current = snapshotSignature;
                     setPendingBuilderStructureMutation(null);
@@ -816,9 +817,6 @@ export function useChatEmbeddedBuilderBridge({
                     pendingBuilderChangeSetRequestIdRef.current = null;
                     if (payload.payload.success !== true || payload.payload.changed !== true) {
                         setPreviewRefreshTrigger(Date.now());
-                        if (typeof payload.payload.error === 'string' && payload.payload.error.trim() !== '') {
-                            console.warn('[Builder sync] change set apply failed', payload.payload.error);
-                        }
                     }
                     return;
                 }
@@ -914,6 +912,7 @@ export function useChatEmbeddedBuilderBridge({
         selectBuilderTarget,
         clearBuilderSelection,
         structureSnapshotPageRef,
+        setStructureSnapshotPageIdentity,
         syncEmbeddedBuilderControls,
         t,
         viewMode,

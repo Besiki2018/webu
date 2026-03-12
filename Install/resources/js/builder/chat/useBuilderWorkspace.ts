@@ -8,6 +8,7 @@ import {
     type MutableRefObject,
     type SetStateAction,
 } from 'react';
+import { useShallow } from 'zustand/shallow';
 
 import { useChatEmbeddedBuilderBridge } from '@/builder/cms/useChatEmbeddedBuilderBridge';
 import {
@@ -17,7 +18,6 @@ import {
 } from '@/builder/cms/workspaceBuilderSync';
 import {
     editableTargetToMention,
-    type BuilderEditableTarget,
     type BuilderSidebarMode,
 } from '@/builder/editingState';
 import { resetBuilderEditingStore, useBuilderEditingStore } from '@/builder/state/builderEditingStore';
@@ -93,22 +93,39 @@ export function useBuilderWorkspace({
     setPreviewRefreshTrigger,
     t,
 }: UseBuilderWorkspaceOptions) {
-    const builderEditingState = useBuilderEditingStore();
-    const previewViewport = builderEditingState.currentBreakpoint;
-    const setPreviewViewport = builderEditingState.setCurrentBreakpoint;
-    const previewInteractionState = builderEditingState.currentInteractionState;
-    const setPreviewInteractionState = builderEditingState.setCurrentInteractionState;
-    const selectedBuilderSectionLocalId = builderEditingState.selectedSectionLocalId;
-    const selectedBuilderTarget = builderEditingState.selectedBuilderTarget;
-    const selectBuilderTarget = builderEditingState.selectTarget;
-    const clearBuilderSelection = builderEditingState.clearSelection;
-    const selectedPreviewSectionKey = builderEditingState.selectedComponentKey;
-    const isBuilderSidebarReady = builderEditingState.isSidebarReady;
-    const markBuilderSidebarReady = builderEditingState.markSidebarReady;
-    const isBuilderPreviewReady = builderEditingState.isPreviewReady;
-    const markBuilderPreviewReady = builderEditingState.markPreviewReady;
-    const builderPaneMode = builderEditingState.builderMode;
-    const setBuilderPaneMode = builderEditingState.setBuilderMode as (mode: BuilderSidebarMode) => void;
+    const {
+        previewViewport,
+        setPreviewViewport,
+        previewInteractionState,
+        setPreviewInteractionState,
+        selectedBuilderSectionLocalId,
+        selectedBuilderTarget,
+        selectBuilderTarget,
+        clearBuilderSelection,
+        selectedPreviewSectionKey,
+        isBuilderSidebarReady,
+        markBuilderSidebarReady,
+        isBuilderPreviewReady,
+        markBuilderPreviewReady,
+        builderPaneMode,
+        setBuilderPaneMode,
+    } = useBuilderEditingStore(useShallow((state) => ({
+        previewViewport: state.currentBreakpoint,
+        setPreviewViewport: state.setCurrentBreakpoint,
+        previewInteractionState: state.currentInteractionState,
+        setPreviewInteractionState: state.setCurrentInteractionState,
+        selectedBuilderSectionLocalId: state.selectedSectionLocalId,
+        selectedBuilderTarget: state.selectedBuilderTarget,
+        selectBuilderTarget: state.selectTarget,
+        clearBuilderSelection: state.clearSelection,
+        selectedPreviewSectionKey: state.selectedComponentKey,
+        isBuilderSidebarReady: state.isSidebarReady,
+        markBuilderSidebarReady: state.markSidebarReady,
+        isBuilderPreviewReady: state.isPreviewReady,
+        markBuilderPreviewReady: state.markPreviewReady,
+        builderPaneMode: state.builderMode,
+        setBuilderPaneMode: state.setBuilderMode as (mode: BuilderSidebarMode) => void,
+    })));
 
     const builderSidebarFrameRef = useRef<HTMLIFrameElement | null>(null);
     const builderSidebarCommandQueueRef = useRef<BuilderBridgeMessage[]>([]);
@@ -134,12 +151,17 @@ export function useBuilderWorkspace({
     const [activeLibraryItem, setActiveLibraryItem] = useState<BuilderLibraryItem | null>(null);
     const [isSavingBuilderDraft, setIsSavingBuilderDraft] = useState(false);
     const [previewLayoutOverrides, setPreviewLayoutOverrides] = useState<PreviewLayoutOverrides | null>(null);
+    const [structureSnapshotPageIdentity, setStructureSnapshotPageIdentity] = useState<BuilderBridgePageIdentity>({
+        pageId: null,
+        pageSlug: null,
+        pageTitle: null,
+    });
 
     const activeBuilderPageIdentity = useMemo(() => (
         activeBuilderCodePage
             ? getWorkspaceBuilderPageIdentity(activeBuilderCodePage)
-            : normalizeBuilderBridgePageIdentity(structureSnapshotPageRef.current)
-    ), [activeBuilderCodePage, structureSnapshotPageRef]);
+            : structureSnapshotPageIdentity
+    ), [activeBuilderCodePage, structureSnapshotPageIdentity]);
     const visibleBuilderStructureItems = pendingBuilderStructureMutation?.previewItems ?? builderStructureItems;
     const effectiveSelectedBuilderSectionLocalId = selectedBuilderTarget?.sectionLocalId ?? selectedBuilderSectionLocalId;
     const effectiveSelectedPreviewSectionKey = selectedBuilderTarget?.sectionKey ?? selectedPreviewSectionKey;
@@ -236,11 +258,12 @@ export function useBuilderWorkspace({
 
     useEffect(() => {
         resetBuilderEditingStore();
+        setStructureSnapshotPageIdentity(normalizeBuilderBridgePageIdentity(structureSnapshotPageRef.current));
 
         return () => {
             resetBuilderEditingStore();
         };
-    }, [projectId]);
+    }, [projectId, structureSnapshotPageRef]);
 
     useEffect(() => {
         if (seededBuilderLibraryItems.length === 0) {
@@ -360,6 +383,7 @@ export function useBuilderWorkspace({
         lastBuilderSnapshotSignatureRef,
         latestBuilderStateCursorRef,
         structureSnapshotPageRef,
+        setStructureSnapshotPageIdentity,
         preferPersistedStructureStateRef,
         justPlacedSectionRef,
         setPreviewViewport,
@@ -399,6 +423,8 @@ export function useBuilderWorkspace({
         markBuilderPreviewReady,
         markBuilderSidebarReady,
         postBuilderCommand,
+        setActiveLibraryItem,
+        setBuilderPaneMode,
         setViewMode,
     ]);
 
@@ -419,7 +445,7 @@ export function useBuilderWorkspace({
         }
 
         openVisualBuilder();
-    }, [clearBuilderSelection, openVisualBuilder, postBuilderCommand, setViewMode, viewMode]);
+    }, [clearBuilderSelection, openVisualBuilder, postBuilderCommand, setActiveLibraryItem, setBuilderPaneMode, setViewMode, viewMode]);
 
     const handleWorkspaceModeChange = useCallback((nextMode: ChatViewMode) => {
         if (nextMode === 'inspect' && viewMode === 'inspect') {
@@ -438,7 +464,7 @@ export function useBuilderWorkspace({
         }
 
         setViewMode(nextMode);
-    }, [clearBuilderSelection, postBuilderCommand, setViewMode, viewMode]);
+    }, [clearBuilderSelection, postBuilderCommand, setActiveLibraryItem, setBuilderPaneMode, setViewMode, viewMode]);
 
     const handleSidebarToggle = useCallback(() => {
         if (viewMode === 'inspect') {

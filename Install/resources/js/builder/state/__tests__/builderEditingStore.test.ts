@@ -102,7 +102,7 @@ describe('builderEditingStore', () => {
             componentName: 'HeroSection',
             path: null,
             elementId: null,
-            selector: '[data-builder-section-id=\"hero-1\"]',
+            selector: '[data-builder-section-id="hero-1"]',
             textPreview: 'Welcome',
             props: { headline: 'Welcome' },
             builderId: 'hero-1',
@@ -131,6 +131,7 @@ describe('builderEditingStore', () => {
 
     it('clears stale hover state when applyMutationState removes the hovered section', () => {
         const store = useBuilderEditingStore.getState();
+        store.setBuilderHoveredElementId('hero-1');
         store.setHoveredBuilderTarget({
             targetId: 'hero-1::section',
             sectionLocalId: 'hero-1',
@@ -160,5 +161,110 @@ describe('builderEditingStore', () => {
         expect(next.hoveredBuilderTarget).toBeNull();
         expect(next.hoveredTargetId).toBeNull();
         expect(next.hoveredElementId).toBeNull();
+        expect(next.builderHoveredElementId).toBeNull();
+    });
+
+    it('clears both selected and hovered targets when the selection is reset', () => {
+        const store = useBuilderEditingStore.getState();
+        store.selectTarget({
+            targetId: 'hero-1::section',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: null,
+            elementId: null,
+            selector: '[data-webu-section-local-id="hero-1"]',
+            textPreview: 'Hero',
+            props: { headline: 'Hero' },
+        });
+        store.hoverTarget({
+            targetId: 'hero-1::title',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: 'title',
+            elementId: 'Hero.title',
+            selector: '[data-webu-field="title"]',
+            textPreview: 'Hello',
+            props: { title: 'Hello' },
+        });
+        store.setBuilderHoveredElementId('hero-1');
+
+        store.clearSelection();
+
+        const next = useBuilderEditingStore.getState();
+        expect(next.selectedBuilderTarget).toBeNull();
+        expect(next.selectedSectionLocalId).toBeNull();
+        expect(next.hoveredBuilderTarget).toBeNull();
+        expect(next.hoveredTargetId).toBeNull();
+        expect(next.hoveredElementId).toBeNull();
+        expect(next.builderHoveredElementId).toBeNull();
+        expect(next.activeDragId).toBeNull();
+        expect(next.builderCurrentDropTarget).toBeNull();
+    });
+
+    it('honors explicit remote selection clears instead of keeping stale local targets', () => {
+        const store = useBuilderEditingStore.getState();
+        store.applyMutationState({
+            sectionsDraft: [{
+                localId: 'hero-1',
+                type: 'webu_general_hero_01',
+                propsText: JSON.stringify({ headline: 'Hello' }),
+                propsError: null,
+                bindingMeta: null,
+            }],
+            selectedSectionLocalId: 'hero-1',
+            selectedBuilderTarget: {
+                targetId: 'hero-1::section',
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Hero',
+                path: null,
+                elementId: null,
+                selector: '[data-webu-section-local-id="hero-1"]',
+                textPreview: 'Hero',
+                props: { headline: 'Hello' },
+            },
+        });
+
+        store.syncFromRemote({
+            selectedSectionLocalId: null,
+            selectedBuilderTarget: null,
+            hoveredBuilderTarget: null,
+        });
+
+        const next = useBuilderEditingStore.getState();
+        expect(next.selectedBuilderTarget).toBeNull();
+        expect(next.selectedSectionLocalId).toBeNull();
+        expect(next.hoveredBuilderTarget).toBeNull();
+        expect(next.builderHoveredElementId).toBeNull();
+    });
+
+    it('clears raw hovered element ids when hover state is explicitly reset', () => {
+        const store = useBuilderEditingStore.getState();
+        store.setBuilderHoveredElementId('hero-1');
+        store.setHoveredBuilderTarget({
+            targetId: 'hero-1::section',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: null,
+            elementId: null,
+            selector: '[data-webu-section-local-id="hero-1"]',
+            textPreview: 'Hero',
+            props: { headline: 'Hello' },
+        });
+
+        store.setHoveredBuilderTarget(null);
+
+        const next = useBuilderEditingStore.getState();
+        expect(next.hoveredBuilderTarget).toBeNull();
+        expect(next.hoveredTargetId).toBeNull();
+        expect(next.hoveredElementId).toBeNull();
+        expect(next.builderHoveredElementId).toBeNull();
     });
 });

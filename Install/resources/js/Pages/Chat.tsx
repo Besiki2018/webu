@@ -623,8 +623,7 @@ export default function Chat({
     }, [agentHighlightLocalId]);
 
     const effectivePreviewUrl = visualPreviewUrl || progress.previewUrl || null;
-    // TODO(builder-v2): keep Chat as the tool/chat shell only. When the sidebar and preview
-    // stop living in iframes, move bridge/readiness orchestration into a dedicated builder workspace.
+    // Chat owns the inspect workspace shell and coordinates the embedded sidebar/preview runtime.
     const {
         previewViewport,
         setPreviewViewport,
@@ -1464,7 +1463,25 @@ export default function Chat({
     }, []);
 
     // Element selection handler for inspect mode
-    const handleElementSelect = useCallback((element: ElementMention) => {
+    const handleElementSelect = useCallback((element: ElementMention | null) => {
+        if (!element) {
+            setActiveLibraryItem(null);
+            clearBuilderSelection();
+
+            if (viewMode === 'inspect') {
+                setBuilderPaneMode('elements');
+                postBuilderCommand({
+                    type: 'builder:set-sidebar-mode',
+                    mode: 'elements',
+                });
+                postBuilderCommand({
+                    type: 'builder:clear-selected-section',
+                });
+            }
+
+            return;
+        }
+
         inspectLog('handleElementSelect', element);
         const {
             resolvedLocalId,
@@ -1516,7 +1533,7 @@ export default function Chat({
                 ...nextSelectionPayload,
             });
         }
-    }, [activeBuilderPageIdentity.pageId, activeBuilderPageIdentity.pageSlug, activeBuilderPageIdentity.pageTitle, builderStructureItems, postBuilderCommand, previewInteractionState, previewViewport, selectBuilderTarget, viewMode]);
+    }, [activeBuilderPageIdentity.pageId, activeBuilderPageIdentity.pageSlug, activeBuilderPageIdentity.pageTitle, builderStructureItems, clearBuilderSelection, postBuilderCommand, previewInteractionState, previewViewport, selectBuilderTarget, setActiveLibraryItem, viewMode]);
 
     // Handler for inline edits from inspect mode
     const handleElementEdit = useCallback((edit: PendingEdit) => {
@@ -2457,8 +2474,6 @@ export default function Chat({
                                                                     <span>{t('Components')}</span>
                                                                 </button>
                                                             </div>
-                                                            {/* TODO(builder-v2): remove the embedded sidebar iframe and mount the
-                                                                builder library/inspector directly in the unified React runtime. */}
                                                             <BuilderSidebarFrame
                                                                 frameRef={builderSidebarFrameRef}
                                                                 src={visualBuilderSidebarUrl}
@@ -2688,8 +2703,6 @@ export default function Chat({
                                         </div>
                                     ) : (
                                         <Suspense fallback={lazyPanelFallback}>
-                                            {/* TODO(builder-v2): replace the preview iframe with a same-runtime canvas so
-                                                selection, mutations, and layout sizing come from the shared builder store. */}
                                             <BuilderPreviewFrame
                                                 InspectPreviewComponent={InspectPreview}
                                                 projectId={project.id}
