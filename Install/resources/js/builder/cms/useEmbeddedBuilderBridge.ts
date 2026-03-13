@@ -165,6 +165,8 @@ export function useEmbeddedBuilderBridge({
     const lastEmittedVisualStateSignatureRef = useRef<string | null>(null);
     const lastEmittedStructureSnapshotSignatureRef = useRef<string | null>(null);
     const lastEmittedLibrarySnapshotSignatureRef = useRef<string | null>(null);
+    const lastStableSelectedTargetPayloadRef = useRef<EmbeddedBuilderSelectedTargetPayload | null>(null);
+    const recentStructureSelectionRef = useRef<{ sectionLocalId: string; timestamp: number } | null>(null);
     const processedChatEnvelopeSignaturesRef = useRef<Set<string>>(new Set());
     const targetOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const logSidebarBridge = (input: {
@@ -381,18 +383,11 @@ export function useEmbeddedBuilderBridge({
         structureHash,
     ]);
 
-    const emitCurrentSelectedTarget = useCallback((requestId?: string | null, force = false) => {
-        if (!isEmbeddedVisualBuilder || typeof window === 'undefined' || window.parent === window) {
-            return;
-        }
-        if (!requestId && !force && !hasChatBridgeHandshakeRef.current) {
-            return;
-        }
-
+    const resolveSelectedTargetPayload = useCallback(() => {
         const selectedSectionKey = selectedSectionDraft
             ? normalizeSectionTypeKey(selectedSectionDraft.type)
             : (selectedFixedSectionKey ? normalizeSectionTypeKey(selectedFixedSectionKey) : null);
-        const selectedTargetPayload = buildCanonicalBridgeSelectedTargetPayload({
+        return buildCanonicalBridgeSelectedTargetPayload({
             pageIdentity: selectedPage,
             target: selectedBuilderTarget,
             fallback: selectedSectionDraft || selectedFixedSectionKey
@@ -415,6 +410,44 @@ export function useEmbeddedBuilderBridge({
             currentBreakpoint: selectedTargetViewport,
             currentInteractionState: selectedTargetInteractionState,
         });
+    }, [
+        buildSectionPreviewText,
+        getBuilderSectionExplicitProps,
+        normalizeSectionTypeKey,
+        sectionDisplayLabelByKey,
+        selectedBuilderTarget,
+        selectedFixedSectionKey,
+        selectedPage,
+        selectedSectionDraft,
+        selectedSectionLocalId,
+        selectedTargetInteractionState,
+        selectedTargetViewport,
+        t,
+    ]);
+
+    const emitCurrentSelectedTarget = useCallback((requestId?: string | null, force = false) => {
+        if (!isEmbeddedVisualBuilder || typeof window === 'undefined' || window.parent === window) {
+            return;
+        }
+        if (!requestId && !force && !hasChatBridgeHandshakeRef.current) {
+            return;
+        }
+
+        const selectedTargetPayload = resolveSelectedTargetPayload();
+        if (selectedTargetPayload?.sectionLocalId) {
+            lastStableSelectedTargetPayloadRef.current = selectedTargetPayload;
+        }
+        const shouldSuppressTransientNullSelection = !selectedTargetPayload
+            && !requestId
+            && !force
+            && sectionsDraft.length > 0
+            && recentStructureSelectionRef.current !== null
+            && Date.now() - recentStructureSelectionRef.current.timestamp < 1000
+            && lastStableSelectedTargetPayloadRef.current?.sectionLocalId === recentStructureSelectionRef.current.sectionLocalId
+            && sectionsDraft.some((section) => section.localId === recentStructureSelectionRef.current?.sectionLocalId);
+        if (shouldSuppressTransientNullSelection) {
+            return;
+        }
         const selectionPayload = selectedTargetPayload
             ? {
                 ...selectedTargetPayload,
@@ -447,19 +480,12 @@ export function useEmbeddedBuilderBridge({
             }));
         }
     }, [
-        buildSectionPreviewText,
-        builderViewport,
         emitEnvelope,
-        getBuilderSectionExplicitProps,
         isEmbeddedVisualBuilder,
-        normalizeSectionTypeKey,
         projectId,
-        sectionDisplayLabelByKey,
-        selectedBuilderTarget,
-        selectedFixedSectionKey,
+        resolveSelectedTargetPayload,
+        sectionsDraft,
         selectedPage,
-        selectedSectionDraft,
-        selectedSectionLocalId,
         selectedTargetInteractionState,
         selectedTargetViewport,
         t,
@@ -488,6 +514,14 @@ export function useEmbeddedBuilderBridge({
                 props: parsedProps ?? {},
             };
         });
+        const selectedTargetPayload = resolveSelectedTargetPayload();
+        if (selectedTargetPayload?.sectionLocalId) {
+            lastStableSelectedTargetPayloadRef.current = selectedTargetPayload;
+            recentStructureSelectionRef.current = {
+                sectionLocalId: selectedTargetPayload.sectionLocalId,
+                timestamp: Date.now(),
+            };
+        }
 
         const structureSnapshotSignature = JSON.stringify({
             pageId: selectedPage.pageId ?? null,
@@ -511,6 +545,7 @@ export function useEmbeddedBuilderBridge({
             revisionId,
             revisionVersion,
             structureSections: sections,
+            selectedTarget: selectedTargetPayload,
         }, {
             source: 'sidebar',
             projectId,
@@ -525,6 +560,7 @@ export function useEmbeddedBuilderBridge({
         projectId,
         revisionId,
         revisionVersion,
+        resolveSelectedTargetPayload,
         sectionDisplayLabelByKey,
         sectionsDraft,
         selectedPage,

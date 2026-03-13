@@ -357,6 +357,206 @@ describe('useChatEmbeddedBuilderBridge', () => {
         });
     });
 
+    it('adopts sidebar fallback selection from structure snapshots when the previous section no longer exists', async () => {
+        const options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            selectedBuilderTarget: {
+                targetId: 'hero-1::title',
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Hero',
+                path: 'title',
+                elementId: 'hero-1.title',
+                selector: '[data-webu-section-local-id="hero-1"] h1',
+                textPreview: 'Old hero',
+                props: { title: 'Old hero' },
+            },
+            selectedBuilderSectionLocalId: 'hero-1',
+        });
+
+        renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderSyncStateMessage({
+                stateVersion: 10,
+                revisionVersion: 5,
+                structureHash: 'hash-10',
+                selectedTarget: {
+                    sectionLocalId: 'hero-2',
+                    sectionKey: 'webu_general_hero_01',
+                    componentType: 'webu_general_hero_01',
+                    componentName: 'Hero',
+                    textPreview: 'Duplicated hero',
+                    currentBreakpoint: 'desktop',
+                    currentInteractionState: 'normal',
+                },
+                structureSections: [{
+                    localId: 'hero-2',
+                    sectionKey: 'webu_general_hero_01',
+                    type: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Duplicated hero',
+                    propsText: JSON.stringify({ title: 'Duplicated hero' }),
+                    props: { title: 'Duplicated hero' },
+                }],
+            }, buildSidebarInput('req-sync-fallback-1')),
+        }));
+
+        await waitFor(() => {
+            expect(options.selectBuilderTarget).toHaveBeenCalledWith(expect.objectContaining({
+                sectionLocalId: 'hero-2',
+                componentName: 'Hero',
+                textPreview: 'Duplicated hero',
+                props: { title: 'Duplicated hero' },
+            }));
+            expect(options.clearBuilderSelection).not.toHaveBeenCalled();
+            expect(options.setBuilderPaneMode).toHaveBeenCalledWith('settings');
+        });
+    });
+
+    it('falls back to the nearest remaining section when a delete snapshot omits selectedTarget', async () => {
+        const options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            builderStructureItems: [{
+                localId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                label: 'Hero',
+                previewText: 'Hero 1',
+                props: { title: 'Hero 1' },
+            }, {
+                localId: 'hero-2',
+                sectionKey: 'webu_general_hero_01',
+                label: 'Hero',
+                previewText: 'Hero 2',
+                props: { title: 'Hero 2' },
+            }],
+            selectedBuilderTarget: {
+                targetId: 'hero-2::section',
+                sectionLocalId: 'hero-2',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Hero',
+                path: null,
+                elementId: null,
+                selector: '[data-webu-section-local-id="hero-2"]',
+                textPreview: 'Hero 2',
+                props: { title: 'Hero 2' },
+            },
+            selectedBuilderSectionLocalId: 'hero-2',
+        });
+
+        renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderSyncStateMessage({
+                stateVersion: 11,
+                revisionVersion: 6,
+                structureHash: 'hash-11',
+                structureSections: [{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    type: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero 1',
+                    propsText: JSON.stringify({ title: 'Hero 1' }),
+                    props: { title: 'Hero 1' },
+                }],
+            }, buildSidebarInput('req-sync-nearest-1')),
+        }));
+
+        await waitFor(() => {
+            expect(options.selectBuilderTarget).toHaveBeenCalledWith(expect.objectContaining({
+                sectionLocalId: 'hero-1',
+                componentName: 'Hero',
+                textPreview: 'Hero 1',
+                props: { title: 'Hero 1' },
+            }));
+            expect(options.clearBuilderSelection).not.toHaveBeenCalled();
+            expect(options.setBuilderPaneMode).toHaveBeenCalledWith('settings');
+        });
+    });
+
+    it('falls back to the nearest remaining section when the live selection is already cleared but the last sidebar selection existed', async () => {
+        const options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            builderStructureItems: [{
+                localId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                label: 'Hero',
+                previewText: 'Hero 1',
+                props: { title: 'Hero 1' },
+            }, {
+                localId: 'hero-2',
+                sectionKey: 'webu_general_hero_01',
+                label: 'Hero',
+                previewText: 'Hero 2',
+                props: { title: 'Hero 2' },
+            }],
+            selectedBuilderTarget: null,
+            selectedBuilderSectionLocalId: null,
+        });
+
+        renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderSelectTargetMessage({
+                sectionLocalId: 'hero-2',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Hero',
+                textPreview: 'Hero 2',
+                props: { title: 'Hero 2' },
+                currentBreakpoint: 'desktop',
+                currentInteractionState: 'normal',
+            }, buildSidebarInput('req-select-before-delete-1')),
+        }));
+
+        await waitFor(() => {
+            expect(options.selectBuilderTarget).toHaveBeenCalledWith(expect.objectContaining({
+                sectionLocalId: 'hero-2',
+                componentName: 'Hero',
+                textPreview: 'Hero 2',
+                props: { title: 'Hero 2' },
+            }));
+        });
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderSyncStateMessage({
+                stateVersion: 12,
+                revisionVersion: 7,
+                structureHash: 'hash-12',
+                structureSections: [{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    type: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero 1',
+                    propsText: JSON.stringify({ title: 'Hero 1' }),
+                    props: { title: 'Hero 1' },
+                }],
+            }, buildSidebarInput('req-sync-nearest-2')),
+        }));
+
+        await waitFor(() => {
+            expect(options.selectBuilderTarget).toHaveBeenLastCalledWith(expect.objectContaining({
+                sectionLocalId: 'hero-1',
+                componentName: 'Hero',
+                textPreview: 'Hero 1',
+                props: { title: 'Hero 1' },
+            }));
+            expect(options.clearBuilderSelection).not.toHaveBeenCalled();
+            expect(options.setBuilderPaneMode).toHaveBeenCalledWith('settings');
+        });
+    });
+
     it('adopts sidebar visual state without echoing the same sync state back to the sidebar iframe', async () => {
         const postMessage = vi.fn();
         let options = buildOptions({

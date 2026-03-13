@@ -22,14 +22,14 @@ Below: code paths and how each is verified.
 **Code path:**
 
 - `BuilderCanvas.tsx` → `renderRegistrySection(section, displayLabel)`:
-  - `runtimeEntry = getComponentRuntimeEntry(section.type)` — component comes from main REGISTRY (central or Builder*CanvasSection).
+  - `runtimeEntry = getComponentRuntimeEntry(section.type)` — component comes from canonical `componentRegistry.ts` (full-fidelity or Builder*CanvasSection).
   - `props = resolveComponentProps(section.type, section.props ?? section.propsText)` — props from state + registry defaults.
-  - If `getCentralRegistryEntry(section.type)` → `<Component {...componentProps} />` (Header/Footer/Hero).
+  - If `getCentralRegistryEntry(section.type)` from `componentRegistry.ts` resolves → `<Component {...componentProps} />` (Header/Footer/Hero).
   - Else → `<CanvasComponent ... props={props} />` (legacy Builder*CanvasSection).
 
 **Verification:**
 
-- No direct imports of Header, Footer, Hero, or any section component in `BuilderCanvas.tsx` (only `getComponentRuntimeEntry`, `getCentralRegistryEntry`, `resolveComponentProps`).
+- No direct imports of Header, Footer, Hero, or any section component in `BuilderCanvas.tsx` (only canonical registry helpers such as `getComponentRuntimeEntry`, `getCentralRegistryEntry`, `resolveComponentProps`).
 - Test: Phase 9 #3 — render Hero section with custom props; assert DOM shows those prop values (no placeholder).
 - Test: `BuilderCanvas.test.tsx` — "renders registry-backed component content instead of the generic placeholder".
 - Test: `legacyDetection.test.ts` — canvas does not import section components.
@@ -132,7 +132,7 @@ Below: code paths and how each is verified.
 
 | Criterion | Code path | Verified by |
 |-----------|-----------|-------------|
-| Canvas through registry | BuilderCanvas: getComponentRuntimeEntry, getCentralRegistryEntry, resolveComponentProps only | Phase 9 #3, BuilderCanvas.test, legacyDetection |
+| Canvas through registry | BuilderCanvas: canonical `componentRegistry.ts` helpers (`getComponentRuntimeEntry`, `getCentralRegistryEntry`, `resolveComponentProps`) only | Phase 9 #3, BuilderCanvas.test, legacyDetection |
 | Sidebar from schema | Cms: sectionSchemaByKey (library + getAvailableComponents registry fallback), collectSchemaPrimitiveFields, getSchemaFieldControlType | Phase 9 #4, #4b |
 | Props update rerender | updateSectionPathProp → updateComponentProps → applyMutationState → store → sectionsDraft → BuilderCanvas | Phase 9 #5, #5b, runtimeVerification, updatePipeline.test |
 | Components from props only | ensureFullComponentProps + mapBuilderProps; Hero etc. use only props | Phase 9 #3, component code |

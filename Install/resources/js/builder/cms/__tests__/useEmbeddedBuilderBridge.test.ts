@@ -108,6 +108,125 @@ describe('useEmbeddedBuilderBridge', () => {
         }), window.location.origin);
     });
 
+    it('includes the authoritative selected target in structure snapshots', async () => {
+        const postMessage = vi.fn();
+        Object.defineProperty(window, 'parent', {
+            configurable: true,
+            value: { postMessage },
+        });
+
+        renderHook(() => useEmbeddedBuilderBridge(buildOptions({
+            selectedSectionLocalId: 'hero-2',
+            selectedSectionDraft: {
+                localId: 'hero-2',
+                type: 'webu_general_hero_01',
+                props: { title: 'Fresh hero' },
+                propsText: JSON.stringify({ title: 'Fresh hero' }),
+                propsError: null,
+                bindingMeta: null,
+            },
+            sectionsDraft: [{
+                localId: 'hero-1',
+                type: 'webu_general_text_01',
+                props: { content: 'Old section' },
+                propsText: JSON.stringify({ content: 'Old section' }),
+                propsError: null,
+                bindingMeta: null,
+            }, {
+                localId: 'hero-2',
+                type: 'webu_general_hero_01',
+                props: { title: 'Fresh hero' },
+                propsText: JSON.stringify({ title: 'Fresh hero' }),
+                propsError: null,
+                bindingMeta: null,
+            }],
+            sectionDisplayLabelByKey: new Map([
+                ['webu_general_hero_01', 'Hero'],
+                ['webu_general_text_01', 'Text'],
+            ]),
+            getBuilderSectionExplicitProps: (section) => section.props as Record<string, unknown>,
+        })));
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderRequestStateMessage({
+                reason: 'sync-structure',
+            }, buildChatInput('req-structure-1')),
+        }));
+
+        await waitFor(() => {
+            expect(postMessage.mock.calls.some(([message]) => (
+                message?.type === 'BUILDER_SYNC_STATE'
+                && message?.payload?.selectedTarget?.sectionLocalId === 'hero-2'
+                && Array.isArray(message?.payload?.structureSections)
+            ))).toBe(true);
+        });
+    });
+
+    it('suppresses transient null selection emissions right after a structural fallback selection', async () => {
+        const postMessage = vi.fn();
+        Object.defineProperty(window, 'parent', {
+            configurable: true,
+            value: { postMessage },
+        });
+
+        let options = buildOptions({
+            isEmbeddedVisualBuilder: true,
+            selectedSectionLocalId: 'hero-1',
+            selectedSectionDraft: {
+                localId: 'hero-1',
+                type: 'webu_general_hero_01',
+                props: { title: 'Hero 1' },
+                propsText: JSON.stringify({ title: 'Hero 1' }),
+                propsError: null,
+                bindingMeta: null,
+            },
+            sectionsDraft: [{
+                localId: 'hero-1',
+                type: 'webu_general_hero_01',
+                props: { title: 'Hero 1' },
+                propsText: JSON.stringify({ title: 'Hero 1' }),
+                propsError: null,
+                bindingMeta: null,
+            }],
+            sectionDisplayLabelByKey: new Map([
+                ['webu_general_hero_01', 'Hero'],
+            ]),
+            getBuilderSectionExplicitProps: (section) => section.props as Record<string, unknown>,
+        });
+
+        const { rerender } = renderHook(() => useEmbeddedBuilderBridge(options));
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderRequestStateMessage({
+                reason: 'sync-structure',
+            }, buildChatInput('req-structure-2')),
+        }));
+
+        await waitFor(() => {
+            expect(postMessage.mock.calls.some(([message]) => (
+                message?.type === 'BUILDER_SYNC_STATE'
+                && message?.payload?.selectedTarget?.sectionLocalId === 'hero-1'
+            ))).toBe(true);
+        });
+
+        postMessage.mockClear();
+
+        options = {
+            ...options,
+            selectedSectionLocalId: null,
+            selectedSectionDraft: null,
+            selectedBuilderTarget: null,
+        };
+        rerender();
+
+        expect(postMessage.mock.calls.some(([message]) => (
+            message?.type === 'BUILDER_SELECT_TARGET'
+            && message?.payload?.target == null
+        ))).toBe(false);
+    });
+
     it('forwards stable insert local ids to the add-section handler', () => {
         const options = buildOptions();
         renderHook(() => useEmbeddedBuilderBridge(options));

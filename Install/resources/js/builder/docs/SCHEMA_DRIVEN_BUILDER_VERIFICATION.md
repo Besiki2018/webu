@@ -21,8 +21,7 @@ This document confirms that the **schema-driven builder is wired into the real W
 
 ### Phase 1 — Component registry integration
 
-- **Central registry** (`builder/centralComponentRegistry.ts`): `REGISTRY_ID_TO_KEY` + `componentRegistry` with **header**, **footer**, **hero**. Each entry has `component`, `schema`, `defaults`, `mapBuilderProps`.
-- **Main registry** (`builder/componentRegistry.ts`): `REGISTRY` keyed by registry id (e.g. `webu_header_01`, `webu_footer_01`, `webu_general_hero_01`, `webu_general_heading_01`, `webu_general_cta_01`, `webu_general_card_01`, …). `getComponentRuntimeEntry(id)` returns component (central or Builder*CanvasSection), schema, defaults.
+- **Canonical registry** (`builder/componentRegistry.ts`): `REGISTRY` keyed by registry id (e.g. `webu_header_01`, `webu_footer_01`, `webu_general_hero_01`, `webu_general_heading_01`, `webu_general_cta_01`, `webu_general_card_01`, …). `getComponentRuntimeEntry(id)` returns component (full-fidelity or Builder*CanvasSection), schema, defaults. The same file also exposes `getCentralRegistryEntry(id)` as a compatibility helper for the full-fidelity subset.
 - **Tests:** `registryIntegration.test.tsx`, `architectureValidation.test.ts`, Phase 9 #1.
 
 ### Phase 2 — Canvas renderer uses registry
@@ -66,7 +65,7 @@ This document confirms that the **schema-driven builder is wired into the real W
 
 ### Phase 8 — Legacy detection
 
-- **Canvas** does not import Header/Footer/Hero; only `centralComponentRegistry` and `componentRegistry` (for schema/resolution) reference section paths. Legacy section types use Builder*CanvasSection from main REGISTRY; no parallel conflicting implementations.
+- **Canvas** does not import Header/Footer/Hero; only canonical registry helpers reference section paths. Legacy section types use Builder*CanvasSection from the same REGISTRY; no parallel conflicting implementations.
 - **Tests:** legacyDetection.test.ts.
 
 ### Phase 9 — Testing
@@ -87,7 +86,7 @@ This document confirms that the **schema-driven builder is wired into the real W
 | Purpose | Path |
 |---------|------|
 | Main registry | `Install/resources/js/builder/componentRegistry.ts` |
-| Central registry (Header, Footer, Hero) | `Install/resources/js/builder/centralComponentRegistry.ts` |
+| Full-fidelity registry helper (Header, Footer, Hero subset) | `Install/resources/js/builder/componentRegistry.ts` |
 | Canvas renderer | `Install/resources/js/builder/visual/BuilderCanvas.tsx` |
 | Update pipeline | `Install/resources/js/builder/state/updatePipeline.ts` |
 | Sidebar (schema + pipeline) | `Install/resources/js/Pages/Project/Cms.tsx` |

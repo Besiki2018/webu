@@ -1,5 +1,5 @@
 import { getComponentShortName } from '@/builder/componentParameterMetadata';
-import { getComponentSchema } from '@/builder/componentRegistry';
+import { getComponentSchema, resolveComponentRegistryKey } from '@/builder/componentRegistry';
 import {
     collectSchemaFieldPaths,
     expandSchemaAwareAliasPaths,
@@ -805,13 +805,33 @@ export function buildEditableTargetFromMention(
         return null;
     }
 
-    const componentType = typeof mention.sectionKey === 'string' && mention.sectionKey.trim() !== ''
+    const rawSectionKey = typeof mention.sectionKey === 'string' && mention.sectionKey.trim() !== ''
         ? mention.sectionKey.trim()
+        : null;
+    const componentType = rawSectionKey
+        ? (resolveComponentRegistryKey(rawSectionKey) ?? rawSectionKey)
         : null;
     const componentName = componentType ? getComponentShortName(componentType) : null;
     const path = typeof mention.parameterName === 'string' && mention.parameterName.trim() !== ''
         ? mention.parameterName.trim()
         : null;
+
+    if (rawSectionKey && componentType && rawSectionKey !== componentType) {
+        return buildSectionScopedEditableTarget({
+            pageId: null,
+            pageSlug: null,
+            pageTitle: null,
+            sectionLocalId: mention.sectionLocalId ?? null,
+            sectionKey: componentType,
+            componentType,
+            componentName,
+            textPreview: mention.textPreview ?? null,
+            props: sectionProps,
+            currentBreakpoint: normalizeBreakpoint(options?.currentBreakpoint ?? null),
+            currentInteractionState: normalizeInteractionState(options?.currentInteractionState ?? null),
+        });
+    }
+
     const fieldMeta = resolveFieldMeta(componentType, path);
     const scopeMeta = resolveTargetScopeMeta(
         componentType,

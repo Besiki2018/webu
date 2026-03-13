@@ -12,11 +12,11 @@ The system meets the following requirements with a **stable, reusable architectu
 | 2 | All versions converted into variants | Header1–6, Footer1–4, Hero1–7 are variants under single Header/Footer/Hero; selected by `props.variant`. |
 | 3 | No hardcoded editable values in JSX | Variants and canvas components render from props only; defaults come from schema/defaults and `resolveComponentProps`. |
 | 4 | Each component has schema + defaults | Header/Footer/Hero: `Component.schema.ts` + `Component.defaults.ts`. Others: normalized schema + defaults from REGISTRY (parameters + buildFoundationFields). |
-| 5 | All components registered in component registry | `componentRegistry.ts` REGISTRY; central registry for Header, Footer, Hero; every section type has a runtime entry. |
+| 5 | All components registered in component registry | `componentRegistry.ts` is the authoritative registry; Header, Footer, and Hero expose full-fidelity render entries there and every section type has a runtime entry. |
 | 6 | Canvas renders components using registry | `BuilderCanvas` uses only registry (central or runtime); no ad-hoc component maps. |
 | 7 | Sidebar parameters driven by schema | `getComponentSchema` / `getComponentSchemaJson` feed sidebar and section library; BuilderCanvasSectionSurface uses `runtimeEntry.schema.fields`. |
 | 8 | Chat edits component props safely | All edits through `applyBuilderUpdatePipeline` / `applyBuilderChangeSetPipeline`; paths validated against schema. |
-| 9 | Ready for hundreds of future components | Add entry to REGISTRY (and optionally central registry); same pattern, no canvas/sidebar/chat changes. |
+| 9 | Ready for hundreds of future components | Add entry to REGISTRY (and optionally a full-fidelity render entry in the same file); same pattern, no canvas/sidebar/chat changes. |
 
 **Full architecture and “Adding a new component” pattern:** see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
@@ -91,7 +91,7 @@ Schema props are editable through chat commands. All chat-driven edits go throug
 
 After refactor, required components are validated in `builder/__tests__/componentValidation.test.tsx`:
 
-- **Header, Footer, Hero, Feature (Heading), CTA (Button/CTA), Cards, Grids** — each has schema with fields (sidebar can load parameters), runtime entry (canvas can resolve component), and central registry for Header/Footer/Hero with `mapBuilderProps`.
+- **Header, Footer, Hero, Feature (Heading), CTA (Button/CTA), Cards, Grids** — each has schema with fields (sidebar can load parameters) and a runtime entry in the canonical registry; Header/Footer/Hero additionally expose full-fidelity render entries with `mapBuilderProps`.
 - **Canvas renders** — BuilderCanvas renders each section type; section surfaces have `data-builder-section-id`.
 - **Props update rerenders** — `resolveComponentProps` merges defaults and overrides; changing section props and rerendering canvas updates the displayed content (e.g. Hero title/button).
 
@@ -99,7 +99,7 @@ After refactor, required components are validated in `builder/__tests__/componen
 
 All tests below are included in the baseline gate (`npm run baseline:gate`).
 
-- `builder/__tests__/componentValidation.test.tsx` — Phase 13: schema, runtime, central registry, canvas render, props update.
+- `builder/__tests__/componentValidation.test.tsx` — Phase 13: schema, runtime entries, canvas render, props update.
 - `builder/state/useBuilderCanvasState.test.ts` — canvas state and selection.
 - `builder/visual/__tests__/treeUtils.test.ts` — tree mutations.
 - `builder/cms/__tests__/scheduleDraftPersist.test.ts` — raf+debounce scheduler.

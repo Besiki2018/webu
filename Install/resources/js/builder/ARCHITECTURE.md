@@ -1,16 +1,16 @@
-# Builder Component Architecture — Final Result
+# Builder Component Architecture — Current Runtime
 
-Stable, reusable architecture for schema-driven builder components. All existing components follow this pattern; future components (hundreds) are added the same way.
+Stable, reusable architecture for the current schema-driven builder runtime. `builder/componentRegistry.ts` is the only authoritative registry file; older standalone registry layers are removed.
 
 ---
 
 ## 1. All existing components converted to builder components
 
-- **Header, Footer, Hero**: Single component each (`layout/Header`, `layout/Footer`, `sections/Hero`) that accepts props and delegates to design-system variants by `variant` prop. Used by canvas via central registry.
+- **Header, Footer, Hero**: Single component each (`layout/Header`, `layout/Footer`, `sections/Hero`) that accepts props and delegates to design-system variants by `variant` prop. Used by the canvas through full-fidelity entries exposed by `componentRegistry.ts`.
 - **Feature, CTA, Cards, Grids, etc.**: Each has a **registry ID** in `componentRegistry.ts` (e.g. `webu_general_heading_01`, `webu_general_button_01`, `webu_general_card_01`, `webu_ecom_product_grid_01`). Canvas resolves them via `getComponentRuntimeEntry(section.type)` and renders either the central-registry component (Header/Footer/Hero) or the **canvas component** from `registryComponents.tsx` (BuilderHeadingCanvasSection, BuilderButtonCanvasSection, BuilderCardCanvasSection, BuilderCollectionCanvasSection, etc.).
 - **No standalone “page-only” components**: Builder canvas and preview both use the same registry; section type → runtime entry → component.
 
-**Location**: `builder/componentRegistry.ts` (REGISTRY), `builder/centralComponentRegistry.ts` (Header, Footer, Hero), `builder/visual/registryComponents.tsx` (canvas components).
+**Location**: `builder/componentRegistry.ts` (REGISTRY + full-fidelity render entries), `builder/visual/registryComponents.tsx` (canvas components).
 
 ---
 
@@ -31,7 +31,7 @@ Stable, reusable architecture for schema-driven builder components. All existing
 - Defaults live in **schema/defaults** and are applied by `resolveComponentProps` and `ensureFullComponentProps`; components render `props.title` etc., not `props.title || 'Hardcoded'` for builder-editable fields.
 - Canvas placeholders that remain (e.g. BuilderGenericCanvasSection) use props only; no hardcoded menus or labels for registered section types.
 
-**Location**: Design-system variant files; `centralComponentRegistry.ts` (mapBuilderProps); `builder/visual/registryComponents.tsx`.
+**Location**: Design-system variant files; `componentRegistry.ts` (full-fidelity entry metadata + `mapBuilderProps`); `builder/visual/registryComponents.tsx`.
 
 ---
 
@@ -48,16 +48,16 @@ Stable, reusable architecture for schema-driven builder components. All existing
 ## 5. All components registered in component registry
 
 - **Full registry**: `componentRegistry.ts` → `REGISTRY` object. Every section type the builder can add or display is keyed by **registry ID** (e.g. `webu_header_01`, `webu_footer_01`, `webu_general_hero_01`, `webu_general_heading_01`, `webu_general_button_01`, `webu_general_card_01`, `webu_ecom_product_grid_01`, …).
-- **Central registry** (optional): `centralComponentRegistry.ts` maps a subset (e.g. `webu_header_01`, `webu_footer_01`, `webu_general_hero_01`) to the real React component + schema + defaults + `mapBuilderProps`. Used by the canvas for full-fidelity rendering.
+- **Full-fidelity render subset** (optional helper, same file): `getCentralRegistryEntry(...)` in `componentRegistry.ts` exposes the subset (e.g. `webu_header_01`, `webu_footer_01`, `webu_general_hero_01`) that maps to the real React component + schema + defaults + `mapBuilderProps`. Used by the canvas for full-fidelity rendering.
 - **Runtime entry**: `getComponentRuntimeEntry(registryId)` returns `{ componentKey, component, schema, defaults }` for every REGISTRY id; the `component` is either the central-registry component or a Builder*CanvasSection.
 
-**Location**: `builder/componentRegistry.ts` (REGISTRY, getComponent, getComponentRuntimeEntry, normalizeSchema), `builder/centralComponentRegistry.ts` (componentRegistry, getCentralRegistryEntry).
+**Location**: `builder/componentRegistry.ts` (REGISTRY, getComponent, getComponentRenderEntry, getCentralRegistryEntry, getComponentRuntimeEntry, normalizeSchema).
 
 ---
 
 ## 6. Canvas renders components using registry
 
-- **BuilderCanvas** (`builder/visual/BuilderCanvas.tsx`): For each section, calls `getComponentRuntimeEntry(section.type)`. If no entry → `SectionBlockPlaceholder`. If **central registry** has an entry for `section.type` → renders `<Component {...componentProps} />` (Header/Footer/Hero) with `componentProps = ensureFullComponentProps(defaults, mapBuilderProps(props))`. Otherwise → renders `CanvasComponent` (e.g. BuilderHeroCanvasSection) with `props` from `resolveComponentProps(section.type, section.props ?? section.propsText)`.
+- **BuilderCanvas** (`builder/visual/BuilderCanvas.tsx`): For each section, calls `getComponentRuntimeEntry(section.type)`. If no entry → explicit unknown-component fallback. If the canonical registry exposes a full-fidelity entry for `section.type` → renders `<Component {...componentProps} />` (Header/Footer/Hero) with `componentProps = ensureFullComponentProps(defaults, mapBuilderProps(props))`. Otherwise → renders `CanvasComponent` (e.g. BuilderHeroCanvasSection) with `props` from `resolveComponentProps(section.type, section.props ?? section.propsText)`.
 - **Single path**: All section types flow through the registry; no ad-hoc component lookup or hardcoded section-type → component maps in the canvas.
 
 **Location**: `builder/visual/BuilderCanvas.tsx` (renderRegistrySection), `builder/builderCompatibility.ts` (ensureFullComponentProps).
@@ -88,11 +88,11 @@ Stable, reusable architecture for schema-driven builder components. All existing
 
 - **Single pattern** for new components:
   1. **Add to REGISTRY** in `componentRegistry.ts`: `id`, `name`, `category`, `parameters` (or full `schema`), optional `metadata`, optional `canvasComponent`. NormalizeSchema + buildFoundationFields provide schema and defaults if not provided.
-  2. **Optional – full-fidelity component**: If the section should render the real React component (not a canvas stub), add an entry to **centralComponentRegistry** (`componentRegistry` + `REGISTRY_ID_TO_KEY`), with `component`, `schema`, `defaults`, and `mapBuilderProps` if builder prop names differ from component API.
-  3. **Canvas fallback**: If not in central registry, `resolveCanvasComponent(definition, schema)` in componentRegistry picks a Builder*CanvasSection by category/key (e.g. card → BuilderCardCanvasSection). For a new category, add a branch or a new Builder*CanvasSection and wire it in resolveCanvasComponent.
-- **No temporary hacks**: New sections do not require changes to canvas render logic, sidebar, or chat; they only require registry (+ optional central registry) and optionally a new canvas component for preview.
+  2. **Optional – full-fidelity component**: If the section should render the real React component (not a canvas stub), add a render entry in `componentRegistry.ts` with `component`, `schema`, `defaults`, and `mapBuilderProps` if builder prop names differ from component API.
+  3. **Canvas fallback**: If there is no full-fidelity render entry, `resolveCanvasComponent(definition, schema)` in `componentRegistry.ts` picks a Builder*CanvasSection by category/key (e.g. card → BuilderCardCanvasSection). For a new category, add a branch or a new Builder*CanvasSection and wire it in `resolveCanvasComponent`.
+- **No temporary hacks**: New sections do not require changes to canvas render logic, sidebar, or chat; they only require the canonical registry (+ optional full-fidelity render entry) and optionally a new canvas component for preview.
 
-**Location**: `builder/componentRegistry.ts` (REGISTRY, resolveCanvasComponent, buildFoundationFields), `builder/centralComponentRegistry.ts`, `builder/visual/registryComponents.tsx`.
+**Location**: `builder/componentRegistry.ts` (REGISTRY, resolveCanvasComponent, buildFoundationFields, full-fidelity render entries), `builder/visual/registryComponents.tsx`.
 
 ---
 
@@ -101,7 +101,7 @@ Stable, reusable architecture for schema-driven builder components. All existing
 1. **Define the component** (if full-fidelity): e.g. `components/sections/MySection/MySection.tsx` with variants under `design-system/webu-my-section/variants/`. Component receives all data via props; no hardcoded editable content.
 2. **Schema + defaults**: Add `MySection.schema.ts` and `MySection.defaults.ts`; export from `MySection/index.ts`.
 3. **Register in REGISTRY**: In `componentRegistry.ts`, add an entry to `REGISTRY` with `id: 'webu_general_mysection_01'`, `name`, `category`, `parameters` or `schema`, `metadata`.
-4. **Optional – central registry**: In `centralComponentRegistry.ts`, add to `REGISTRY_ID_TO_KEY` and `componentRegistry` with `component`, `schema`, `defaults`, `mapBuilderProps`. Then the canvas will render `<MySection {...componentProps} />` instead of a canvas placeholder.
-5. **Optional – canvas placeholder**: If not in central registry, ensure `resolveCanvasComponent` maps your category/key to an existing Builder*CanvasSection or add a new one in `registryComponents.tsx`.
+4. **Optional – full-fidelity render entry**: In `componentRegistry.ts`, add the render entry with `component`, `schema`, `defaults`, `mapBuilderProps`. Then the canvas will render `<MySection {...componentProps} />` instead of a canvas placeholder.
+5. **Optional – canvas placeholder**: If there is no full-fidelity render entry, ensure `resolveCanvasComponent` maps your category/key to an existing Builder*CanvasSection or add a new one in `registryComponents.tsx`.
 
 No changes needed to BuilderCanvas render logic, update pipeline, or chat beyond using the new registry id.

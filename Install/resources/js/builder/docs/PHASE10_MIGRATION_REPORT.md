@@ -23,7 +23,7 @@ See **`builder/docs/RUNTIME_VERIFICATION.md`** for code paths and how each crite
 
 ## 1. Components confirmed working with schema-driven architecture
 
-These components are **fully migrated**: dedicated schema + defaults files, central registry entry, canvas render from props only, sidebar driven by schema, single update pipeline. All Phase 9 validation tests pass for them.
+These components are **fully migrated**: dedicated schema + defaults files, full-fidelity canonical registry entry, canvas render from props only, sidebar driven by schema, single update pipeline. All Phase 9 validation tests pass for them.
 
 | Component | Registry ID | Schema | Defaults | Variants |
 |-----------|-------------|--------|----------|----------|
@@ -35,7 +35,7 @@ These components are **fully migrated**: dedicated schema + defaults files, cent
 
 - Has schema (Component.schema.ts): **yes**
 - Has defaults (Component.defaults.ts): **yes**
-- In main REGISTRY + central registry: **yes**
+- In canonical REGISTRY with full-fidelity render entry: **yes**
 - **Canvas resolves via registry only** (getComponentRuntimeEntry / getCentralRegistryEntry): **yes** — Phase 9 #3, BuilderCanvas.test, legacyDetection.
 - **Renders from props only** (DOM reflects props from state; no hardcoded content): **yes** — Phase 9 #3, #5b.
 - **Sidebar gets schema** from sectionSchemaByKey (registry fallback for all getAvailableComponents()): **yes** — Phase 9 #4, #4b; Cms builds sectionSchemaByKey with registry fallback.
@@ -46,7 +46,7 @@ These components are **fully migrated**: dedicated schema + defaults files, cent
 
 ## 2. Components still using legacy structure
 
-These section types are in the **main REGISTRY** only (not in the central registry). They have **normalized** schema and defaults from `componentRegistry` (parameters + `buildFoundationFields`). The canvas renders them via **Builder*CanvasSection** from `registryComponents.tsx`. They are editable and use the same update pipeline; they do not yet have a dedicated schema file, defaults file, or real React component in the central registry.
+These section types are in the **canonical REGISTRY** only (without a full-fidelity render entry). They have **normalized** schema and defaults from `componentRegistry` (parameters + `buildFoundationFields`). The canvas renders them via **Builder*CanvasSection** from `registryComponents.tsx`. They are editable and use the same update pipeline; they do not yet have a dedicated schema file, defaults file, or real React component entry.
 
 | Registry ID | Category / use | Canvas component (fallback) |
 |-------------|----------------|-----------------------------|
@@ -67,22 +67,20 @@ These section types are in the **main REGISTRY** only (not in the central regist
 | `webu_ecom_product_detail_01` | Ecom | Builder*CanvasSection |
 | `webu_general_video_01` | Content | BuilderVideoCanvasSection |
 
-**Policy:** No conflicting parallel implementations. The main builder registry is the single source of truth. Legacy entries remain in the main REGISTRY; they are excluded from the **central** registry until migrated. Sidebar and update pipeline use the same normalized schema and the same update path. Future migration: add Component.schema.ts + Component.defaults.ts + real component, then register in `REGISTRY_ID_TO_KEY` and `centralComponentRegistry.componentRegistry`.
+**Policy:** No conflicting parallel implementations. `componentRegistry.ts` is the single source of truth. Legacy entries remain in the canonical REGISTRY and can later gain a full-fidelity render entry in the same file. Sidebar and update pipeline use the same normalized schema and the same update path.
 
 ---
 
 ## 3. Component registry summary
 
-- **Main registry** (`builder/componentRegistry.ts`):
+- **Canonical registry** (`builder/componentRegistry.ts`):
   - **REGISTRY:** map of registry ID → `ComponentDefinition` (id, name, category, parameters or schema, metadata, optional canvasComponent).
   - Every section type the builder can add or display is keyed by registry ID.
   - **getAvailableComponents()** returns all registry IDs.
-  - **getComponentRuntimeEntry(registryId)** returns `BuilderComponentRuntimeEntry`: componentKey, component, schema, defaults. Component is either from the central registry (Header/Footer/Hero) or a Builder*CanvasSection from `resolveCanvasComponent`.
+  - **getComponentRuntimeEntry(registryId)** returns `BuilderComponentRuntimeEntry`: componentKey, component, schema, defaults. Component is either a full-fidelity render entry (Header/Footer/Hero) or a Builder*CanvasSection from `resolveCanvasComponent`.
 
-- **Central registry** (`builder/centralComponentRegistry.ts`):
-  - **REGISTRY_ID_TO_KEY:** maps registry ID → short key (e.g. `webu_header_01` → `'header'`). Only three entries: header, footer, hero.
-  - **componentRegistry:** map short key → `ComponentRegistryEntry` (component, schema, defaults, mapBuilderProps).
-  - **getCentralRegistryEntry(registryId)** returns the central entry or null. Canvas uses it for full-fidelity rendering when present; otherwise uses main REGISTRY runtime entry.
+- **Full-fidelity render subset** (same file):
+  - **getCentralRegistryEntry(registryId)** returns the full-fidelity entry or null. Canvas uses it for full-fidelity rendering when present; otherwise it uses the same REGISTRY runtime entry.
 
 - **Lookup flow:** Section `type` → `getComponentRuntimeEntry(type)` → if central has entry → use central component + mapBuilderProps + ensureFullComponentProps; else → use CanvasComponent from main REGISTRY with `resolveComponentProps(type, props)`.
 
@@ -97,7 +95,7 @@ These section types are in the **main REGISTRY** only (not in the central regist
 
 - **Field groups (standard):** content | style | advanced | responsive | state (see `FIELD_GROUP_STANDARD` in `builder/types.ts`).
 
-- **Migrated components:** Each has `Component.schema.ts` exporting a schema compatible with BuilderComponentSchema (e.g. from ComponentSchemaDef). Defaults in `Component.defaults.ts`; both wired into the central registry.
+- **Migrated components:** Each has `Component.schema.ts` exporting a schema compatible with BuilderComponentSchema (e.g. from ComponentSchemaDef). Defaults in `Component.defaults.ts`; both wired into the canonical registry.
 
 - **Legacy components:** For REGISTRY entries without a dedicated schema file, `normalizeSchema(def)` builds a BuilderComponentSchema from parameters + buildFoundationFields; defaults from parameters and schema.defaultProps.
 
@@ -145,7 +143,7 @@ These section types are in the **main REGISTRY** only (not in the central regist
 | `builder/visual/BuilderCanvas.tsx` | Registry-only resolution (getComponentRuntimeEntry, getCentralRegistryEntry); no direct Header/Footer/Hero imports |
 | `builder/visual/treeUtils.ts` | BuilderSection interface (existing; referenced as canonical) |
 | `builder/componentRegistry.ts` | REGISTRY, getComponentSchema, getComponentRuntimeEntry, resolveComponentProps, getDefaultProps, getComponentSchemaJson, normalizeSchema |
-| `builder/centralComponentRegistry.ts` | REGISTRY_ID_TO_KEY, componentRegistry, getCentralRegistryEntry (Header, Footer, Hero) |
+| `builder/componentRegistry.ts` | REGISTRY, full-fidelity render entries, getComponentRenderEntry, getCentralRegistryEntry |
 | `builder/builderCompatibility.ts` | ensureFullComponentProps (existing) |
 | `Pages/Project/Cms.tsx` | Sidebar: schema from getComponentSchemaJson; **sectionSchemaByKey** populated with **registry fallback** (getAvailableComponents + getComponentSchemaJson) so every registry id has schema for controls; updateSectionPathProp → updateComponentProps; getSchemaFieldControlType; builder:apply-change-set → applyBuilderChangeSetPipeline |
 
@@ -158,7 +156,7 @@ These section types are in the **main REGISTRY** only (not in the central regist
 
 ## 7. Remaining blockers
 
-- **None.** The base schema-driven architecture is in place. Header, Footer, and Hero are fully migrated and validated. Legacy section types work through the same main registry and update pipeline; they can be migrated one-by-one to the central registry when their real component + schema + defaults are added.
+- **None.** The base schema-driven architecture is in place. Header, Footer, and Hero are fully migrated and validated. Legacy section types work through the same canonical registry and update pipeline; they can later gain full-fidelity render entries when their real component + schema + defaults are added.
 
 **Notes:**
 

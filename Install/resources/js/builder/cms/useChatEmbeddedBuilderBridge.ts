@@ -163,6 +163,7 @@ export function useChatEmbeddedBuilderBridge({
     const lastVisualStateCommandSignatureRef = useRef<string | null>(null);
     const lastReceivedSidebarVisualStateSignatureRef = useRef<string | null>(null);
     const lastReceivedSidebarSelectionSignatureRef = useRef<string | null>(null);
+    const lastNonNullSelectedTargetRef = useRef<BuilderEditableTarget | null>(null);
     const processedSidebarEnvelopeSignaturesRef = useRef<Set<string>>(new Set());
     const logChatBridge = useCallback((input: {
         phase: 'send' | 'receive' | 'ignore' | 'drop';
@@ -585,6 +586,12 @@ export function useChatEmbeddedBuilderBridge({
         return true;
     }, [isBuilderPreviewReady, isBuilderSidebarReady, isVisualBuilderOpen, pendingBuilderChangeSetRequestIdRef, postBuilderCommand]);
 
+    useEffect(() => {
+        if (selectedBuilderTarget?.sectionLocalId) {
+            lastNonNullSelectedTargetRef.current = selectedBuilderTarget;
+        }
+    }, [selectedBuilderTarget]);
+
     const setStructurePanelOpen = useCallback((open: boolean) => {
         preferPersistedStructureStateRef.current = false;
         setIsBuilderStructureOpen(open);
@@ -880,24 +887,108 @@ export function useChatEmbeddedBuilderBridge({
                     lastBuilderSnapshotSignatureRef.current = snapshotSignature;
                     setPendingBuilderStructureMutation(null);
                     setBuilderStructureItems(nextItems);
-                    const nextSelectedTarget = selectedBuilderTarget?.sectionLocalId
-                        ? (() => {
-                            const nextItem = nextItems.find((item) => item.localId === selectedBuilderTarget.sectionLocalId) ?? null;
-                            if (!nextItem) {
-                                return null;
-                            }
+                    const buildSectionTargetFromStructureItem = (item: BuilderStructureItem | null): BuilderEditableTarget | null => {
+                        if (!item) {
+                            return null;
+                        }
 
-                            return {
-                                ...selectedBuilderTarget,
-                                sectionKey: nextItem.sectionKey,
-                                componentType: nextItem.sectionKey,
-                                componentName: nextItem.label,
-                                textPreview: buildSectionPreviewText(nextItem.props, nextItem.previewText, nextItem.sectionKey),
-                                props: nextItem.props,
-                            };
-                        })()
-                        : selectedBuilderTarget;
-                    selectBuilderTarget(nextSelectedTarget);
+                        return buildSectionScopedEditableTarget({
+                            pageId: snapshotPage.pageId ?? activeBuilderPageIdentity.pageId,
+                            pageSlug: snapshotPage.pageSlug ?? activeBuilderPageIdentity.pageSlug,
+                            pageTitle: snapshotPage.pageTitle ?? activeBuilderPageIdentity.pageTitle,
+                            sectionLocalId: item.localId,
+                            sectionKey: item.sectionKey,
+                            componentType: item.sectionKey,
+                            componentName: item.label,
+                            textPreview: buildSectionPreviewText(item.props, item.previewText, item.sectionKey),
+                            props: item.props,
+                            currentBreakpoint: previewViewport,
+                            currentInteractionState: previewInteractionState,
+                        });
+                    };
+                    const hydrateStructureSelection = (target: BuilderEditableTarget | null): BuilderEditableTarget | null => {
+                        if (!target?.sectionLocalId) {
+                            return target;
+                        }
+
+                        const nextItem = nextItems.find((item) => item.localId === target.sectionLocalId) ?? null;
+                        if (!nextItem) {
+                            return null;
+                        }
+
+                        return {
+                            ...target,
+                            sectionKey: nextItem.sectionKey,
+                            componentType: nextItem.sectionKey,
+                            componentName: nextItem.label,
+                            textPreview: buildSectionPreviewText(nextItem.props, nextItem.previewText, nextItem.sectionKey),
+                            props: nextItem.props,
+                        };
+                    };
+                    const snapshotSelectedTargetPayload = payload.payload.selectedTarget
+                        ? {
+                            ...payload.payload.selectedTarget,
+                            pageId: payload.pageId ?? activeBuilderPageIdentity.pageId,
+                            pageSlug: payload.pageSlug ?? activeBuilderPageIdentity.pageSlug,
+                            pageTitle: payload.pageTitle ?? activeBuilderPageIdentity.pageTitle,
+                            currentBreakpoint: payload.payload.selectedTarget.currentBreakpoint ?? previewViewport,
+                            currentInteractionState: payload.payload.selectedTarget.currentInteractionState ?? previewInteractionState,
+                        }
+                        : null;
+                    const snapshotSelectedTarget = snapshotSelectedTargetPayload
+                        ? hydrateStructureSelection(
+                            buildSectionScopedEditableTarget(snapshotSelectedTargetPayload)
+                            ?? buildEditableTargetFromMessagePayload(snapshotSelectedTargetPayload),
+                        )
+                        : null;
+                    if (snapshotSelectedTarget?.sectionLocalId) {
+                        lastNonNullSelectedTargetRef.current = snapshotSelectedTarget;
+                    }
+                    const currentReboundTarget = hydrateStructureSelection(selectedBuilderTarget);
+                    const locallyResolvedFallbackTarget = (() => {
+                        const selectedSectionLocalId = selectedBuilderTarget?.sectionLocalId
+                            ?? selectedBuilderSectionLocalId
+                            ?? lastNonNullSelectedTargetRef.current?.sectionLocalId
+                            ?? null;
+                        if (snapshotSelectedTarget || currentReboundTarget || !selectedSectionLocalId || nextItems.length === 0) {
+                            return null;
+                        }
+
+                        if (nextItems.some((item) => item.localId === selectedSectionLocalId)) {
+                            return null;
+                        }
+
+                        const previousIndex = builderStructureItems.findIndex((item) => item.localId === selectedSectionLocalId);
+                        if (previousIndex < 0) {
+                            return null;
+                        }
+
+                        return buildSectionTargetFromStructureItem(
+                            nextItems[Math.max(0, Math.min(previousIndex, nextItems.length - 1))] ?? null,
+                        );
+                    })();
+                    const shouldPreserveCurrentFieldTarget = Boolean(
+                        snapshotSelectedTarget
+                        && selectedBuilderTarget?.path
+                        && snapshotSelectedTarget.sectionLocalId
+                        && snapshotSelectedTarget.sectionLocalId === selectedBuilderTarget.sectionLocalId,
+                    );
+                    const nextSelectedTarget = shouldPreserveCurrentFieldTarget
+                        ? (currentReboundTarget ?? snapshotSelectedTarget)
+                        : (snapshotSelectedTarget ?? currentReboundTarget ?? locallyResolvedFallbackTarget);
+
+                    if (nextSelectedTarget) {
+                        lastNonNullSelectedTargetRef.current = nextSelectedTarget;
+                        if (!areBuilderEditableTargetsEqual(selectedBuilderTarget, nextSelectedTarget)) {
+                            selectBuilderTarget(nextSelectedTarget);
+                        }
+                        setActiveLibraryItem(null);
+                        setBuilderPaneMode('settings');
+                    } else if (selectedBuilderTarget) {
+                        clearBuilderSelection();
+                        setActiveLibraryItem(null);
+                        setBuilderPaneMode('elements');
+                    }
                     setBuilderCodePages((current) => upsertWorkspaceBuilderCodePages(current, {
                         page: snapshotPage,
                         sections: nextCodeSections,
@@ -957,7 +1048,10 @@ export function useChatEmbeddedBuilderBridge({
                 if (nextTarget === null) {
                     clearBuilderSelection();
                 } else if (!areBuilderEditableTargetsEqual(selectedBuilderTarget, nextTarget)) {
+                    lastNonNullSelectedTargetRef.current = nextTarget;
                     selectBuilderTarget(nextTarget);
+                } else if (nextTarget.sectionLocalId) {
+                    lastNonNullSelectedTargetRef.current = nextTarget;
                 }
                 setActiveLibraryItem(null);
                 if (justPlacedSectionRef.current) {

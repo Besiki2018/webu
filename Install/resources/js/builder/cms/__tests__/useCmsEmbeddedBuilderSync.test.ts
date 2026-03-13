@@ -24,8 +24,6 @@ describe('useCmsEmbeddedBuilderSync', () => {
             handleEmbeddedBuilderClearSelection: vi.fn(),
             handleEmbeddedBuilderInitialSections: vi.fn(),
             handleEmbeddedBuilderSelectedTarget: vi.fn(),
-            handleEmbeddedBuilderSelectedSection: vi.fn(),
-            handleEmbeddedBuilderSelectedSectionKey: vi.fn(),
         };
         const mutationHandlers = {
             handleEmbeddedBuilderChangeSet: vi.fn(),
@@ -132,8 +130,6 @@ describe('useCmsEmbeddedBuilderSync', () => {
             onSetInitialSections: selectionHandlers.handleEmbeddedBuilderInitialSections,
             onApplyChangeSet: mutationHandlers.handleEmbeddedBuilderChangeSet,
             onSetSelectedTarget: selectionHandlers.handleEmbeddedBuilderSelectedTarget,
-            onSetSelectedSection: selectionHandlers.handleEmbeddedBuilderSelectedSection,
-            onSetSelectedSectionKey: selectionHandlers.handleEmbeddedBuilderSelectedSectionKey,
             onSaveDraft: mutationHandlers.handleEmbeddedBuilderSaveDraft,
             onAddSectionByKey: mutationHandlers.handleEmbeddedBuilderAddSection,
             onRemoveSection: mutationHandlers.handleEmbeddedBuilderRemoveSection,

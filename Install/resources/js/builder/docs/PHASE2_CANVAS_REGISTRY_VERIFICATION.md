@@ -14,11 +14,11 @@
 
 - React, local UI (EditableNodeWrapper, BuilderCanvasSectionSurface, RootDropZone, SectionBlockPlaceholder)
 - Registry APIs: `getComponentRuntimeEntry`, `resolveComponentProps` from `../componentRegistry`
-- Central registry: `getCentralRegistryEntry` from `../centralComponentRegistry`
+- Full-fidelity registry helper: `getCentralRegistryEntry` from `../componentRegistry`
 - `ensureFullComponentProps` from `../builderCompatibility`
 - Types: BuilderSection, DropTarget, BuilderEditableTarget
 
-Section components are resolved at runtime via the registry.
+Section components are resolved at runtime via the canonical registry.
 
 ---
 
@@ -28,7 +28,7 @@ Rendering follows the required pattern:
 
 1. **Lookup registry entry**  
    `getComponentRuntimeEntry(section.type)` → runtime entry (component, schema, defaults).  
-   Optional: `getCentralRegistryEntry(section.type)` for full-fidelity components (Header, Footer, Hero).
+  Optional: `getCentralRegistryEntry(section.type)` from `componentRegistry.ts` for full-fidelity components (Header, Footer, Hero).
 
 2. **Merge defaults + saved props**  
    `props = resolveComponentProps(section.type, section.props ?? section.propsText)`  
