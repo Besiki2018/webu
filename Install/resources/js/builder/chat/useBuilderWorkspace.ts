@@ -102,7 +102,6 @@ export function useBuilderWorkspace({
         selectedBuilderTarget,
         selectBuilderTarget,
         clearBuilderSelection,
-        selectedPreviewSectionKey,
         isBuilderSidebarReady,
         markBuilderSidebarReady,
         isBuilderPreviewReady,
@@ -118,7 +117,6 @@ export function useBuilderWorkspace({
         selectedBuilderTarget: state.selectedBuilderTarget,
         selectBuilderTarget: state.selectTarget,
         clearBuilderSelection: state.clearSelection,
-        selectedPreviewSectionKey: state.selectedComponentKey,
         isBuilderSidebarReady: state.isSidebarReady,
         markBuilderSidebarReady: state.markSidebarReady,
         isBuilderPreviewReady: state.isPreviewReady,
@@ -164,7 +162,7 @@ export function useBuilderWorkspace({
     ), [activeBuilderCodePage, structureSnapshotPageIdentity]);
     const visibleBuilderStructureItems = pendingBuilderStructureMutation?.previewItems ?? builderStructureItems;
     const effectiveSelectedBuilderSectionLocalId = selectedBuilderTarget?.sectionLocalId ?? selectedBuilderSectionLocalId;
-    const effectiveSelectedPreviewSectionKey = selectedBuilderTarget?.sectionKey ?? selectedPreviewSectionKey;
+    const effectiveSelectedPreviewSectionKey = selectedBuilderTarget?.sectionKey ?? null;
     const selectedElementMention = useMemo(
         () => editableTargetToMention(selectedBuilderTarget),
         [selectedBuilderTarget],
@@ -299,7 +297,6 @@ export function useBuilderWorkspace({
     useEffect(() => {
         if (viewMode !== 'inspect') {
             markBuilderPreviewReady(false);
-            markBuilderSidebarReady(false);
         }
     }, [markBuilderPreviewReady, markBuilderSidebarReady, viewMode]);
 
@@ -463,8 +460,13 @@ export function useBuilderWorkspace({
             return;
         }
 
+        if (nextMode === 'inspect') {
+            openVisualBuilder();
+            return;
+        }
+
         setViewMode(nextMode);
-    }, [clearBuilderSelection, postBuilderCommand, setActiveLibraryItem, setBuilderPaneMode, setViewMode, viewMode]);
+    }, [clearBuilderSelection, openVisualBuilder, postBuilderCommand, setActiveLibraryItem, setBuilderPaneMode, setViewMode, viewMode]);
 
     const handleSidebarToggle = useCallback(() => {
         if (viewMode === 'inspect') {
@@ -483,7 +485,7 @@ export function useBuilderWorkspace({
         selectedBuilderTarget,
         selectBuilderTarget,
         clearBuilderSelection,
-        selectedPreviewSectionKey,
+        selectedPreviewSectionKey: effectiveSelectedPreviewSectionKey,
         isBuilderSidebarReady,
         markBuilderSidebarReady,
         isBuilderPreviewReady,

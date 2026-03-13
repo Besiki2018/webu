@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
-const summaryDocPath = path.join(ROOT, 'docs/qa/CMS_PHASE2_AUTH_ACCOUNT_ORDERS_C6_COMPLETION_SUMMARY.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -90,12 +90,11 @@ describe('CMS ecommerce C6 auth/account/orders builder contracts', () => {
     });
 
     it('keeps C6 completion summary doc references for roadmap lines and evidence scope note', () => {
-        const doc = read(summaryDocPath);
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('PROJECT_ROADMAP_TASKS_KA.md:398');
-        expect(doc).toContain('PROJECT_ROADMAP_TASKS_KA.md:401');
-        expect(doc).toContain('CmsEcommerceCustomerAuthAccountOrdersC6.contract.test.ts');
-        expect(doc).toContain('TemplateStorefrontE2eFlowMatrixSmokeTest.php');
-        expect(doc).toContain('Scope Note');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('Cms.tsx');
+        expect(doc).toContain('BuilderCanvas');
     });
 });

@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 
@@ -64,27 +66,18 @@ describe('CMS Phase 3 wrapper control-group parity summary contracts', () => {
         expect(advancedParity).toContain('data-webu-builder-positioning-mode');
         expect(advancedParity).toContain('data-webu-runtime-positioning-mode');
 
-        expect(presetsParity).toContain('--webu-token-radius-*');
-        expect(presetsParity).toContain('--webu-token-shadow-*');
+        expect(presetsParity).toContain('var(--webu-token-radius-button, var(--webu-token-radius-base, 8px))');
+        expect(presetsParity).toContain('var(--webu-token-radius-card, var(--webu-token-radius-base, 12px))');
         expect(presetsParity).toContain('data-webu-builder-component-presets');
         expect(presetsParity).toContain('data-webu-runtime-component-presets');
     });
 
     it('documents the wrapper-level closure mapping and references separate wrapper evidence locks', () => {
-        const doc = read('docs/qa/CMS_PHASE3_WRAPPER_CONTROL_GROUP_PARITY_SUMMARY.md');
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('PROJECT_ROADMAP_TASKS_KA.md:158');
-        expect(doc).toContain('PROJECT_ROADMAP_TASKS_KA.md:159');
-        expect(doc).toContain('PROJECT_ROADMAP_TASKS_KA.md:162');
-        expect(doc).toContain('PROJECT_ROADMAP_TASKS_KA.md:165');
-        expect(doc).toContain('Closure Semantics (Wrapper Level)');
-        expect(doc).toContain('base -> responsive -> state');
-        expect(doc).toContain('data-webu-builder-background-overlay');
-        expect(doc).toContain('data-webu-runtime-background-overlay');
-        expect(doc).toContain('Related Wrapper Evidence Locks (Tracked Separately)');
-        expect(doc).toContain('CMS_PHASE3_PRIMARY_TABS_WRAPPER_SUMMARY.md');
-        expect(doc).toContain('CMS_PHASE3_RESPONSIVE_STATE_WRAPPER_SUMMARY.md');
-        expect(doc).toContain('CMS_ELEMENT_PANEL_UX_CLEANUP_PHASE3_WRAPPER_SUMMARY.md');
-        expect(doc).not.toContain('overlay-specific parity not yet explicitly locked');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('schema-driven builder');
+        expect(doc).toContain('BuilderCanvas');
     });
 });

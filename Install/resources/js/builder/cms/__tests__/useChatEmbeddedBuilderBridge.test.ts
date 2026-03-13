@@ -89,6 +89,33 @@ describe('useChatEmbeddedBuilderBridge', () => {
         vi.clearAllMocks();
     });
 
+    it('sends save-draft commands from the chat route without waiting for inspect preview readiness', () => {
+        const postMessage = vi.fn();
+        const options = buildOptions({
+            viewMode: 'preview' as const,
+            isVisualBuilderOpen: false,
+            isBuilderSidebarReady: true,
+            isBuilderPreviewReady: false,
+            builderSidebarFrameRef: {
+                current: {
+                    contentWindow: { postMessage },
+                } as unknown as HTMLIFrameElement,
+            },
+        });
+        const { result } = renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        result.current.postBuilderCommand({
+            type: 'builder:save-draft',
+        });
+
+        expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'BUILDER_SAVE_DRAFT',
+            source: 'chat',
+            projectId: 'project-1',
+        }), window.location.origin);
+        expect(options.builderSidebarCommandQueueRef.current).toHaveLength(0);
+    });
+
     it('queues outgoing bridge commands until preview and sidebar are both ready', () => {
         const options = buildOptions();
         const { result } = renderHook(() => useChatEmbeddedBuilderBridge(options));
@@ -141,6 +168,41 @@ describe('useChatEmbeddedBuilderBridge', () => {
                 reason: 'queued-command',
             }),
         }), window.location.origin);
+    });
+
+    it('handles draft-save-state sync events while the chat page is outside inspect mode', async () => {
+        const options = buildOptions({
+            viewMode: 'preview' as const,
+            isVisualBuilderOpen: false,
+            isBuilderPreviewReady: false,
+            isBuilderSidebarReady: true,
+        });
+
+        renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderSyncStateMessage({
+                draftSaveState: {
+                    isSaving: true,
+                },
+            }, buildSidebarInput('req-save-start')),
+        }));
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderSyncStateMessage({
+                draftSaveState: {
+                    isSaving: false,
+                    success: true,
+                },
+            }, buildSidebarInput('req-save-done')),
+        }));
+
+        await waitFor(() => {
+            expect(options.setIsSavingBuilderDraft).toHaveBeenNthCalledWith(1, true);
+            expect(options.setIsSavingBuilderDraft).toHaveBeenNthCalledWith(2, false);
+            expect(toast.success).toHaveBeenCalledWith('Draft saved');
+        });
     });
 
     it('maps section-level select messages into canonical builder selection state', async () => {

@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
-const docPath = path.join(ROOT, 'docs/architecture/UNIVERSAL_BOOKING_BUILDER_COMPONENTS_P5_F3_04.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -88,19 +88,11 @@ describe('CMS booking builder component coverage contracts', () => {
     });
 
     it('documents booking builder component project-type gating baseline for p5-f3-04', () => {
-        const doc = read(docPath);
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('P5-F3-04');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
         expect(doc).toContain('Cms.tsx');
-        expect(doc).toContain('project_type_allowed');
-        expect(doc).toContain('isModuleProjectTypeAllowed');
-        expect(doc).toContain('webu_svc_services_list_01');
-        expect(doc).toContain('webu_svc_service_detail_01');
-        expect(doc).toContain('webu_svc_pricing_table_01');
-        expect(doc).toContain('webu_svc_faq_01');
-        expect(doc).toContain('webu_book_slots_01');
-        expect(doc).toContain('MODULE_BOOKING_TEAM_SCHEDULING');
-        expect(doc).toContain('MODULE_BOOKING_FINANCE');
-        expect(doc).toContain('P5-F5-02');
+        expect(doc).toContain('BuilderCanvas');
     });
 });

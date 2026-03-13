@@ -11,13 +11,11 @@ Search for legacy rendering paths: direct component imports in the renderer, har
 - **Finding:** The canvas does **not** import Header, Footer, Hero, or any section component directly. It imports only registry APIs (`getComponentRuntimeEntry`, `getCentralRegistryEntry`), `resolveComponentProps`, and `ensureFullComponentProps`. The component to render is always resolved at runtime via `getCentralRegistryEntry(section.type)` or `getComponentRuntimeEntry(section.type).component`.
 - **Conclusion:** No legacy path. No migration needed.
 
-**Central registry:** `builder/centralComponentRegistry.ts`
+**Canonical registry:** `builder/componentRegistry.ts`
 
-- Imports Header, Footer, Hero from `@/components/layout/Header`, `@/layout/Footer`, `@/sections/Hero`. This is the **single** place that wires real components for the builder. The canvas never imports those; it receives them via `getCentralRegistryEntry()`. So this is the intended architecture, not legacy.
-
-**Main registry:** `builder/componentRegistry.ts`
-
-- Imports only **schemas** (`HEADER_SCHEMA`, `FOOTER_SCHEMA`, `HERO_SCHEMA`) from component folders for REGISTRY definitions. No component imports for rendering. No legacy path.
+- The builder now resolves all runtime entries from this file.
+- `getCentralRegistryEntry()` remains as a helper exported from the canonical registry file for the full-fidelity subset; it is not a second registry layer.
+- No standalone central registry file remains in the active architecture.
 
 ---
 
@@ -35,8 +33,7 @@ Search for legacy rendering paths: direct component imports in the renderer, har
 **Builder:**
 
 - **Single REGISTRY:** `builder/componentRegistry.ts` — one `REGISTRY` object keyed by registry id; `getComponentRuntimeEntry(id)` returns the same runtime entry (schema, defaults, component) for each id.
-- **Single central registry:** `builder/centralComponentRegistry.ts` — one map (header, footer, hero) for full-fidelity components. Canvas uses central first, then falls back to `resolveCanvasComponent` in the main registry.
-- **Single resolve path:** `resolveCanvasComponent(definition, schema)` returns one of the Builder*CanvasSection components by category/key. For `webu_header_01`, `webu_footer_01`, `webu_general_hero_01` the canvas uses the **central** registry (real Header/Footer/Hero), so the BuilderHeaderCanvasSection/BuilderFooterCanvasSection/BuilderHeroCanvasSection from `resolveCanvasComponent` are only used if an id were not in the central registry. No duplicate active configuration.
+- **Single resolve path:** `resolveCanvasComponent(definition, schema)` returns one of the Builder*CanvasSection components by category/key. For `webu_header_01`, `webu_footer_01`, `webu_general_hero_01` the canvas uses the full-fidelity helper exported by the canonical registry file, so there is no parallel active configuration layer.
 - **Conclusion:** No parallel component configuration in the builder. No migration or isolation needed.
 
 ---
@@ -53,8 +50,7 @@ These use direct component imports and their own mapping, but they are **not** u
 
 The **main builder** (project Cms with tab=editor / embedded=sidebar) uses only:
 
-- `builder/componentRegistry.ts` (REGISTRY + getComponentRuntimeEntry, resolveCanvasComponent)
-- `builder/centralComponentRegistry.ts` (Header, Footer, Hero for webu_header_01, webu_footer_01, webu_general_hero_01)
+- `builder/componentRegistry.ts` (REGISTRY + full-fidelity helper + getComponentRuntimeEntry + resolveCanvasComponent)
 - `builder/visual/BuilderCanvas.tsx` (registry-only resolution)
 
 So the above renderers are **not** legacy paths for the builder; they are alternate renderers for other contexts (layout preview, ecommerce, etc.). They are **not** in the main builder registry and do not need to be disabled from it — the main builder registry is already separate.
@@ -65,9 +61,9 @@ So the above renderers are **not** legacy paths for the builder; they are altern
 
 | Check | Result |
 |-------|--------|
-| Direct component imports in builder canvas | None; canvas uses registry only |
+| Direct component imports in builder canvas | None; canvas uses canonical registry only |
 | Hardcoded inspector controls (per-component) | None; sidebar is schema-driven |
-| Parallel component configuration in builder | None; single REGISTRY and single central registry |
+| Parallel component configuration in builder | None; single canonical REGISTRY file |
 | Other renderers (renderer/, ai-layout/, ecommerce/) | Exist but are not used by Cms visual builder; no change to main builder registry |
 
 **No legacy rendering paths found in the main builder.** No migration or isolation was required. The builder canvas, sidebar, and update pipeline all use the schema-driven registry architecture.

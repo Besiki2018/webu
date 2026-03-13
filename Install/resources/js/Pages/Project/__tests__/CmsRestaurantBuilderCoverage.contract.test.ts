@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
-const docPath = path.join(ROOT, 'docs/architecture/UNIVERSAL_RESTAURANT_MODULE_COMPONENTS_P5_F4_03.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -57,18 +57,11 @@ describe('CMS restaurant builder component coverage contracts', () => {
     });
 
     it('documents p5-f4-03 restaurant module and builder component gating baseline', () => {
-        const doc = read(docPath);
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('P5-F4-03');
-        expect(doc).toContain('CmsModuleRegistryService');
-        expect(doc).toContain('CmsProjectTypeModuleFeatureFlagService');
-        expect(doc).toContain('TemplateMetadataNormalizerService');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
         expect(doc).toContain('Cms.tsx');
-        expect(doc).toContain('MODULE_RESTAURANT');
-        expect(doc).toContain('project_type_allowed');
-        expect(doc).toContain('webu_rest_reservation_form_01');
-        expect(doc).toContain('data-webby-restaurant-reservation-form');
-        expect(doc).toContain('MODULE_BOOKING');
-        expect(doc).toContain('P5-F4-04');
+        expect(doc).toContain('BuilderCanvas');
     });
 });

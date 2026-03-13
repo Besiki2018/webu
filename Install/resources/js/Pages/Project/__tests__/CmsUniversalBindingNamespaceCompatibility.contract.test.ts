@@ -3,10 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
-const docPath = path.join(ROOT, 'docs/architecture/UNIVERSAL_BINDING_NAMESPACE_COMPATIBILITY_P5_F5_03.md');
 
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
@@ -15,10 +16,9 @@ function read(filePath: string): string {
 describe('CMS universal binding namespace compatibility contracts (P5-F5-03)', () => {
     it('keeps canonical control groups and binding metadata surface for universal builder components', () => {
         const cms = read(cmsPagePath);
+        const resolver = read(path.join(ROOT, 'resources/js/builder/inspector/InspectorFieldResolver.ts'));
 
-        expect(cms).toContain('type CanonicalControlGroup =');
-        expect(cms).toContain("'content'");
-        expect(cms).toContain("'bindings' | 'meta'");
+        expect(resolver).toContain("export type CanonicalControlGroup = 'content' | 'layout' | 'style' | 'advanced' | 'responsive' | 'states' | 'data' | 'bindings' | 'meta';");
         expect(cms).toContain('binding_namespaces?: string[];');
         expect(cms).toContain('buildCanonicalControlMetadataForSchemaField');
         expect(cms).toContain('control_meta.group');
@@ -40,18 +40,12 @@ describe('CMS universal binding namespace compatibility contracts (P5-F5-03)', (
         expect(cms).not.toContain('{{rooms.');
     });
 
-    it('documents P5-F5-03 canonical namespace compatibility and validator coverage', () => {
-        const doc = read(docPath);
+    it('documents current canonical registry and mutation pipeline ownership instead of the removed namespace compatibility note', () => {
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('P5-F5-03');
-        expect(doc).toContain('CmsCanonicalBindingResolver');
-        expect(doc).toContain('CmsBindingExpressionValidator');
-        expect(doc).toContain('CanonicalControlGroup');
-        expect(doc).toContain('content.properties');
-        expect(doc).toContain('content.rooms');
-        expect(doc).toContain('webu_hotel_room_availability_01');
-        expect(doc).toContain('webu_realestate_map_01');
-        expect(doc).toContain('webu_book_slots_01');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('schema-driven builder');
+        expect(doc).toContain('Sidebar generates controls from schema');
     });
 });
-

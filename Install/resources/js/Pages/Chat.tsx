@@ -1683,7 +1683,7 @@ export default function Chat({
     }, [isSavingBuilderDraft, postBuilderCommand]);
 
     const headerSaveAction = useMemo(() => {
-        if (viewMode === 'inspect') {
+        if (viewMode === 'inspect' || viewMode === 'preview' || viewMode === 'design') {
             return {
                 onClick: handleBuilderSaveDraft,
                 disabled: isSavingBuilderDraft,
@@ -1891,6 +1891,8 @@ export default function Chat({
             {t('Loading panel...')}
         </div>
     );
+    const isInspectBuilderMode = viewMode === 'inspect';
+    const shouldRenderChatWorkspace = viewMode !== 'inspect';
 
     const workspaceSidebarContent = (
         <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col md:w-auto">
@@ -1911,116 +1913,113 @@ export default function Chat({
             )}
 
             <div className="workspace-sidebar-content">
-                <div
-                    className={cn(
-                        'workspace-sidebar-chat-column',
-                        viewMode === 'inspect' && 'workspace-sidebar-chat-column--inspect',
-                    )}
-                >
-                    {viewMode === 'inspect' ? (
-                        <div className="workspace-builder-pane">
-                            <div className="workspace-builder-inline-shell">
-                                <div
-                                    className={cn(
-                                        'workspace-builder-library-shell',
-                                        builderPaneMode !== 'elements' && 'workspace-builder-library-shell--hidden',
-                                    )}
-                                >
-                                    {groupedBuilderLibraryItems.length > 0 ? (
-                                        <div className="workspace-builder-library-list">
-                                            {groupedBuilderLibraryItems.map((group) => (
-                                                <section key={group.category} className="workspace-builder-library-group">
-                                                    <div className="workspace-builder-library-group-header">
-                                                        <div className="workspace-builder-library-group-title">
-                                                            <Layers className="h-4 w-4" />
-                                                            <span>{group.categoryLabel}</span>
-                                                        </div>
-                                                        <span className="workspace-builder-library-group-count">
-                                                            {group.items.length}
-                                                        </span>
+                {isInspectBuilderMode ? (
+                    <div className="workspace-builder-pane">
+                        <div className="workspace-builder-inline-shell">
+                            <div
+                                className={cn(
+                                    'workspace-builder-library-shell',
+                                    builderPaneMode !== 'elements' && 'workspace-builder-library-shell--hidden',
+                                )}
+                            >
+                                {groupedBuilderLibraryItems.length > 0 ? (
+                                    <div className="workspace-builder-library-list">
+                                        {groupedBuilderLibraryItems.map((group) => (
+                                            <section key={group.category} className="workspace-builder-library-group">
+                                                <div className="workspace-builder-library-group-header">
+                                                    <div className="workspace-builder-library-group-title">
+                                                        <Layers className="h-4 w-4" />
+                                                        <span>{group.categoryLabel}</span>
                                                     </div>
+                                                    <span className="workspace-builder-library-group-count">
+                                                        {group.items.length}
+                                                    </span>
+                                                </div>
 
-                                                    <div className="workspace-builder-library-grid">
-                                                        {group.items.map((item) => {
-                                                            const IconComponent = resolveBuilderWidgetIcon(item.key, item.category);
+                                                <div className="workspace-builder-library-grid">
+                                                    {group.items.map((item) => {
+                                                        const IconComponent = resolveBuilderWidgetIcon(item.key, item.category);
 
-                                                            return (
-                                                                <button
-                                                                    key={item.key}
-                                                                    type="button"
-                                                                    draggable
-                                                                    onPointerDown={(event) => {
-                                                                        if (event.button === 0) {
-                                                                            inspectLog('sidebar: setActiveLibraryItem (pointer)', item.key);
-                                                                            setActiveLibraryItem(item);
-                                                                        }
-                                                                    }}
-                                                                    onClick={() => handleLibraryItemActivate(item)}
-                                                                    onDragStart={(event) => {
-                                                                        event.dataTransfer.effectAllowed = 'copy';
-                                                                        event.dataTransfer.setData('text/plain', item.key);
-                                                                        inspectLog('sidebar: dragStart', item.key);
+                                                        return (
+                                                            <button
+                                                                key={item.key}
+                                                                type="button"
+                                                                draggable
+                                                                onPointerDown={(event) => {
+                                                                    if (event.button === 0) {
+                                                                        inspectLog('sidebar: setActiveLibraryItem (pointer)', item.key);
                                                                         setActiveLibraryItem(item);
-                                                                    }}
-                                                                    onDragEnd={() => {
-                                                                        inspectLog('sidebar: dragEnd');
-                                                                        setActiveLibraryItem(null);
-                                                                    }}
-                                                                    className={cn(
-                                                                        'workspace-builder-library-card flex flex-col items-center justify-center text-center gap-1.5 min-h-[72px]',
-                                                                        activeLibraryItem?.key === item.key && 'workspace-builder-library-card--active',
-                                                                    )}
-                                                                    title={item.label}
-                                                                >
-                                                                    <span className="workspace-builder-library-card-icon shrink-0">
-                                                                        <IconComponent className="h-4 w-4" />
-                                                                    </span>
-                                                                    <span className="workspace-builder-library-card-label text-center text-xs leading-tight line-clamp-2 w-full min-w-0">
-                                                                        {getShortDisplayName(item.key, item.label || item.key)}
-                                                                    </span>
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </section>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="workspace-builder-library-empty">
-                                            {t('Components loading...')}
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div
-                                    className={cn(
-                                        'workspace-builder-settings-shell',
-                                        builderPaneMode !== 'settings' && 'workspace-builder-settings-shell--hidden',
-                                    )}
-                                >
-                                    <div className="workspace-builder-settings-toolbar">
-                                        <button
-                                            type="button"
-                                            onClick={handleBuilderShowElements}
-                                            className="workspace-builder-settings-back"
-                                        >
-                                            <ArrowLeft className="h-3.5 w-3.5" />
-                                            <span>{t('Components')}</span>
-                                        </button>
+                                                                    }
+                                                                }}
+                                                                onClick={() => handleLibraryItemActivate(item)}
+                                                                onDragStart={(event) => {
+                                                                    event.dataTransfer.effectAllowed = 'copy';
+                                                                    event.dataTransfer.setData('text/plain', item.key);
+                                                                    inspectLog('sidebar: dragStart', item.key);
+                                                                    setActiveLibraryItem(item);
+                                                                }}
+                                                                onDragEnd={() => {
+                                                                    inspectLog('sidebar: dragEnd');
+                                                                    setActiveLibraryItem(null);
+                                                                }}
+                                                                className={cn(
+                                                                    'workspace-builder-library-card flex flex-col items-center justify-center text-center gap-1.5 min-h-[72px]',
+                                                                    activeLibraryItem?.key === item.key && 'workspace-builder-library-card--active',
+                                                                )}
+                                                                title={item.label}
+                                                            >
+                                                                <span className="workspace-builder-library-card-icon shrink-0">
+                                                                    <IconComponent className="h-4 w-4" />
+                                                                </span>
+                                                                <span className="workspace-builder-library-card-label text-center text-xs leading-tight line-clamp-2 w-full min-w-0">
+                                                                    {getShortDisplayName(item.key, item.label || item.key)}
+                                                                </span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </section>
+                                        ))}
                                     </div>
-                                    <iframe
-                                        ref={builderSidebarFrameRef}
-                                        src={visualBuilderSidebarUrl}
-                                        title={t('Visual Builder Sidebar')}
-                                        className="workspace-builder-frame workspace-builder-frame--sidebar"
-                                        sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-downloads"
-                                        onLoad={handleBuilderSidebarFrameLoad}
-                                    />
+                                ) : (
+                                    <div className="workspace-builder-library-empty">
+                                        {t('Components loading...')}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div
+                                className={cn(
+                                    'workspace-builder-settings-shell',
+                                    builderPaneMode !== 'settings' && 'workspace-builder-settings-shell--hidden',
+                                )}
+                            >
+                                <div className="workspace-builder-settings-toolbar">
+                                    <button
+                                        type="button"
+                                        onClick={handleBuilderShowElements}
+                                        className="workspace-builder-settings-back"
+                                    >
+                                        <ArrowLeft className="h-3.5 w-3.5" />
+                                        <span>{t('Components')}</span>
+                                    </button>
                                 </div>
+                                <iframe
+                                    ref={builderSidebarFrameRef}
+                                    src={visualBuilderSidebarUrl}
+                                    title={t('Visual Builder Sidebar')}
+                                    className="workspace-builder-frame workspace-builder-frame--sidebar"
+                                    sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-downloads"
+                                    onLoad={handleBuilderSidebarFrameLoad}
+                                />
                             </div>
                         </div>
-                    ) : (
-                        <>
+                    </div>
+                ) : null}
+
+                {shouldRenderChatWorkspace ? (
+                    <div className="workspace-sidebar-chat-column">
+                        <div className="flex min-h-0 flex-1 flex-col">
                             <div className="shrink-0 border-b border-[#e8e6e3] px-4 py-2">
                                 <div className="flex items-center gap-2">
                                     <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
@@ -2098,79 +2097,96 @@ export default function Chat({
                                     <div ref={scrollEndRef} />
                                 </div>
                             </ScrollArea>
-                        </>
-                    )}
 
-                    {agentRunFailedAt && !isAiSiteEditorBusy && (
-                        <div className="px-6 pb-2">
-                            <AgentProgressInline
-                                progress={{
-                                    status: 'failed',
-                                    iterations: 0,
-                                    tokensUsed: 0,
-                                    hasFileChanges: false,
-                                    statusMessage: t('Failed'),
-                                    messages: [],
-                                    actions: [],
-                                    toolCalls: [],
-                                    toolResults: [],
-                                    thinkingContent: null,
-                                    thinkingStartTime: null,
-                                    error: 'Failed',
-                                    previewUrl: null,
-                                }}
-                                currentStepLabel={t('Failed')}
-                            />
+                            {agentRunFailedAt && !isAiSiteEditorBusy && (
+                                <div className="px-6 pb-2">
+                                    <AgentProgressInline
+                                        progress={{
+                                            status: 'failed',
+                                            iterations: 0,
+                                            tokensUsed: 0,
+                                            hasFileChanges: false,
+                                            statusMessage: t('Failed'),
+                                            messages: [],
+                                            actions: [],
+                                            toolCalls: [],
+                                            toolResults: [],
+                                            thinkingContent: null,
+                                            thinkingStartTime: null,
+                                            error: 'Failed',
+                                            previewUrl: null,
+                                        }}
+                                        currentStepLabel={t('Failed')}
+                                    />
+                                </div>
+                            )}
+
+                            <div className="workspace-input-wrap">
+                                <ChatInputWithMentions
+                                    projectId={project.id}
+                                    value={prompt}
+                                    onChange={setPrompt}
+                                    onSubmit={handleSubmit}
+                                    disabled={isLoading}
+                                    selectedElement={selectedElementMention}
+                                    onClearElement={() => {
+                                        clearBuilderSelection();
+                                        postBuilderCommand({
+                                            type: 'builder:set-sidebar-mode',
+                                            mode: 'elements',
+                                        });
+                                        postBuilderCommand({
+                                            type: 'builder:clear-selected-section',
+                                        });
+                                    }}
+                                    placeholder={t('Write to Webu')}
+                                    isLoading={isLoading}
+                                    onCancel={cancelBuild}
+                                    variant="workspace"
+                                    footerStartSlot={
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handleVisualBuilderToggle}
+                                            className={cn(
+                                                'workspace-visual-edit-button',
+                                                isVisualBuilderOpen && 'workspace-visual-edit-button--active',
+                                            )}
+                                        >
+                                            {isVisualBuilderOpen ? (
+                                                <MessageSquare className="h-4 w-4" />
+                                            ) : (
+                                                <MousePointerClick className="h-4 w-4" />
+                                            )}
+                                            {isVisualBuilderOpen ? t('Chat') : visualBuilderLabel}
+                                        </Button>
+                                    }
+                                />
+                            </div>
                         </div>
-                    )}
-
-                    <div className="workspace-input-wrap">
-                        <ChatInputWithMentions
-                            projectId={project.id}
-                            value={prompt}
-                            onChange={setPrompt}
-                            onSubmit={handleSubmit}
-                            disabled={isLoading}
-                            selectedElement={selectedElementMention}
-                            onClearElement={() => {
-                                clearBuilderSelection();
-                                postBuilderCommand({
-                                    type: 'builder:set-sidebar-mode',
-                                    mode: 'elements',
-                                });
-                                postBuilderCommand({
-                                    type: 'builder:clear-selected-section',
-                                });
-                            }}
-                            placeholder={t('Write to Webu')}
-                            isLoading={isLoading}
-                            onCancel={cancelBuild}
-                            variant="workspace"
-                            footerStartSlot={
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={handleVisualBuilderToggle}
-                                    className={cn(
-                                        'workspace-visual-edit-button',
-                                        isVisualBuilderOpen && 'workspace-visual-edit-button--active',
-                                    )}
-                                >
-                                    {isVisualBuilderOpen ? (
-                                        <MessageSquare className="h-4 w-4" />
-                                    ) : (
-                                        <MousePointerClick className="h-4 w-4" />
-                                    )}
-                                    {isVisualBuilderOpen ? t('Chat') : visualBuilderLabel}
-                                </Button>
-                            }
-                        />
                     </div>
-                </div>
+                ) : null}
             </div>
         </div>
     );
+
+    const hiddenBuilderBridgeHost = !isInspectBuilderMode ? (
+        <div
+            aria-hidden="true"
+            className="h-0 w-0 overflow-hidden opacity-0 pointer-events-none"
+        >
+            <iframe
+                ref={builderSidebarFrameRef}
+                src={visualBuilderSidebarUrl}
+                title={t('Visual Builder Bridge')}
+                className="h-0 w-0 border-0"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-downloads"
+                onLoad={handleBuilderSidebarFrameLoad}
+                tabIndex={-1}
+            />
+        </div>
+    ) : null;
 
     const workspacePreviewContent = (
         <BuilderPreviewSurface
@@ -2257,8 +2273,8 @@ export default function Chat({
                         currentTheme={appliedTheme}
                         highlightSectionKey={viewMode === 'inspect' ? effectiveSelectedPreviewSectionKey : null}
                         highlightSectionLocalId={viewMode === 'inspect' ? (agentHighlightLocalId ?? effectiveSelectedBuilderSectionLocalId) : null}
-                        liveStructureItems={viewMode === 'inspect' ? visibleBuilderStructureItems : []}
-                        selectedElementMention={viewMode === 'inspect' ? selectedElementMention : null}
+                        liveStructureItems={viewMode === 'design' ? [] : visibleBuilderStructureItems}
+                        selectedElementMention={viewMode === 'design' ? null : selectedElementMention}
                         pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
                         onLibraryItemPlace={handleLibraryItemPlace}
                         onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
@@ -2769,6 +2785,7 @@ export default function Chat({
                     </div>
                 </nav>
 
+                {hiddenBuilderBridgeHost}
                 <BuilderWorkspaceShell
                     isSidebarVisible={isSidebarVisible}
                     sidebarContent={workspaceSidebarContent}

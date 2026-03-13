@@ -27,16 +27,14 @@ describe('CMS state overrides parity contracts', () => {
     it('keeps builder preview state toggle UI wired to normal/hover/focus/active interactions', () => {
         const cms = read(cmsPagePath);
 
-        expect(cms).toContain("const [builderPreviewInteractionState, setBuilderPreviewInteractionState] = useState<BuilderInteractionPreviewState>('normal');");
+        expect(cms).toContain('const builderPreviewInteractionState = currentInteractionState as BuilderInteractionPreviewState;');
+        expect(cms).toContain('const setBuilderPreviewInteractionState = setCurrentInteractionState as (next: BuilderInteractionPreviewState) => void;');
         expect(cms).toContain('const renderBuilderInteractionStatePreviewControls = (compact: boolean): ReactNode => {');
-        expect(cms).toContain("{ key: 'normal', label: t('Normal') }");
-        expect(cms).toContain("{ key: 'hover', label: t('Hover') }");
-        expect(cms).toContain("{ key: 'focus', label: t('Focus') }");
-        expect(cms).toContain("{ key: 'active', label: t('Active') }");
-        expect(cms).toContain("variant={builderPreviewInteractionState === state.key ? 'default' : 'outline'}");
-        expect(cms).toContain('onClick={() => setBuilderPreviewInteractionState(state.key)}');
-        expect(cms).toContain('{renderBuilderInteractionStatePreviewControls(true)}');
-        expect(cms).toContain('{renderBuilderInteractionStatePreviewControls(false)}');
+        expect(cms).toContain("const states: BuilderInteractionPreviewState[] = ['normal', 'hover', 'focus', 'active'];");
+        expect(cms).toContain("key={`builder-style-state-${state}`}");
+        expect(cms).toContain("variant={builderPreviewInteractionState === state ? 'default' : 'outline'}");
+        expect(cms).toContain('onClick={() => setBuilderPreviewInteractionState(state)}');
+        expect(cms).toContain('{supportsStates ? renderBuilderInteractionStatePreviewControls(compact) : null}');
     });
 
     it('applies state style overrides in builder preview on top of base and responsive styles', () => {

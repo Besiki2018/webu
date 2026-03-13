@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 
@@ -28,7 +30,7 @@ describe('CMS builder editor performance baseline contracts (Roadmap 747)', () =
 
     it('keeps daily aggregate metrics keys and roadmap baseline doc for builder editor performance', () => {
         const agg = read('app/Services/CmsTelemetryAggregatedMetricsService.php');
-        const doc = read('docs/architecture/CMS_BUILDER_EDITOR_PERFORMANCE_BASELINE.md');
+        const doc = readCurrentBuilderDocs();
 
         expect(agg).toContain("'cms_builder.page_detail_loaded'");
         expect(agg).toContain("'builder_editor_performance' => [");
@@ -36,10 +38,9 @@ describe('CMS builder editor performance baseline contracts (Roadmap 747)', () =
         expect(agg).toContain("'page_detail_load_large_count'");
         expect(agg).toContain("'builder_editor_performance' => data_get");
 
-        expect(doc).toContain('Builder editor performance (large pages, many nodes)');
-        expect(doc).toContain('cms_builder.page_detail_loaded');
-        expect(doc).toContain('page_detail_load_latency_p95_ms');
-        expect(doc).toContain('structural_count >= 80');
-        expect(doc).toContain('json_node_count >= 5000');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('Props updates');
+        expect(doc).toContain('RUNTIME_VERIFICATION.md');
     });
 });

@@ -5,7 +5,7 @@
  * compatible with the builder data model. Output can be passed to buildTreeFromStructure().
  */
 
-import type { PromptAnalysisResult, SectionSlug } from './promptAnalyzer';
+import { analyzePrompt, type PromptAnalysisResult, type SectionSlug } from './promptAnalyzer';
 import type { SiteStructureSection } from '../aiSiteGeneration';
 import {
   DEFAULT_HERO_REGISTRY_ID,
@@ -15,7 +15,15 @@ import {
   isValidComponent,
   resolveComponentRegistryKey,
 } from '../componentRegistry';
-import { normalizeProjectSiteType, type ProjectSiteType } from '../projectTypes';
+import { normalizeProjectSiteType, type ProjectSiteType, type ProjectType } from '../projectTypes';
+import { getAllowedComponentCatalog, type AiComponentCatalogEntry, type AiComponentLayoutType } from './componentCatalog';
+import {
+  detectProjectType,
+  inferAiProjectTypeFromBuilderProjectType,
+  mapAiProjectTypeToBuilderProjectType,
+  type AiProjectType,
+} from './projectTypeDetector';
+import { selectComponentVariant } from './variantSelector';
 
 // ---------------------------------------------------------------------------
 // Output type (builder-compatible)
@@ -39,6 +47,32 @@ export interface SitePlanResult {
 export interface SitePlanDisplaySection {
   component: string;
   variant: string;
+}
+
+export interface AiSitePlanSection extends SiteStructureSection {
+  layoutType: AiComponentLayoutType;
+  label: string;
+}
+
+export interface AiSitePlanPage {
+  name: string;
+  sections: AiSitePlanSection[];
+}
+
+export interface AiSitePlan {
+  projectType: AiProjectType;
+  builderProjectType: ProjectType;
+  pages: AiSitePlanPage[];
+  available_components: string[];
+  project: {
+    type: ProjectSiteType;
+  };
+}
+
+export interface AiSitePlannerInput {
+  prompt: string;
+  projectType?: AiProjectType | ProjectType | null;
+  componentCatalog?: AiComponentCatalogEntry[] | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +191,58 @@ const SECTION_ORDER: SectionSlug[] = [
   'footer',
 ];
 
+const PROJECT_LAYOUTS: Record<AiProjectType, AiComponentLayoutType[]> = {
+  landing: ['header', 'hero', 'features', 'cta', 'footer'],
+  business: ['header', 'hero', 'features', 'testimonials', 'cta', 'footer'],
+  ecommerce: ['header', 'hero', 'product-grid', 'features', 'testimonials', 'cta', 'footer'],
+  booking: ['header', 'hero', 'features', 'form', 'cta', 'footer'],
+  portfolio: ['header', 'hero', 'grid', 'testimonials', 'cta', 'footer'],
+  clinic: ['header', 'hero', 'features', 'form', 'faq', 'cta', 'footer'],
+  restaurant: ['header', 'hero', 'grid', 'form', 'cta', 'footer'],
+  saas: ['header', 'hero', 'features', 'testimonials', 'cta', 'footer'],
+  blog: ['header', 'hero', 'grid', 'cta', 'footer'],
+  education: ['header', 'hero', 'features', 'grid', 'cta', 'footer'],
+};
+
+const SECTION_SLUG_TO_LAYOUT_TYPE: Partial<Record<SectionSlug, AiComponentLayoutType>> = {
+  header: 'header',
+  navigation: 'navigation',
+  hero: 'hero',
+  productGrid: 'product-grid',
+  features: 'features',
+  pricing: 'features',
+  testimonials: 'testimonials',
+  cta: 'cta',
+  footer: 'footer',
+  faq: 'faq',
+  contact: 'form',
+  blog: 'grid',
+  menu: 'grid',
+  booking: 'form',
+  gallery: 'grid',
+  cards: 'cards',
+  grid: 'grid',
+};
+
+const PREFERRED_COMPONENTS_BY_LAYOUT: Record<AiComponentLayoutType, readonly string[]> = {
+  header: ['webu_header_01'],
+  footer: ['webu_footer_01'],
+  hero: ['webu_general_hero_01'],
+  features: ['webu_general_features_01'],
+  'product-grid': ['webu_ecom_product_grid_01', 'webu_general_grid_01'],
+  testimonials: ['webu_general_testimonials_01', 'webu_general_cards_01'],
+  cta: ['webu_general_cta_01', 'webu_general_banner_01'],
+  faq: ['faq_accordion_plus', 'webu_general_cards_01'],
+  form: ['webu_general_form_wrapper_01', 'webu_general_cta_01'],
+  navigation: ['webu_general_navigation_01', 'webu_header_01'],
+  grid: ['webu_general_grid_01', 'webu_general_cards_01'],
+  cards: ['webu_general_cards_01'],
+  banner: ['webu_general_banner_01', 'webu_general_cta_01'],
+  content: ['webu_general_text_01'],
+  media: ['webu_general_image_01', 'webu_general_video_01'],
+  section: ['webu_general_section_01', DEFAULT_FEATURES_REGISTRY_ID],
+};
+
 function orderSlugs(slugs: SectionSlug[]): SectionSlug[] {
   const seen = new Set<SectionSlug>();
   const result: SectionSlug[] = [];
@@ -259,6 +345,130 @@ export function planSite(analysis: PromptAnalysisResult): SitePlanResult {
     available_components: allowedComponents.map((component) => component.type),
     project: {
       type: projectSiteType,
+    },
+  };
+}
+
+function orderLayoutTypes(layoutTypes: AiComponentLayoutType[]): AiComponentLayoutType[] {
+  const seen = new Set<AiComponentLayoutType>();
+  const ordered: AiComponentLayoutType[] = [];
+  const defaultOrder = PROJECT_LAYOUTS.landing;
+
+  for (const layoutType of [...defaultOrder, ...layoutTypes]) {
+    if (!seen.has(layoutType)) {
+      ordered.push(layoutType);
+      seen.add(layoutType);
+    }
+  }
+
+  return ordered;
+}
+
+function resolvePlannerProjectType(inputProjectType: AiSitePlannerInput['projectType'], prompt: string): {
+  projectType: AiProjectType;
+  builderProjectType: ProjectType;
+  normalizedSiteType: ProjectSiteType;
+} {
+  if (typeof inputProjectType === 'string' && inputProjectType.trim() !== '') {
+    const aiProjectType = inferAiProjectTypeFromBuilderProjectType(inputProjectType);
+    const builderProjectType = mapAiProjectTypeToBuilderProjectType(aiProjectType);
+    return {
+      projectType: aiProjectType,
+      builderProjectType,
+      normalizedSiteType: normalizeProjectSiteType(inputProjectType),
+    };
+  }
+
+  const detected = detectProjectType(prompt);
+  return {
+    projectType: detected.projectType,
+    builderProjectType: detected.builderProjectType,
+    normalizedSiteType: detected.siteType,
+  };
+}
+
+function resolvePreferredComponentForLayout(
+  layoutType: AiComponentLayoutType,
+  catalog: AiComponentCatalogEntry[],
+): AiComponentCatalogEntry | null {
+  const preferredKeys = PREFERRED_COMPONENTS_BY_LAYOUT[layoutType] ?? [];
+  for (const componentKey of preferredKeys) {
+    const match = catalog.find((entry) => entry.componentKey === componentKey);
+    if (match) {
+      return match;
+    }
+  }
+
+  return catalog.find((entry) => entry.layoutType === layoutType) ?? null;
+}
+
+export function planSiteFromPrompt(input: AiSitePlannerInput): AiSitePlan {
+  const promptAnalysis = analyzePrompt(input.prompt);
+  const { projectType, builderProjectType, normalizedSiteType } = resolvePlannerProjectType(input.projectType, input.prompt);
+  const componentCatalog = input.componentCatalog ?? getAllowedComponentCatalog(projectType);
+  const requiredLayoutTypes = promptAnalysis.requiredSections
+    .map((slug) => SECTION_SLUG_TO_LAYOUT_TYPE[slug] ?? null)
+    .filter((entry): entry is AiComponentLayoutType => entry !== null);
+  const layoutTypes = orderLayoutTypes([
+    ...(PROJECT_LAYOUTS[projectType] ?? PROJECT_LAYOUTS.landing),
+    ...requiredLayoutTypes,
+  ]);
+
+  const sections: AiSitePlanSection[] = layoutTypes.flatMap((layoutType) => {
+    const component = resolvePreferredComponentForLayout(layoutType, componentCatalog);
+    if (!component) {
+      return [];
+    }
+
+    const variant = selectComponentVariant({
+      componentKey: component.componentKey,
+      prompt: input.prompt,
+      projectType,
+      tone: promptAnalysis.tone,
+    });
+
+    return [{
+      componentKey: component.componentKey,
+      label: component.label,
+      layoutType,
+      ...(variant ? { variant } : {}),
+    }];
+  });
+
+  if (promptAnalysis.requiredSections.includes('pricing')) {
+    const pricingComponent = resolvePreferredComponentForLayout('features', componentCatalog);
+    if (pricingComponent) {
+      const pricingVariant = selectComponentVariant({
+        componentKey: pricingComponent.componentKey,
+        prompt: `${input.prompt} pricing`,
+        projectType,
+        tone: promptAnalysis.tone,
+      });
+      const footerIndex = sections.findIndex((section) => section.layoutType === 'footer');
+      const pricingSection: AiSitePlanSection = {
+        componentKey: pricingComponent.componentKey,
+        label: pricingComponent.label,
+        layoutType: 'features',
+        ...(pricingVariant ? { variant: pricingVariant } : {}),
+      };
+      if (footerIndex >= 0) {
+        sections.splice(footerIndex, 0, pricingSection);
+      } else {
+        sections.push(pricingSection);
+      }
+    }
+  }
+
+  return {
+    projectType,
+    builderProjectType,
+    pages: [{
+      name: 'home',
+      sections,
+    }],
+    available_components: componentCatalog.map((component) => component.componentKey),
+    project: {
+      type: normalizedSiteType,
     },
   };
 }

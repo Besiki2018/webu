@@ -135,8 +135,8 @@ describe('AI Component Refactor Engine', () => {
   });
 
   describe('componentSupportsHeaderSearchRefactor', () => {
-    it('returns true for webu_header_01', () => {
-      expect(componentSupportsHeaderSearchRefactor('webu_header_01')).toBe(true);
+    it('returns false for webu_header_01 until header search props are exposed through the current schema shape', () => {
+      expect(componentSupportsHeaderSearchRefactor('webu_header_01')).toBe(false);
     });
     it('returns false for hero', () => {
       expect(componentSupportsHeaderSearchRefactor('webu_general_hero_01')).toBe(false);

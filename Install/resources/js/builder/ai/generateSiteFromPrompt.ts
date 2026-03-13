@@ -12,8 +12,7 @@ import {
   type ProjectType,
 } from '../projectTypes';
 import { analyzePrompt } from './promptAnalyzer';
-import { planSite } from './sitePlanner';
-import { applyVariantSelection } from './componentSelector';
+import { planSiteFromPrompt, type AiSitePlan } from './sitePlanner';
 import { generateContent, type ContentGeneratorProvider } from './contentGenerator';
 import {
   contentToHeroProps,
@@ -28,6 +27,8 @@ import {
   type ImageGeneratorProvider,
 } from './imageGenerator';
 import { getSectionsForProjectType } from './projectTypeIntegration';
+import { composeSectionProps } from './sectionComposer';
+import { inferAiProjectTypeFromBuilderProjectType } from './projectTypeDetector';
 
 // ---------------------------------------------------------------------------
 // Component key → content section type (for AI content generation)
@@ -67,6 +68,8 @@ export interface GenerateSiteFromPromptResult {
   project: BuilderProject;
   /** Canonical registry ids the AI planner was allowed to use. */
   available_components: string[];
+  /** Full AI site plan for builder-side mutation adapters. */
+  sitePlan: AiSitePlan;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,20 +112,30 @@ export async function generateSiteFromPrompt(
       }
     : detectedAnalysis;
 
-  // 2. Site planner
-  const plan = planSite(analysis);
-
-  // 3. Component selector (variants by tone, avoid duplicates)
-  const sectionsWithVariants = applyVariantSelection(plan.sections, {
-    projectType: analysis.projectType,
-    tone: analysis.tone,
-    industry: analysis.industry,
+  // 2. Canonical AI planner
+  const sitePlan = planSiteFromPrompt({
+    prompt,
+    projectType: explicitProjectType ? inferAiProjectTypeFromBuilderProjectType(explicitProjectType) : undefined,
   });
-  const planWithVariants = { sections: sectionsWithVariants };
+  const plannedSections = sitePlan.pages[0]?.sections ?? [];
 
-  // 4 & 5. Content generator → props generator (per section that supports content)
-  const propsByIndex: Record<number, Record<string, unknown>> = {};
+  // 3. Section composition — safe schema-backed defaults from the canonical registry
+  const propsByIndex: Record<number, Record<string, unknown>> = plannedSections.reduce<Record<number, Record<string, unknown>>>((accumulator, section, index) => {
+    accumulator[index] = {
+      ...composeSectionProps(section.componentKey, {
+        prompt,
+        projectType: sitePlan.projectType,
+        brandName,
+        tone: analysis.tone,
+        sectionIndex: index,
+        totalSections: plannedSections.length,
+      }),
+      ...(section.variant ? { variant: section.variant } : {}),
+    };
+    return accumulator;
+  }, {});
 
+  // 4 & 5. Optional content generator → prop enhancer
   if (contentProvider) {
     const contentInput = {
       projectType: analysis.projectType,
@@ -132,8 +145,8 @@ export async function generateSiteFromPrompt(
       brandName,
     };
 
-    for (let i = 0; i < planWithVariants.sections.length; i++) {
-      const section = planWithVariants.sections[i]!;
+    for (let i = 0; i < plannedSections.length; i++) {
+      const section = plannedSections[i]!;
       const contentType = COMPONENT_KEY_TO_CONTENT_TYPE[section.componentKey];
       if (!contentType) continue;
 
@@ -157,7 +170,7 @@ export async function generateSiteFromPrompt(
 
   // Optional: AI image for first hero section (insert URL into props)
   if (imageProvider) {
-    const heroIndex = planWithVariants.sections.findIndex((s) => s.componentKey === 'webu_general_hero_01');
+    const heroIndex = plannedSections.findIndex((s) => s.componentKey === 'webu_general_hero_01');
     if (heroIndex >= 0) {
       try {
         const imageUrl = await generateImageFromContext(
@@ -176,21 +189,42 @@ export async function generateSiteFromPrompt(
     }
   }
 
+  const plannedSectionsWithProps = plannedSections.map((section, index) => ({
+    ...section,
+    props: {
+      ...(section.props ?? {}),
+      ...(propsByIndex[index] ?? {}),
+    },
+  }));
+
+  const sitePlanWithProps: AiSitePlan = {
+    ...sitePlan,
+    pages: sitePlan.pages.map((page, pageIndex) => (
+      pageIndex === 0
+        ? {
+          ...page,
+          sections: plannedSectionsWithProps,
+        }
+        : page
+    )),
+  };
+
   // 6. Builder state (component tree)
-  const tree = sectionPlanToComponentTree(planWithVariants, { propsByIndex });
+  const tree = sectionPlanToComponentTree({ sections: plannedSectionsWithProps }, { propsByIndex: {} });
 
   // 7. Section drafts for Cms
   const sectionsDraft = treeToSectionsDraft(tree);
-  const normalizedProjectType = plan.project?.type ?? normalizeProjectSiteType(analysis.projectType);
+  const normalizedProjectType = sitePlanWithProps.project.type ?? normalizeProjectSiteType(analysis.projectType);
 
   return {
     tree,
     sectionsDraft,
-    projectType: analysis.projectType,
+    projectType: sitePlan.builderProjectType,
     project: {
-      projectType: analysis.projectType,
+      projectType: sitePlan.builderProjectType,
       type: normalizedProjectType,
     },
-    available_components: plan.available_components ?? [],
+    available_components: sitePlanWithProps.available_components ?? [],
+    sitePlan: sitePlanWithProps,
   };
 }

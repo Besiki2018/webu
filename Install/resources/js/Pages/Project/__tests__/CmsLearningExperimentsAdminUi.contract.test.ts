@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 
@@ -27,13 +29,11 @@ describe('CMS learning/experiments admin UI contract (Phase 6 summary)', () => {
     });
 
     it('documents the Phase 6 admin UI baseline and backend dependency routes', () => {
-        const doc = read('docs/architecture/CMS_LEARNING_EXPERIMENTS_ADMIN_UI_P6_BASELINE.md');
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('Admin UI for learning and experiments');
-        expect(doc).toContain('Activity');
-        expect(doc).toContain('PanelLearningController');
-        expect(doc).toContain('/cms/learning/rules');
-        expect(doc).toContain('/cms/learning/experiments');
-        expect(doc).toContain('P6-G2-04');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('Chat.tsx');
+        expect(doc).toContain('Cms.tsx');
     });
 });

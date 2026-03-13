@@ -1,4 +1,11 @@
-# Builder module (Task 6 boundaries)
+# Builder module
+
+Current product routes:
+
+- `/project/{project}` -> chat builder
+- `/project/{project}?tab=inspect` -> visual builder
+
+The same runtime powers both modes. Chat mode shows chat + preview targeting. Inspect mode shows preview + inspector/library. Both use the same canonical registry and mutation pipeline.
 
 State ownership and boundaries for the visual builder and CMS editor.
 
@@ -41,7 +48,7 @@ The system meets the following requirements with a **stable, reusable architectu
 | **Reconnection** | `useSessionReconnection` | `hooks/useSessionReconnection.ts` |
 | **Backend status (read)** | `BuilderStatusController` | `app/Http/Controllers/BuilderStatusController.php` (throttle:builder-status) |
 | **Backend mutations** | `BuilderProxyController` | `app/Http/Controllers/BuilderProxyController.php` (throttle:builder-operations) |
-| **Component registry** | `componentRegistry.ts` | `builder/componentRegistry.ts` — single source of truth: component IDs, categories, parameter schema, metadata; used by builder panel (future), AI (analyze returns `available_components`), and backend validation (`allowed_section_keys`). |
+| **Component registry** | `componentRegistry.ts` | `builder/componentRegistry.ts` — canonical source of truth for component IDs, categories, parameter schema, defaults, render entries, and metadata. |
 
 ## Extracted vs in-Cms
 
@@ -55,9 +62,16 @@ The system meets the following requirements with a **stable, reusable architectu
 - **Draft persist scheduler**: `builder/cms/scheduleDraftPersist.ts` provides `createScheduleDraftPersist({ debounceMs })` for raf+debounce. **Cms.tsx** uses `useDraftPersistSchedule(250)` for structural draft persist; the actual save still calls `saveDraftRevisionInternal` in Cms.
 - **Preview refresh scheduler**: `builder/cms/schedulePreviewRefresh.ts` provides `createSchedulePreviewRefresh()` with `schedule(run, delayMs)` (variable delay per call; each call cancels pending). **Cms.tsx** uses `usePreviewRefreshSchedule()` for immediate (0ms) and auto-save (1500ms) preview refresh.
 
-## Cms.tsx size
+## Runtime boundary
 
-Cms.tsx remains the main control center, but the embedded builder bridge and selected-section inspector shell now live under `builder/`. Further extractions to reduce size: preview iframe DOM sync and the remaining schema/control-generation helpers.
+- `Chat.tsx` owns the chat builder route.
+- `Cms.tsx` owns the visual builder/CMS route orchestration.
+- `InspectPreview.tsx` owns preview iframe orchestration.
+- `componentRegistry.ts` is the canonical registry.
+- `updatePipeline.ts` is the canonical mutation pipeline.
+- `builderEditingStore.ts` is the shared runtime state source.
+
+`Cms.tsx` remains the main control center for the visual builder, but inspector/media/schema helpers are now extracted under `builder/cms/`.
 
 ## Chat editing compatibility (Phase 10)
 

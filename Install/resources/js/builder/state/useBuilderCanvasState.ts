@@ -62,15 +62,23 @@ export function useBuilderCanvasState(): BuilderCanvasState {
         setSelectedBuilderTarget: state.setSelectedBuilderTarget,
         hoveredBuilderTarget: state.hoveredBuilderTarget,
         setHoveredBuilderTarget: state.setHoveredBuilderTarget,
-        selectedElementId: state.selectedElementId,
-        selectedComponentType: state.selectedComponentType,
-        selectedComponentName: state.selectedComponentName,
-        selectedPath: state.selectedPath,
-        selectedComponentProps: state.selectedComponentProps,
+        selectedElementId: state.selectedBuilderTarget?.elementId
+            ?? state.selectedBuilderTarget?.builderId
+            ?? state.selectedBuilderTarget?.sectionLocalId
+            ?? state.selectedSectionLocalId,
+        selectedComponentType: state.selectedBuilderTarget?.componentType
+            ?? state.selectedBuilderTarget?.sectionKey
+            ?? null,
+        selectedComponentName: state.selectedBuilderTarget?.componentName ?? null,
+        selectedPath: state.selectedBuilderTarget?.path ?? null,
+        selectedComponentProps: state.selectedBuilderTarget?.props ?? null,
         activeDragId: state.activeDragId,
         setActiveDragId: state.setActiveDragId,
         builderHoveredElementId: state.builderHoveredElementId,
-        hoveredElementId: state.hoveredElementId,
+        hoveredElementId: state.hoveredBuilderTarget?.elementId
+            ?? state.hoveredBuilderTarget?.builderId
+            ?? state.hoveredBuilderTarget?.sectionLocalId
+            ?? state.builderHoveredElementId,
         setBuilderHoveredElementId: state.setBuilderHoveredElementId,
         builderCurrentDropTarget: state.builderCurrentDropTarget,
         setBuilderCurrentDropTarget: state.setBuilderCurrentDropTarget,
@@ -85,9 +93,9 @@ export function useBuilderCanvasState(): BuilderCanvasState {
         structurePanelPosition: state.structurePanelPosition,
         setStructurePanelPosition: state.setStructurePanelPosition,
         builderMode: state.builderMode,
-        builderSidebarMode: state.builderSidebarMode,
+        builderSidebarMode: state.builderMode,
         setBuilderMode: state.setBuilderMode,
-        setBuilderSidebarMode: state.setBuilderSidebarMode,
+        setBuilderSidebarMode: state.setBuilderMode,
         applyMutationState: state.applyMutationState,
         clearSelection: state.clearSelection,
     })));

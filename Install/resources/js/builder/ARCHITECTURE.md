@@ -1,13 +1,20 @@
 # Builder Component Architecture — Current Runtime
 
-Stable, reusable architecture for the current schema-driven builder runtime. `builder/componentRegistry.ts` is the only authoritative registry file; older standalone registry layers are removed.
+Stable architecture for the current production builder runtime.
+
+Active product routes:
+
+- `/project/{project}` -> chat builder
+- `/project/{project}?tab=inspect` -> visual builder
+
+`builder/componentRegistry.ts` is the canonical registry and `builder/state/updatePipeline.ts` is the canonical mutation pipeline. The builder does not have a second runtime architecture.
 
 ---
 
 ## 1. All existing components converted to builder components
 
 - **Header, Footer, Hero**: Single component each (`layout/Header`, `layout/Footer`, `sections/Hero`) that accepts props and delegates to design-system variants by `variant` prop. Used by the canvas through full-fidelity entries exposed by `componentRegistry.ts`.
-- **Feature, CTA, Cards, Grids, etc.**: Each has a **registry ID** in `componentRegistry.ts` (e.g. `webu_general_heading_01`, `webu_general_button_01`, `webu_general_card_01`, `webu_ecom_product_grid_01`). Canvas resolves them via `getComponentRuntimeEntry(section.type)` and renders either the central-registry component (Header/Footer/Hero) or the **canvas component** from `registryComponents.tsx` (BuilderHeadingCanvasSection, BuilderButtonCanvasSection, BuilderCardCanvasSection, BuilderCollectionCanvasSection, etc.).
+- **Feature, CTA, Cards, Grids, etc.**: Each has a **registry ID** in `componentRegistry.ts` (e.g. `webu_general_heading_01`, `webu_general_button_01`, `webu_general_card_01`, `webu_ecom_product_grid_01`). Canvas resolves them via `getComponentRuntimeEntry(section.type)` and renders either the canonical full-fidelity render entry (Header/Footer/Hero subset) or the **canvas component** from `registryComponents.tsx` (BuilderHeadingCanvasSection, BuilderButtonCanvasSection, BuilderCardCanvasSection, BuilderCollectionCanvasSection, etc.).
 - **No standalone “page-only” components**: Builder canvas and preview both use the same registry; section type → runtime entry → component.
 
 **Location**: `builder/componentRegistry.ts` (REGISTRY + full-fidelity render entries), `builder/visual/registryComponents.tsx` (canvas components).
@@ -48,7 +55,7 @@ Stable, reusable architecture for the current schema-driven builder runtime. `bu
 ## 5. All components registered in component registry
 
 - **Full registry**: `componentRegistry.ts` → `REGISTRY` object. Every section type the builder can add or display is keyed by **registry ID** (e.g. `webu_header_01`, `webu_footer_01`, `webu_general_hero_01`, `webu_general_heading_01`, `webu_general_button_01`, `webu_general_card_01`, `webu_ecom_product_grid_01`, …).
-- **Full-fidelity render subset** (optional helper, same file): `getCentralRegistryEntry(...)` in `componentRegistry.ts` exposes the subset (e.g. `webu_header_01`, `webu_footer_01`, `webu_general_hero_01`) that maps to the real React component + schema + defaults + `mapBuilderProps`. Used by the canvas for full-fidelity rendering.
+- **Full-fidelity render subset** (optional helper, same file): `getCentralRegistryEntry(...)` in `componentRegistry.ts` exposes the subset (e.g. `webu_header_01`, `webu_footer_01`, `webu_general_hero_01`) that maps to the real React component + schema + defaults + `mapBuilderProps`. It is a helper from the canonical registry file, not a second registry.
 - **Runtime entry**: `getComponentRuntimeEntry(registryId)` returns `{ componentKey, component, schema, defaults }` for every REGISTRY id; the `component` is either the central-registry component or a Builder*CanvasSection.
 
 **Location**: `builder/componentRegistry.ts` (REGISTRY, getComponent, getComponentRenderEntry, getCentralRegistryEntry, getComponentRuntimeEntry, normalizeSchema).
@@ -80,7 +87,7 @@ Stable, reusable architecture for the current schema-driven builder runtime. `bu
 - **Chat → pipeline**: `buildBuilderUpdateOperationsFromChangeSet(changeSet)` turns chat operations (`updateText`, `setField`, `replaceImage`, `updateSection`, etc.) into pipeline ops (`set-field`, `merge-props`). Paths are **validated against component schema** (resolveSchemaField, validateValueAgainstField). Invalid paths or types produce errors; no raw patch applied without validation.
 - **Schema prop names**: Chat and AI use `editableFields` / `chatTargets` from schema (e.g. from `getComponentSchema(id)` or backend context).
 
-**Location**: `builder/state/updatePipeline.ts`, `builder/README.md` (Chat editing compatibility), `ai/changes/changeSet.schema.ts` (setField op).
+**Location**: `builder/state/updatePipeline.ts`, `builder/README.md` (chat + inspect runtime notes), `ai/changes/changeSet.schema.ts` (setField op).
 
 ---
 

@@ -54,6 +54,31 @@ function buildOptions(overrides: Partial<Parameters<typeof useCmsEmbeddedBuilder
 }
 
 describe('useCmsEmbeddedBuilderMutationHandlers', () => {
+    it('saves embedded drafts without forcing a post-save reload', async () => {
+        const options = buildOptions();
+        const emit = vi.fn();
+        const { result } = renderHook(() => useCmsEmbeddedBuilderMutationHandlers(options));
+
+        await act(async () => {
+            result.current.handleEmbeddedBuilderSaveDraft(emit);
+        });
+
+        expect(options.saveDraftRevisionInternalRef.current).toHaveBeenCalledWith({
+            silent: true,
+            refreshAfterSave: false,
+        });
+        expect(emit).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'builder:draft-save-state',
+            isSaving: true,
+        }));
+        expect(emit).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'builder:draft-save-state',
+            isSaving: false,
+            success: true,
+            revisionId: 1,
+        }));
+    });
+
     it('forwards stable local ids to addSectionByKey without double-scheduling structural persistence', () => {
         const options = buildOptions();
         const emit = vi.fn();

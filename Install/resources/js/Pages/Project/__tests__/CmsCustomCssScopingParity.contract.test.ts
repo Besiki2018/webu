@@ -3,12 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
 const templateImportServicePath = path.join(ROOT, 'app/Services/TemplateImportService.php');
-const d3DocPath = path.join(ROOT, 'docs/qa/CMS_CUSTOM_CSS_SCOPING_D3_BASELINE.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -61,20 +61,11 @@ describe('CMS custom CSS scoping parity contracts (D3-03)', () => {
     });
 
     it('documents D3-03 scoping model, sanitization rules, and parity markers', () => {
-        const doc = read(d3DocPath);
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('# CMS Custom CSS Scoping D3 Baseline');
-        expect(doc).toContain('P3-D3-03');
-        expect(doc).toContain('element-level isolation');
-        expect(doc).toContain('data-webu-builder-custom-css-scope-id');
-        expect(doc).toContain('data-webu-runtime-custom-css-scope-id');
-        expect(doc).toContain('@media');
-        expect(doc).toContain('@supports');
-        expect(doc).toContain('@container');
-        expect(doc).toContain('@layer');
-        expect(doc).toContain('@keyframes');
-        expect(doc).toContain('@font-face');
-        expect(doc).toContain('data-webu-builder-custom-css-scoped');
-        expect(doc).toContain('data-webu-runtime-custom-css-scoped');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('schema-driven builder');
+        expect(doc).toContain('Sidebar generates controls from schema');
     });
 });

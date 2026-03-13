@@ -40,7 +40,7 @@ describe('pageModel', () => {
         expect(model.sections).toHaveLength(1);
         expect(model.sections[0]?.localId).toBe('hero-1');
         expect(model.sections[0]?.props.title).toBe('Storefront hero');
-        expect(model.sections[0]?.props.buttonText).toBe('Get started');
+        expect(model.sections[0]?.props.buttonText).toBe('Get Started');
         expect(model.sections[0]?.bindingMeta).toEqual({
             source: 'cms',
         });
@@ -81,7 +81,7 @@ describe('pageModel', () => {
         expect(hero.localId).toBe('hero-1');
         expect(hero.type).toBe('webu_general_hero_01');
         expect(heroProps.title).toBe('Commerce hero');
-        expect(heroProps.buttonText).toBe('Get started');
+        expect(heroProps.buttonText).toBe('Get Started');
         expect((heroProps.style as Record<string, unknown>)?.background_color).toBe('#f8fafc');
     });
 
@@ -99,7 +99,7 @@ describe('pageModel', () => {
         ]);
 
         expect(sections[0]?.props?.title).toBe('Fallback hero');
-        expect(sections[0]?.props?.buttonText).toBe('Get started');
+        expect(sections[0]?.props?.buttonText).toBe('Get Started');
         expect(sections[0]?.propsText).toBe('{invalid-json');
         expect(sections[0]?.propsError).toBe('Invalid JSON');
     });

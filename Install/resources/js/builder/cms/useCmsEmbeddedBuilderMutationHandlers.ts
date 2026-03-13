@@ -144,7 +144,10 @@ export function useCmsEmbeddedBuilderMutationHandlers({
 
             const revisionId = await saveDraftRevisionInternalRef.current({
                 silent: true,
-                refreshAfterSave: true,
+                // Embedded inspect save should persist the current draft without reloading
+                // the sidebar CMS state, otherwise the inspector remounts and local group
+                // expansion state is lost.
+                refreshAfterSave: false,
             });
 
             emit({

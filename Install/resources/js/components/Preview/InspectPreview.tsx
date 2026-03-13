@@ -9,9 +9,19 @@ import { usePreviewThemeInjection } from '@/hooks/usePreviewThemeInjection';
 import { useThumbnailCapture } from '@/hooks/useThumbnailCapture';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { annotateEditableElements, invalidateDOMMapCache, observeDOMMapInvalidation } from '@/builder/domMapper';
-import { getComponentSchema } from '@/builder/componentRegistry';
-import { resolveSchemaPreferredStringProp } from '@/builder/schema/schemaBindingResolver';
+import { observeDOMMapInvalidation } from '@/builder/domMapper';
+import { applyPreviewAnnotationEngine } from '@/builder/preview/previewAnnotationEngine';
+import {
+    createPreviewPlaceholderSection,
+    reconcilePreviewPlaceholderNodes,
+    syncPreviewPlaceholderSection,
+} from '@/builder/preview/previewPlaceholderReconciler';
+import {
+    type LivePreviewStructureItem,
+    syncLivePreviewSection,
+} from '@/builder/preview/previewRenderSync';
+import { formatPreviewOverlayLabel } from '@/builder/preview/previewSelectionOverlay';
+import { syncVisiblePreviewHeading } from '@/builder/preview/previewHeadingSync';
 import { useInspectSelectionLifecycle, type DropPlacement } from './useInspectSelectionLifecycle';
 
 type PreviewMode = 'preview' | 'inspect' | 'design';
@@ -23,469 +33,8 @@ function inspectLog(..._args: unknown[]) {
     }
 }
 
-function formatOverlayLabel(label: string | null): string | null {
-    if (!label) {
-        return null;
-    }
-
-    const normalized = label
-        .split('.')
-        .filter(Boolean)
-        .map((segment) => segment.replace(/_/g, ' '))
-        .join(' / ')
-        .trim();
-
-    if (!normalized) {
-        return null;
-    }
-
-    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
 function escapeCssContent(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function readNonEmptyString(value: unknown): string | null {
-    return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
-}
-
-interface PlaceholderResolvedProp {
-    path: string;
-    value: string;
-}
-
-function resolvePlaceholderProp(
-    props: Record<string, unknown>,
-    candidates: string[],
-    nestedCandidates: string[] = [],
-): PlaceholderResolvedProp | null {
-    for (const candidate of candidates) {
-        const direct = readNonEmptyString(props[candidate]);
-        if (direct) {
-            return {
-                path: candidate,
-                value: direct,
-            };
-        }
-
-        const nestedSource = props[candidate];
-        if (!isRecord(nestedSource)) {
-            continue;
-        }
-
-        for (const nestedCandidate of nestedCandidates) {
-            const nestedValue = readNonEmptyString(nestedSource[nestedCandidate]);
-            if (nestedValue) {
-                return {
-                    path: `${candidate}.${nestedCandidate}`,
-                    value: nestedValue,
-                };
-            }
-        }
-    }
-
-    return null;
-}
-
-function setPlaceholderFieldAttribute(
-    node: HTMLElement,
-    attribute: 'data-webu-field' | 'data-webu-field-url',
-    value: string | null,
-): void {
-    if (value) {
-        node.setAttribute(attribute, value);
-        return;
-    }
-
-    node.removeAttribute(attribute);
-}
-
-function normalizeLivePreviewPrimitive(value: unknown): string | null {
-    if (typeof value === 'string' || typeof value === 'number') {
-        const text = String(value).trim();
-        return text === '' ? null : text;
-    }
-
-    return null;
-}
-
-function normalizeLivePreviewObjectPayload(value: unknown): { label: string | null; url: string | null; alt: string | null } | null {
-    if (!isRecord(value)) {
-        return null;
-    }
-
-    return {
-        label: normalizeLivePreviewPrimitive(value.label)
-            ?? normalizeLivePreviewPrimitive(value.text)
-            ?? normalizeLivePreviewPrimitive(value.title)
-            ?? normalizeLivePreviewPrimitive(value.value),
-        url: normalizeLivePreviewPrimitive(value.url)
-            ?? normalizeLivePreviewPrimitive(value.href)
-            ?? normalizeLivePreviewPrimitive(value.src)
-            ?? normalizeLivePreviewPrimitive(value.image_url),
-        alt: normalizeLivePreviewPrimitive(value.alt)
-            ?? normalizeLivePreviewPrimitive(value.label)
-            ?? normalizeLivePreviewPrimitive(value.title),
-    };
-}
-
-function flattenLivePreviewEntries(
-    value: unknown,
-    prefix: string[] = [],
-): Array<{ key: string; value: unknown }> {
-    if (Array.isArray(value)) {
-        return value.flatMap((entry, index) => flattenLivePreviewEntries(entry, [...prefix, String(index)]));
-    }
-
-    if (isRecord(value)) {
-        const currentKey = prefix.join('.');
-        const entries = prefix.length > 0
-            ? [{ key: currentKey, value }]
-            : [];
-
-        return [
-            ...entries,
-            ...Object.entries(value).flatMap(([childKey, childValue]) => (
-                flattenLivePreviewEntries(childValue, [...prefix, childKey])
-            )),
-        ];
-    }
-
-    if (prefix.length === 0) {
-        return [];
-    }
-
-    return [{
-        key: prefix.join('.'),
-        value,
-    }];
-}
-
-function applyLivePreviewValueToNode(
-    node: Element,
-    key: string,
-    value: unknown,
-    attribute: 'data-webu-field' | 'data-webu-field-url' = 'data-webu-field',
-): void {
-    const tagName = String((node as HTMLElement).tagName || '').toUpperCase();
-    if (tagName === '') {
-        return;
-    }
-
-    const objectPayload = normalizeLivePreviewObjectPayload(value);
-    const primitive = normalizeLivePreviewPrimitive(value);
-    const keyLower = key.toLowerCase();
-    const urlLikeKey = attribute === 'data-webu-field-url' || /(url|href|link|src|image|logo)/i.test(keyLower);
-    const setTextContent = (text: string) => {
-        if (!(node instanceof HTMLElement)) {
-            node.textContent = text;
-            return;
-        }
-
-        const preferredTextNode = node.children.length === 1 && node.firstElementChild instanceof HTMLElement
-            ? node.firstElementChild
-            : node;
-        preferredTextNode.textContent = text;
-    };
-
-    if (objectPayload) {
-        if (tagName === 'IMG') {
-            if (objectPayload.url) {
-                node.setAttribute('src', objectPayload.url);
-            }
-            if (objectPayload.alt) {
-                node.setAttribute('alt', objectPayload.alt);
-            }
-            return;
-        }
-
-        if (tagName === 'A') {
-            if (objectPayload.url) {
-                node.setAttribute('href', objectPayload.url);
-            }
-            if (attribute !== 'data-webu-field-url' && objectPayload.label) {
-                setTextContent(objectPayload.label);
-            }
-            return;
-        }
-
-        if (objectPayload.label && attribute !== 'data-webu-field-url') {
-            setTextContent(objectPayload.label);
-        }
-
-        if (
-            objectPayload.url
-            && node instanceof HTMLElement
-            && /^(DIV|SECTION|ARTICLE)$/.test(tagName)
-        ) {
-            node.style.backgroundImage = `url("${objectPayload.url.replace(/"/g, '\\"')}")`;
-        }
-
-        return;
-    }
-
-    if (primitive === null) {
-        return;
-    }
-
-    if (tagName === 'INPUT' || tagName === 'TEXTAREA') {
-        if (/(placeholder)/i.test(keyLower)) {
-            node.setAttribute('placeholder', primitive);
-        } else if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
-            node.value = primitive;
-        }
-        return;
-    }
-
-    if (tagName === 'IMG') {
-        if (urlLikeKey) {
-            node.setAttribute('src', primitive);
-        } else {
-            node.setAttribute('alt', primitive);
-        }
-        return;
-    }
-
-    if (tagName === 'A') {
-        if (urlLikeKey) {
-            node.setAttribute('href', primitive);
-        } else {
-            setTextContent(primitive);
-        }
-        return;
-    }
-
-    if (
-        urlLikeKey
-        && node instanceof HTMLElement
-        && /^(DIV|SECTION|ARTICLE)$/.test(tagName)
-    ) {
-        node.style.backgroundImage = `url("${primitive.replace(/"/g, '\\"')}")`;
-        return;
-    }
-
-    if (attribute !== 'data-webu-field-url') {
-        setTextContent(primitive);
-    }
-}
-
-function isLivePreviewRenderableNode(node: Element): boolean {
-    if (!(node instanceof HTMLElement)) {
-        return true;
-    }
-
-    const ownerWindow = node.ownerDocument?.defaultView ?? null;
-    const style = ownerWindow?.getComputedStyle(node) ?? window.getComputedStyle(node);
-    const rect = node.getBoundingClientRect();
-    const userAgent = ownerWindow?.navigator?.userAgent ?? '';
-    const isJsdom = ownerWindow === null || /jsdom/i.test(userAgent);
-
-    return !node.hidden
-        && node.getAttribute('aria-hidden') !== 'true'
-        && style.display !== 'none'
-        && style.visibility !== 'hidden'
-        && (isJsdom || rect.width > 0 || rect.height > 0);
-}
-
-function applyLivePreviewFieldByKey(container: Element, key: string, value: unknown): void {
-    const safeKey = key.trim();
-    if (safeKey === '') {
-        return;
-    }
-
-    const encodedKey = safeKey.replace(/"/g, '\\"');
-    const exactFieldNodes = Array.from(container.querySelectorAll(`[data-webu-field="${encodedKey}"]`));
-    const exactUrlNodes = Array.from(container.querySelectorAll(`[data-webu-field-url="${encodedKey}"]`));
-
-    if (exactFieldNodes.length > 0 || exactUrlNodes.length > 0) {
-        exactFieldNodes.forEach((node) => applyLivePreviewValueToNode(node, safeKey, value, 'data-webu-field'));
-        exactUrlNodes.forEach((node) => applyLivePreviewValueToNode(node, safeKey, value, 'data-webu-field-url'));
-
-        const hasVisibleExactNode = [...exactFieldNodes, ...exactUrlNodes].some((node) => isLivePreviewRenderableNode(node));
-        if (hasVisibleExactNode) {
-            return;
-        }
-    }
-
-    const keyLower = safeKey.toLowerCase();
-    let fallbackSelectors: string[] = [];
-
-    if (['headline', 'title', 'heading'].includes(keyLower)) {
-        fallbackSelectors = ['h1', 'h2', 'h3'];
-    } else if (['subtitle', 'body', 'description', 'text'].includes(keyLower)) {
-        fallbackSelectors = ['p'];
-    } else if (/(cta|button|link)/.test(keyLower)) {
-        fallbackSelectors = ['a.btn', 'a.button', 'button', 'a'];
-    } else if (/(image|logo|thumbnail|photo)/.test(keyLower)) {
-        fallbackSelectors = ['img'];
-    }
-
-    if (fallbackSelectors.length === 0) {
-        return;
-    }
-
-    const fallbackNode = Array.from(container.querySelectorAll(fallbackSelectors.join(', ')))
-        .find((node) => isLivePreviewRenderableNode(node));
-    if (fallbackNode) {
-        applyLivePreviewValueToNode(fallbackNode, safeKey, value, 'data-webu-field');
-    }
-}
-
-function reconcileLivePreviewHeading(
-    container: Element,
-    item: LiveStructureItem,
-): void {
-    const preferredHeading = resolveSchemaPreferredStringProp(null, item.props, ['title', 'headline', 'heading'])
-        ?? normalizeLivePreviewPrimitive(item.previewText);
-    if (!preferredHeading) {
-        return;
-    }
-
-    const exactHeadingNodes = ['title', 'headline', 'heading'].flatMap((key) => (
-        Array.from(container.querySelectorAll(`[data-webu-field="${key}"]`))
-    ));
-
-    exactHeadingNodes.forEach((node) => {
-        applyLivePreviewValueToNode(node, 'title', preferredHeading, 'data-webu-field');
-    });
-
-    if (exactHeadingNodes.some((node) => isLivePreviewRenderableNode(node))) {
-        return;
-    }
-
-    const visibleHeading = Array.from(
-        container.querySelectorAll('h1:not([data-webu-field]), h2:not([data-webu-field]), h3:not([data-webu-field])')
-    ).find((node) => isLivePreviewRenderableNode(node))
-        ?? Array.from(container.querySelectorAll('h1, h2, h3'))
-            .find((node) => isLivePreviewRenderableNode(node));
-    if (visibleHeading) {
-        if (!visibleHeading.getAttribute('data-webu-field')) {
-            visibleHeading.setAttribute('data-webu-field', 'title');
-            visibleHeading.setAttribute('data-webu-field-source', 'inferred');
-        }
-        applyLivePreviewValueToNode(visibleHeading, 'title', preferredHeading, 'data-webu-field');
-    }
-}
-
-function normalizeLivePreviewSectionProps(item: LiveStructureItem): Record<string, unknown> {
-    const next = { ...item.props };
-    const schema = getComponentSchema(item.sectionKey);
-    const preferredHeading = resolveSchemaPreferredStringProp(schema, next, ['title', 'headline', 'heading']);
-    if (preferredHeading) {
-        next.title = preferredHeading;
-        next.headline = preferredHeading;
-    }
-
-    const primaryButtonText = normalizeLivePreviewPrimitive(next.buttonText)
-        ?? normalizeLivePreviewPrimitive(next.ctaText)
-        ?? normalizeLivePreviewPrimitive(next.ctaLabel)
-        ?? normalizeLivePreviewObjectPayload(next.buttonLink)?.label
-        ?? normalizeLivePreviewObjectPayload(next.primary_cta)?.label;
-    const primaryButtonUrl = normalizeLivePreviewPrimitive(next.buttonLink)
-        ?? normalizeLivePreviewPrimitive(next.ctaLink)
-        ?? normalizeLivePreviewPrimitive(next.ctaUrl)
-        ?? normalizeLivePreviewObjectPayload(next.buttonLink)?.url
-        ?? normalizeLivePreviewObjectPayload(next.primary_cta)?.url;
-    if (primaryButtonText || primaryButtonUrl) {
-        const existingPrimary = isRecord(next.primary_cta) ? next.primary_cta : {};
-        next.primary_cta = {
-            ...existingPrimary,
-            text: primaryButtonText ?? normalizeLivePreviewPrimitive(existingPrimary.text),
-            label: primaryButtonText ?? normalizeLivePreviewPrimitive(existingPrimary.label),
-            title: primaryButtonText ?? normalizeLivePreviewPrimitive(existingPrimary.title),
-            url: primaryButtonUrl ?? normalizeLivePreviewPrimitive(existingPrimary.url),
-            href: primaryButtonUrl ?? normalizeLivePreviewPrimitive(existingPrimary.href),
-        };
-    }
-
-    const secondaryButtonText = normalizeLivePreviewPrimitive(next.secondaryButtonText)
-        ?? normalizeLivePreviewObjectPayload(next.secondaryButtonLink)?.label
-        ?? normalizeLivePreviewObjectPayload(next.secondary_cta)?.label;
-    const secondaryButtonUrl = normalizeLivePreviewPrimitive(next.secondaryButtonLink)
-        ?? normalizeLivePreviewObjectPayload(next.secondaryButtonLink)?.url
-        ?? normalizeLivePreviewObjectPayload(next.secondary_cta)?.url;
-    if (secondaryButtonText || secondaryButtonUrl) {
-        const existingSecondary = isRecord(next.secondary_cta) ? next.secondary_cta : {};
-        next.secondary_cta = {
-            ...existingSecondary,
-            text: secondaryButtonText ?? normalizeLivePreviewPrimitive(existingSecondary.text),
-            label: secondaryButtonText ?? normalizeLivePreviewPrimitive(existingSecondary.label),
-            title: secondaryButtonText ?? normalizeLivePreviewPrimitive(existingSecondary.title),
-            url: secondaryButtonUrl ?? normalizeLivePreviewPrimitive(existingSecondary.url),
-            href: secondaryButtonUrl ?? normalizeLivePreviewPrimitive(existingSecondary.href),
-        };
-    }
-
-    const preferredImage = normalizeLivePreviewPrimitive(next.image)
-        ?? normalizeLivePreviewPrimitive(next.backgroundImage)
-        ?? normalizeLivePreviewPrimitive(next.background_image);
-    if (preferredImage) {
-        next.image = preferredImage;
-        next.backgroundImage = preferredImage;
-        next.background_image = preferredImage;
-    }
-
-    return next;
-}
-
-const INJECTED_WRAPPER_ATTR = 'data-webu-injected';
-
-function isChatPlaceholderSection(node: Element | null): boolean {
-    return node instanceof HTMLElement && node.getAttribute('data-webu-chat-placeholder') === 'true';
-}
-
-/**
- * When the preview page has no [data-webu-section] (e.g. built site, not Cms), wrap the main content's
- * direct children in section elements so inspect mode can select and edit by section.
- */
-function injectSectionWrappersWhenMissing(
-    doc: Document,
-    items: LiveStructureItem[]
-): void {
-    if (items.length === 0) return;
-    const existing = Array.from(doc.querySelectorAll<HTMLElement>('[data-webu-section]'))
-        .filter((node) => !isChatPlaceholderSection(node));
-    if (existing.length >= items.length) return;
-
-    const container =
-        doc.querySelector<HTMLElement>('main') ??
-        doc.querySelector<HTMLElement>('.main_content') ??
-        doc.body;
-    if (!container) return;
-
-    const children = Array.from(container.children).filter(
-        (el): el is HTMLElement => el.nodeType === Node.ELEMENT_NODE && !isChatPlaceholderSection(el)
-    );
-    if (children.length === 0) return;
-
-    container.querySelectorAll<HTMLElement>(`section[${INJECTED_WRAPPER_ATTR}="true"]`).forEach((wrapper) => {
-        while (wrapper.firstChild) {
-            container.insertBefore(wrapper.firstChild, wrapper);
-        }
-        wrapper.remove();
-    });
-
-    const freshChildren = Array.from(container.children).filter(
-        (el): el is HTMLElement => el.nodeType === Node.ELEMENT_NODE && !isChatPlaceholderSection(el)
-    );
-    // Only inject when counts match so section order is reliable (avoid wrong section highlighted)
-    if (freshChildren.length !== items.length) return;
-    for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const child = freshChildren[i];
-        if (!item?.localId || !item?.sectionKey || !child) continue;
-        const section = doc.createElement('section');
-        section.setAttribute('data-webu-section', item.sectionKey);
-        section.setAttribute('data-webu-section-local-id', item.localId);
-        section.setAttribute(INJECTED_WRAPPER_ATTR, 'true');
-        container.insertBefore(section, child);
-        section.appendChild(child);
-    }
 }
 
 /** Fixed device widths so canvas always shows real desktop/tablet/mobile layout */
@@ -496,13 +45,7 @@ const DEVICE_VIEWPORT = {
 };
 const DESKTOP_MIN_WIDTH = 1200;
 
-interface LiveStructureItem {
-    localId: string;
-    sectionKey: string;
-    label: string;
-    previewText: string;
-    props: Record<string, unknown>;
-}
+type LiveStructureItem = LivePreviewStructureItem;
 
 export interface InspectPreviewProps {
     previewUrl?: string | null;
@@ -641,12 +184,14 @@ export function InspectPreview({
             : 1;
     const scaledWidth = Math.round(deviceWidth * scale);
     const scaledHeight = Math.round(deviceHeight * scale);
+    const selectionEnabled = Boolean(onElementSelect) && (mode === 'inspect' || mode === 'preview');
 
     const selectionLifecycle = useInspectSelectionLifecycle({
         iframeRef,
         frameRef,
         scale,
         mode,
+        selectionEnabled,
         isBuilding,
         iframeReady,
         highlightSectionKey: highlightSectionKey ?? null,
@@ -679,168 +224,11 @@ export function InspectPreview({
     } = selectionLifecycle;
 
     const syncPlaceholderSection = useCallback((section: HTMLElement, item: LiveStructureItem) => {
-        const headline = resolvePlaceholderProp(item.props, [
-            'title',
-            'headline',
-            'heading',
-            'name',
-        ]);
-        const subtitle = resolvePlaceholderProp(item.props, [
-            'subtitle',
-            'description',
-            'body',
-            'text',
-        ]);
-        const primaryActionLabel = resolvePlaceholderProp(item.props, [
-            'buttonText',
-            'buttonLabel',
-            'button',
-            'ctaLabel',
-            'ctaText',
-            'primaryCtaLabel',
-        ], ['label', 'text', 'title']);
-        const primaryActionUrl = resolvePlaceholderProp(item.props, [
-            'buttonLink',
-            'buttonUrl',
-            'button_url',
-            'ctaUrl',
-            'ctaLink',
-            'primaryCtaUrl',
-            'primaryCtaLink',
-        ], ['url', 'href', 'link']);
-        const image = resolvePlaceholderProp(item.props, [
-            'image',
-            'imageUrl',
-            'image_url',
-            'image_01',
-            'hero_image',
-            'backgroundImage',
-            'logo_url',
-        ], ['url', 'src', 'image']);
-        const imageAlt = resolvePlaceholderProp(item.props, [
-            'imageAlt',
-            'image_alt',
-            'alt',
-            'imageAltFallback',
-        ]);
-        const bodyText = headline?.value
-            || item.previewText
-            || resolveSchemaPreferredStringProp(null, item.props, ['title', 'headline', 'subtitle', 'description'])
-            || item.label
-            || item.sectionKey;
-
-        section.setAttribute('data-webu-section', item.sectionKey);
-        section.setAttribute('data-webu-section-local-id', item.localId);
-        section.setAttribute('data-webu-chat-placeholder', 'true');
-        section.style.minHeight = '132px';
-        section.style.margin = '16px 0';
-        section.style.border = '1px dashed rgba(37, 99, 235, 0.45)';
-        section.style.borderRadius = '20px';
-        section.style.background = 'linear-gradient(180deg, rgba(248,250,252,0.98) 0%, rgba(239,246,255,0.98) 100%)';
-        section.style.boxShadow = '0 10px 30px rgba(15, 23, 42, 0.05)';
-        section.style.padding = '24px';
-        section.style.display = 'flex';
-        section.style.flexDirection = 'column';
-        section.style.justifyContent = 'center';
-        section.style.gap = '10px';
-
-        const ensureChild = (selector: string, dataAttr: string) => {
-            const existing = section.querySelector<HTMLElement>(selector);
-            if (existing) {
-                return existing;
-            }
-
-            const child = section.ownerDocument.createElement('div');
-            child.setAttribute(dataAttr, 'true');
-            section.appendChild(child);
-            return child;
-        };
-
-        const badge = ensureChild('[data-webu-chat-placeholder-badge="true"]', 'data-webu-chat-placeholder-badge');
-        badge.textContent = item.label || item.sectionKey;
-        badge.style.font = '600 12px/1.2 system-ui, sans-serif';
-        badge.style.color = '#1d4ed8';
-        badge.style.letterSpacing = '0.02em';
-        badge.style.textTransform = 'uppercase';
-
-        const body = ensureChild('[data-webu-chat-placeholder-body="true"]', 'data-webu-chat-placeholder-body');
-        body.textContent = bodyText;
-        setPlaceholderFieldAttribute(body, 'data-webu-field', headline?.path ?? null);
-        body.style.font = '500 18px/1.55 system-ui, sans-serif';
-        body.style.color = '#0f172a';
-
-        const subtitleNode = subtitle
-            ? ensureChild('[data-webu-chat-placeholder-subtitle="true"]', 'data-webu-chat-placeholder-subtitle')
-            : section.querySelector<HTMLElement>('[data-webu-chat-placeholder-subtitle="true"]');
-        if (subtitle && subtitleNode) {
-            subtitleNode.textContent = subtitle.value;
-            setPlaceholderFieldAttribute(subtitleNode, 'data-webu-field', subtitle.path);
-            subtitleNode.style.font = '400 14px/1.55 system-ui, sans-serif';
-            subtitleNode.style.color = '#475569';
-        } else {
-            subtitleNode?.remove();
-        }
-
-        const actionNode = (primaryActionLabel || primaryActionUrl)
-            ? ensureChild('[data-webu-chat-placeholder-action="true"]', 'data-webu-chat-placeholder-action')
-            : section.querySelector<HTMLElement>('[data-webu-chat-placeholder-action="true"]');
-        if (actionNode && (primaryActionLabel || primaryActionUrl)) {
-            const actionLabel = primaryActionLabel?.value ?? tt('Open link', 'ბმულის გახსნა');
-            const actionUrl = primaryActionUrl?.value ?? '';
-            actionNode.textContent = actionUrl ? `${actionLabel} -> ${actionUrl}` : actionLabel;
-            setPlaceholderFieldAttribute(actionNode, 'data-webu-field', primaryActionLabel?.path ?? null);
-            setPlaceholderFieldAttribute(actionNode, 'data-webu-field-url', primaryActionUrl?.path ?? null);
-            actionNode.style.display = 'inline-flex';
-            actionNode.style.alignItems = 'center';
-            actionNode.style.width = 'fit-content';
-            actionNode.style.minHeight = '36px';
-            actionNode.style.padding = '0 14px';
-            actionNode.style.borderRadius = '999px';
-            actionNode.style.border = '1px solid rgba(29, 78, 216, 0.18)';
-            actionNode.style.background = 'rgba(255, 255, 255, 0.88)';
-            actionNode.style.color = '#1e293b';
-            actionNode.style.font = '600 13px/1.35 system-ui, sans-serif';
-            actionNode.style.whiteSpace = 'nowrap';
-            actionNode.style.overflow = 'hidden';
-            actionNode.style.textOverflow = 'ellipsis';
-            actionNode.style.maxWidth = '100%';
-        } else {
-            actionNode?.remove();
-        }
-
-        const imageNode = image
-            ? (section.querySelector<HTMLImageElement>('[data-webu-chat-placeholder-image="true"]') ?? section.ownerDocument.createElement('img'))
-            : section.querySelector<HTMLImageElement>('[data-webu-chat-placeholder-image="true"]');
-        if (image && imageNode) {
-            imageNode.setAttribute('data-webu-chat-placeholder-image', 'true');
-            imageNode.setAttribute('src', image.value);
-            imageNode.setAttribute('alt', imageAlt?.value ?? headline?.value ?? item.label ?? item.sectionKey);
-            setPlaceholderFieldAttribute(imageNode, 'data-webu-field', image.path);
-            imageNode.style.width = '100%';
-            imageNode.style.maxWidth = '280px';
-            imageNode.style.height = '120px';
-            imageNode.style.objectFit = 'cover';
-            imageNode.style.borderRadius = '14px';
-            imageNode.style.border = '1px solid rgba(148, 163, 184, 0.32)';
-            imageNode.style.background = '#e2e8f0';
-            imageNode.style.boxShadow = '0 6px 18px rgba(15, 23, 42, 0.08)';
-            if (!imageNode.isConnected) {
-                section.appendChild(imageNode);
-            }
-        } else {
-            imageNode?.remove();
-        }
-
-        const caption = ensureChild('[data-webu-chat-placeholder-caption="true"]', 'data-webu-chat-placeholder-caption');
-        caption.textContent = tt('Component is being added...', 'კომპონენტი ემატება...');
-        caption.style.font = '400 13px/1.45 system-ui, sans-serif';
-        caption.style.color = '#475569';
+        syncPreviewPlaceholderSection(section, item, tt);
     }, [tt]);
 
     const createPlaceholderSection = useCallback((item: LiveStructureItem, doc: Document) => {
-        const section = doc.createElement('section');
-        syncPlaceholderSection(section, item);
-        return section;
+        return createPreviewPlaceholderSection(item, doc, tt);
     }, [syncPlaceholderSection]);
 
     const reconcilePreviewPlaceholders = useCallback(() => {
@@ -849,143 +237,11 @@ export function InspectPreview({
             return;
         }
 
-        const expectedItemById = new Map(
-            liveStructureItems
-                .map((item) => [item.localId.trim(), item] as const)
-                .filter(([localId]) => localId !== '')
-        );
-        const expectedIds = new Set(
-            Array.from(expectedItemById.keys())
-        );
-        const placeholderNodesById = new Map<string, HTMLElement[]>();
-
-        iframeDoc
-            .querySelectorAll<HTMLElement>('[data-webu-chat-placeholder="true"]')
-            .forEach((node) => {
-                const localId = (node.getAttribute('data-webu-section-local-id') ?? '').trim();
-                if (localId === '' || !expectedIds.has(localId)) {
-                    node.remove();
-                    return;
-                }
-
-                const realNode = iframeDoc.querySelector<HTMLElement>(
-                    `[data-webu-section-local-id="${localId.replace(/"/g, '\\"')}"]:not([data-webu-chat-placeholder="true"])`
-                );
-                if (realNode) {
-                    node.remove();
-                    return;
-                }
-
-                const existing = placeholderNodesById.get(localId) ?? [];
-                existing.push(node);
-                placeholderNodesById.set(localId, existing);
-            });
-
-        placeholderNodesById.forEach((nodes, localId) => {
-            if (nodes.length === 0) {
-                return;
-            }
-
-            const expectedItem = expectedItemById.get(localId) ?? null;
-            nodes.forEach((node, index) => {
-                if (index > 0) {
-                    node.remove();
-                    return;
-                }
-
-                if (expectedItem) {
-                    syncPlaceholderSection(node, expectedItem);
-                }
-            });
-        });
-
-        iframeDoc
-            .querySelectorAll<HTMLElement>('[data-webu-section-local-id]')
-            .forEach((node) => {
-                const localId = (node.getAttribute('data-webu-section-local-id') ?? '').trim();
-                const isPlaceholder = node.getAttribute('data-webu-chat-placeholder') === 'true';
-                if (isPlaceholder) {
-                    return;
-                }
-
-                if (localId !== '' && expectedIds.size > 0 && !expectedIds.has(localId)) {
-                    node.style.setProperty('display', 'none', 'important');
-                    node.setAttribute('data-webu-chat-optimistic-hidden', 'true');
-                    return;
-                }
-
-                if (node.hasAttribute('data-webu-chat-optimistic-hidden')) {
-                    node.style.removeProperty('display');
-                    node.removeAttribute('data-webu-chat-optimistic-hidden');
-                }
-            });
-
-        if (expectedIds.size === 0) {
-            return;
-        }
-
-        const resolveAnchorContainer = (): HTMLElement | null => {
-            const firstReal = iframeDoc.querySelector<HTMLElement>('[data-webu-section-local-id]:not([data-webu-chat-placeholder="true"])');
-            if (firstReal?.parentElement) {
-                return firstReal.parentElement;
-            }
-
-            return iframeDoc.querySelector<HTMLElement>('.main_content')
-                ?? iframeDoc.querySelector<HTMLElement>('main')
-                ?? iframeDoc.body;
-        };
-
-        const anchorContainer = resolveAnchorContainer();
-        if (!anchorContainer) {
-            return;
-        }
-
-        liveStructureItems.forEach((item, index) => {
-            const localId = item.localId.trim();
-            if (localId === '') {
-                return;
-            }
-
-            const existingRealNode = iframeDoc.querySelector<HTMLElement>(
-                `[data-webu-section-local-id="${localId.replace(/"/g, '\\"')}"]:not([data-webu-chat-placeholder="true"])`
-            );
-            const existingPlaceholder = iframeDoc.querySelector<HTMLElement>(
-                `[data-webu-section-local-id="${localId.replace(/"/g, '\\"')}"][data-webu-chat-placeholder="true"]`
-            );
-            if (existingRealNode) {
-                existingPlaceholder?.remove();
-                return;
-            }
-
-            const placeholder = existingPlaceholder ?? createPlaceholderSection(item, iframeDoc);
-            syncPlaceholderSection(placeholder, item);
-
-            const nextSibling = liveStructureItems
-                .slice(index + 1)
-                .map((candidate) => (
-                    iframeDoc.querySelector<HTMLElement>(`[data-webu-section-local-id="${candidate.localId.replace(/"/g, '\\"')}"]`)
-                ))
-                .find((node): node is HTMLElement => Boolean(node));
-
-            if (nextSibling?.parentElement) {
-                nextSibling.parentElement.insertBefore(placeholder, nextSibling);
-                return;
-            }
-
-            const previousSibling = [...liveStructureItems]
-                .slice(0, index)
-                .reverse()
-                .map((candidate) => (
-                    iframeDoc.querySelector<HTMLElement>(`[data-webu-section-local-id="${candidate.localId.replace(/"/g, '\\"')}"]`)
-                ))
-                .find((node): node is HTMLElement => Boolean(node));
-
-            if (previousSibling?.parentElement) {
-                previousSibling.parentElement.insertBefore(placeholder, previousSibling.nextSibling);
-                return;
-            }
-
-            anchorContainer.appendChild(placeholder);
+        reconcilePreviewPlaceholderNodes({
+            iframeDoc,
+            liveStructureItems,
+            syncPlaceholderSection,
+            createPlaceholderSection,
         });
     }, [createPlaceholderSection, iframeReady, liveStructureItems, syncPlaceholderSection]);
 
@@ -1010,34 +266,12 @@ export function InspectPreview({
                 return;
             }
 
-            const normalizedProps = normalizeLivePreviewSectionProps(item);
-            const flattenedEntries = flattenLivePreviewEntries(normalizedProps);
-            flattenedEntries.forEach((entry) => {
-                applyLivePreviewFieldByKey(container, entry.key, entry.value);
-            });
-
-            reconcileLivePreviewHeading(container, {
-                ...item,
-                props: normalizedProps,
-            });
-
-            const preferredHeading = resolveSchemaPreferredStringProp(
-                getComponentSchema(item.sectionKey),
-                normalizedProps,
-                ['title', 'headline', 'heading'],
-            ) ?? normalizeLivePreviewPrimitive(item.previewText);
+            const preferredHeading = syncLivePreviewSection(container, item);
             if (preferredHeading) {
                 pendingVisibleHeadings.push({
                     localId,
                     text: preferredHeading,
                 });
-            }
-
-            if (flattenedEntries.length === 0 && item.previewText.trim() !== '') {
-                const titleNode = container.querySelector('h1, h2, h3, p');
-                if (titleNode) {
-                    titleNode.textContent = item.previewText;
-                }
             }
         });
 
@@ -1050,11 +284,8 @@ export function InspectPreview({
                 const container = iframeDoc.querySelector<HTMLElement>(
                     `[data-webu-section-local-id="${localId.replace(/"/g, '\\"')}"]:not([data-webu-chat-placeholder="true"])`
                 );
-                const visibleHeading = container?.querySelector<HTMLElement>(
-                    'h1:not([data-webu-field]), h2:not([data-webu-field]), h3:not([data-webu-field])'
-                );
-                if (visibleHeading && visibleHeading.textContent?.trim() !== text) {
-                    visibleHeading.textContent = text;
+                if (container) {
+                    syncVisiblePreviewHeading(container, text);
                 }
             });
             livePreviewHeadingSyncFrameRef.current = null;
@@ -1403,13 +634,13 @@ html[data-webu-chat-inspect="true"] [role="button"] {
 
         let rafId = 0;
         const applyAnnotations = () => {
-            if (mode === 'inspect' && liveStructureItems.length > 0) {
-                injectSectionWrappersWhenMissing(iframeDoc, liveStructureItems);
-            }
-            annotateEditableElements(iframeDoc, liveStructureItems);
-            invalidateDOMMapCache();
-            reconcileLivePreviewSections();
-            reconcilePreviewPlaceholders();
+            applyPreviewAnnotationEngine({
+                iframeDoc,
+                liveStructureItems,
+                selectionEnabled,
+                onRenderSync: reconcileLivePreviewSections,
+                onPlaceholderReconcile: reconcilePreviewPlaceholders,
+            });
         };
 
         applyAnnotations();
@@ -1431,7 +662,7 @@ html[data-webu-chat-inspect="true"] [role="button"] {
             window.cancelAnimationFrame(rafId);
             observer.disconnect();
         };
-    }, [iframeReady, liveStructureItems, mode, reconcileLivePreviewSections, reconcilePreviewPlaceholders]);
+    }, [iframeReady, liveStructureItems, reconcileLivePreviewSections, reconcilePreviewPlaceholders, selectionEnabled]);
 
     useEffect(() => {
         if (!pendingLibraryItem) {
@@ -1440,7 +671,7 @@ html[data-webu-chat-inspect="true"] [role="button"] {
     }, [clearHoveredSection, pendingLibraryItem]);
 
     useEffect(() => {
-        if (mode !== 'inspect' || !iframeReady) {
+        if (!selectionEnabled || !iframeReady) {
             clearHoveredSection();
             setSelectedOverlay(null);
             return;
@@ -1482,7 +713,7 @@ html[data-webu-chat-inspect="true"] [role="button"] {
             iframeWindow.removeEventListener('scroll', syncOverlayFrames);
             window.removeEventListener('resize', syncOverlayFrames);
         };
-    }, [clearHoveredSection, iframeReady, measureSectionOverlay, mode, overlaysMatch, resolveSelectedPreviewTarget, setHoveredOverlayFromSection]);
+    }, [clearHoveredSection, iframeReady, measureSectionOverlay, overlaysMatch, resolveSelectedPreviewTarget, selectionEnabled, setHoveredOverlayFromSection]);
 
     const handleInspectWheel = useCallback((event: WheelEvent) => {
         const previewWindow = iframeRef.current?.contentWindow;
@@ -1493,15 +724,15 @@ html[data-webu-chat-inspect="true"] [role="button"] {
 
     // Wheel on hit layer must use { passive: false } so preventDefault works (no passive listener warning)
     useEffect(() => {
-        if (mode !== 'inspect') return;
+        if (!selectionEnabled) return;
         const el = hitLayerRef.current;
         if (!el) return;
         el.addEventListener('wheel', handleInspectWheel, { passive: false });
         return () => el.removeEventListener('wheel', handleInspectWheel);
-    }, [mode, handleInspectWheel]);
+    }, [handleInspectWheel, selectionEnabled]);
 
     useEffect(() => {
-        if (mode !== 'inspect') {
+        if (!selectionEnabled) {
             return;
         }
 
@@ -1589,8 +820,8 @@ html[data-webu-chat-inspect="true"] [role="button"] {
         handlePlacementDrop,
         handlePlacementLeave,
         handlePlacementPointerMove,
-        mode,
         pendingLibraryItem,
+        selectionEnabled,
     ]);
 
     // Thumbnail capture when build completes (no confetti)
@@ -1691,9 +922,9 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                                     ref={frameRef}
                                     className={`workspace-preview-frame workspace-preview-frame--${viewport}${mode === 'inspect' ? ' workspace-preview-frame--inspect' : ''}${pendingLibraryItem ? ' workspace-preview-frame--placing' : ''}`}
                                 >
-                        {/* Keep a deterministic hit layer in inspect mode so scaled preview coordinates and
-                            selection overlays always resolve through one path. Header controls sit above this layer. */}
-                        {mode === 'inspect' ? (
+                        {/* Keep a deterministic hit layer whenever preview selection targeting is enabled so
+                            scaled preview coordinates and chat/inspect targeting resolve through one path. */}
+                        {selectionEnabled ? (
                             <div
                                 ref={(el) => {
                                     (hitLayerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
@@ -1724,7 +955,7 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                             </div>
                         ) : null}
 
-                        {mode === 'inspect' && hoveredOverlay ? (
+                        {selectionEnabled && hoveredOverlay ? (
                             <div
                                 className={cn(
                                     pendingLibraryItem ? 'workspace-preview-drop-target' : 'workspace-preview-hover-target',
@@ -1739,9 +970,9 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                                     outlineOffset: pendingLibraryItem ? undefined : '-2px',
                                 }}
                             >
-                                {!pendingLibraryItem && formatOverlayLabel(hoveredOverlay.label) ? (
+                                {!pendingLibraryItem && formatPreviewOverlayLabel(hoveredOverlay.label) ? (
                                     <div className="pointer-events-none absolute -top-7 left-0 rounded bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm">
-                                        {formatOverlayLabel(hoveredOverlay.label)}
+                                        {formatPreviewOverlayLabel(hoveredOverlay.label)}
                                     </div>
                                 ) : null}
                                 {pendingLibraryItem && hoveredOverlay.placement === 'inside' ? (
@@ -1764,7 +995,7 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                             </div>
                         ) : null}
 
-                        {mode === 'inspect' && selectedOverlay ? (
+                        {selectionEnabled && selectedOverlay ? (
                             <div
                                 className="workspace-preview-selected-target"
                                 style={{
@@ -1774,9 +1005,9 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                                     height: `${selectedOverlay.height}px`,
                                 }}
                             >
-                                {formatOverlayLabel(selectedOverlay.label) ? (
+                                {formatPreviewOverlayLabel(selectedOverlay.label) ? (
                                     <div className="pointer-events-none absolute -top-7 left-0 rounded bg-slate-900 px-2 py-1 text-[11px] font-medium text-white shadow-sm">
-                                        {formatOverlayLabel(selectedOverlay.label)}
+                                        {formatPreviewOverlayLabel(selectedOverlay.label)}
                                     </div>
                                 ) : null}
                             </div>

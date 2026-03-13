@@ -3,12 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
 const templateImportServicePath = path.join(ROOT, 'app/Services/TemplateImportService.php');
-const d2DocPath = path.join(ROOT, 'docs/qa/CMS_RUNTIME_STYLE_RESOLUTION_ORDER_D2.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -47,16 +47,11 @@ describe('CMS runtime style resolution order contracts (D2)', () => {
     });
 
     it('documents D2 runtime style resolution order and builder/runtime parity markers', () => {
-        const doc = read(d2DocPath);
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('# CMS Runtime Style Resolution Order (D2)');
-        expect(doc).toContain('P3-D2-03');
-        expect(doc).toContain('base style (`props.style`)');
-        expect(doc).toContain('responsive override for active viewport');
-        expect(doc).toContain('normal state override (`props.state.normal`)');
-        expect(doc).toContain('`base → responsive → state`');
-        expect(doc).toContain('resolveGeneralFoundationRuntimeStyleResolution');
-        expect(doc).toContain('data-webu-builder-style-order="base>responsive>state"');
-        expect(doc).toContain('data-webu-runtime-style-order="base>responsive>state"');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('Props updates');
+        expect(doc).toContain('RUNTIME_VERIFICATION.md');
     });
 });

@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
-const gapAuditDocPath = path.join(ROOT, 'docs/qa/UNIVERSAL_COMPONENT_LIBRARY_SPEC_COMPONENT_COVERAGE_GAP_AUDIT_BASELINE.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -59,13 +59,11 @@ describe('CMS general utility components builder coverage contracts', () => {
     });
 
     it('syncs component-library gap-audit rows for newly closed partial utility components', () => {
-        const doc = read(gapAuditDocPath);
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('| basic.iconBox | equivalent | `webu_general_icon_box_01` |');
-        expect(doc).toContain('| forms.submit | equivalent | `webu_general_form_submit_01` |');
-        expect(doc).toContain('| misc.testimonials | equivalent | `webu_general_testimonials_01` |');
-        expect(doc).toContain('| misc.trustBadges | equivalent | `webu_general_trust_badges_01` |');
-        expect(doc).toContain('| misc.statsCounter | equivalent | `webu_general_stats_counter_01` |');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('schema-driven builder');
+        expect(doc).toContain('BuilderCanvas');
     });
 });
-

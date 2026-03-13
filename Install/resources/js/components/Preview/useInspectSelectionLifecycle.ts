@@ -147,6 +147,7 @@ export interface UseInspectSelectionLifecycleOptions {
     frameRef: RefObject<HTMLDivElement | null>;
     scale: number;
     mode: 'preview' | 'inspect' | 'design';
+    selectionEnabled: boolean;
     isBuilding: boolean;
     iframeReady: boolean;
     highlightSectionKey: string | null;
@@ -188,7 +189,7 @@ export function useInspectSelectionLifecycle(
         iframeRef,
         frameRef,
         scale,
-        mode,
+        selectionEnabled,
         isBuilding,
         highlightSectionKey,
         highlightSectionLocalId,
@@ -387,7 +388,7 @@ export function useInspectSelectionLifecycle(
     }, [buildElementMention, clearHoveredSection, onLibraryItemPlace, pendingLibraryItem?.key, resolvePlacementTarget]);
 
     const handleInspectPointerMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-        if (mode !== 'inspect' || isBuilding) return;
+        if (!selectionEnabled || isBuilding) return;
         const pointResolution = resolvePreviewTargetAtPointInIframe(getActiveIframe(), scale, {
             target: event.target,
             clientX: event.clientX,
@@ -410,15 +411,15 @@ export function useInspectSelectionLifecycle(
             ? pointResolution.target?.section ?? null
             : resolveSectionOnlyFallbackTarget({ target: event.target, clientX: event.clientX, clientY: event.clientY });
         updateHoveredSection(hoveredSection);
-    }, [getActiveIframe, isBuilding, mode, resolveSectionOnlyFallbackTarget, scale, updateHoveredSection]);
+    }, [getActiveIframe, isBuilding, resolveSectionOnlyFallbackTarget, scale, selectionEnabled, updateHoveredSection]);
 
     const handleInspectPointerLeave = useCallback(() => {
-        if (mode !== 'inspect') return;
+        if (!selectionEnabled) return;
         clearHoveredSection();
-    }, [clearHoveredSection, mode]);
+    }, [clearHoveredSection, selectionEnabled]);
 
     const handleInspectClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-        if (mode !== 'inspect' || isBuilding) return;
+        if (!selectionEnabled || isBuilding) return;
         event.preventDefault();
         const pointResolution = resolvePreviewTargetAtPointInIframe(getActiveIframe(), scale, {
             target: event.target,
@@ -482,7 +483,7 @@ export function useInspectSelectionLifecycle(
         });
         clearHoveredSection();
         onElementSelect?.(mention);
-    }, [buildSectionElementMention, clearHoveredSection, getActiveIframe, isBuilding, liveStructureItems, measureSectionOverlay, mode, onElementSelect, overlaysMatch, resolveSectionOnlyFallbackTarget, scale]);
+    }, [buildSectionElementMention, clearHoveredSection, getActiveIframe, isBuilding, liveStructureItems, measureSectionOverlay, onElementSelect, overlaysMatch, resolveSectionOnlyFallbackTarget, scale, selectionEnabled]);
 
     useEffect(() => {
         if (pendingLibraryItem) {

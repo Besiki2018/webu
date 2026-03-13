@@ -1,5 +1,12 @@
 # Runtime verification — schema-driven architecture
 
+Runtime scope covered here:
+
+- `/project/{project}` -> chat builder
+- `/project/{project}?tab=inspect` -> visual builder
+
+In both routes, preview must render draft state immediately. Save persists to backend, but preview refresh must come from draft mutations through `updatePipeline.ts` + `builderEditingStore.ts`, not from a reload.
+
 **The architecture is only considered complete when runtime wiring is verified, not when schema/defaults/registry files merely exist.**
 
 Completion criteria:
@@ -134,9 +141,9 @@ Below: code paths and how each is verified.
 |-----------|-----------|-------------|
 | Canvas through registry | BuilderCanvas: canonical `componentRegistry.ts` helpers (`getComponentRuntimeEntry`, `getCentralRegistryEntry`, `resolveComponentProps`) only | Phase 9 #3, BuilderCanvas.test, legacyDetection |
 | Sidebar from schema | Cms: sectionSchemaByKey (library + getAvailableComponents registry fallback), collectSchemaPrimitiveFields, getSchemaFieldControlType | Phase 9 #4, #4b |
-| Props update rerender | updateSectionPathProp → updateComponentProps → applyMutationState → store → sectionsDraft → BuilderCanvas | Phase 9 #5, #5b, runtimeVerification, updatePipeline.test |
+| Props update rerender | updateSectionPathProp / change-set op → `applyBuilderUpdatePipeline` → `applyMutationState` / store sync → preview reconcile | Phase 9 #5, #5b, runtimeVerification, updatePipeline.test |
 | Components from props only | ensureFullComponentProps + mapBuilderProps; Hero etc. use only props | Phase 9 #3, component code |
-| Unified pipeline | Sidebar: updateComponentProps; Chat: applyBuilderChangeSetPipeline → applyBuilderUpdatePipeline | updatePipeline.test, Phase 5 doc |
+| Unified pipeline | Sidebar: updateComponentProps; Chat + AI: applyBuilderChangeSetPipeline / render adapter → applyBuilderUpdatePipeline | updatePipeline.test, Phase 5 doc |
 | Chat / AI ready | Same pipeline; change set → operations → applyBuilderUpdatePipeline | Cms handler, updatePipeline tests |
 
 **Do not assume the architecture works from file presence alone.** Use the tests and code paths above to confirm runtime behavior.

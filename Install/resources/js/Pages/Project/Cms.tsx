@@ -153,6 +153,7 @@ import { useCmsCanvasInteractionHandlers } from '@/builder/cms/useCmsCanvasInter
 import { useCmsEmbeddedBuilderSync } from '@/builder/cms/useCmsEmbeddedBuilderSync';
 import { useCmsFixedSectionVariantController } from '@/builder/cms/useCmsFixedSectionVariantController';
 import { CmsInspectorPanel } from '@/builder/cms/CmsInspectorPanel';
+import { CmsMediaFieldControl } from '@/builder/cms/CmsMediaFieldControl';
 import { buildCmsInspectorMutationDispatcher } from '@/builder/cms/CmsMutationDispatcher';
 import { useCmsPageSelectionLifecycle } from '@/builder/cms/useCmsPageSelectionLifecycle';
 import { useCmsPreviewIframeBinding } from '@/builder/cms/useCmsPreviewIframeBinding';
@@ -209,6 +210,7 @@ import {
     type BuilderEditableTarget,
 } from '@/builder/editingState';
 import { applyLayoutRefinement, inferWebsiteTypeFromPrompt, saveDesignMemory } from '@/ai';
+import { applyAiSitePlan } from '@/builder/ai/builderRenderAdapter';
 import { generateSiteFromPrompt } from '@/builder/ai/generateSiteFromPrompt';
 import { generateLayoutFromDesign } from '@/builder/ai/generateLayoutFromDesign';
 
@@ -24917,7 +24919,46 @@ ${showRules}
                 contentProvider: undefined,
                 projectType: payload.projectType,
             });
-            setSectionsDraft(result.sectionsDraft);
+            const pipelineResult = applyAiSitePlan({
+                sectionsDraft: sectionsDraftRef.current,
+                selectedSectionLocalId,
+                selectedBuilderTarget,
+            }, result.sitePlan, {
+                makeLocalId: nextSectionLocalId,
+                createSection: ({ sectionType, props, localId }) => {
+                    const normalizedKey = normalizeSectionTypeKey(sectionType);
+                    if (normalizedKey === '' || isFixedLayoutSectionKey(normalizedKey)) {
+                        return null;
+                    }
+
+                    const templateSchema = sectionSchemaByKey.get(sectionType) ?? sectionSchemaByKey.get(normalizedKey);
+                    const templateDefaults = templateSectionPreviewByKey.get(normalizedKey)?.defaultProps ?? null;
+                    const defaultProps = templateDefaults
+                        ? cloneRecord(templateDefaults)
+                        : buildPropsFromSchema(templateSchema);
+                    const mergedProps = {
+                        ...defaultProps,
+                        ...cloneRecord(props ?? {}),
+                    };
+                    const hydratedDefaultProps = hydrateSectionDefaultsFromCms(normalizedKey, mergedProps);
+
+                    return {
+                        localId: typeof localId === 'string' && localId.trim() !== '' ? localId.trim() : nextSectionLocalId(),
+                        type: normalizedKey,
+                        props: cloneRecord(hydratedDefaultProps),
+                        propsText: toPrettyJson(hydratedDefaultProps, '{}'),
+                        propsError: null,
+                        bindingMeta: null,
+                    };
+                },
+            });
+
+            if (!pipelineResult.ok) {
+                throw new Error(pipelineResult.errors[0]?.message ?? 'ai_site_plan_failed');
+            }
+
+            sectionsDraftRef.current = pipelineResult.state.sectionsDraft;
+            applyMutationState(pipelineResult.state);
             useBuilderStore.getState().setProjectType(result.projectType);
             scheduleStructuralDraftPersistRef.current?.();
             toast.success(t('Website structure generated. You can edit sections in the canvas and sidebar.'));
@@ -24927,7 +24968,21 @@ ${showRules}
         } finally {
             setIsAIWebsiteGenerating(false);
         }
-    }, [setSectionsDraft, t]);
+    }, [
+        applyMutationState,
+        buildPropsFromSchema,
+        cloneRecord,
+        hydrateSectionDefaultsFromCms,
+        isFixedLayoutSectionKey,
+        nextSectionLocalId,
+        normalizeSectionTypeKey,
+        sectionSchemaByKey,
+        selectedBuilderTarget,
+        selectedSectionLocalId,
+        t,
+        templateSectionPreviewByKey,
+        toPrettyJson,
+    ]);
 
     const handleDesignImportSubmit = useCallback(
         async (payload: DesignImportPayload) => {
@@ -27022,142 +27077,6 @@ ${showRules}
         }
     };
 
-    const renderSidebarMediaFieldControls = (options: {
-        fieldLabel: string;
-        effectiveValue: string;
-        isVideoField: boolean;
-        onChange: (value: string) => void;
-        compact?: boolean;
-        pathCaption?: string;
-    }) => {
-        const inputClassName = options.compact ? 'h-8 text-xs' : undefined;
-        const previewClassName = options.compact ? 'max-h-44' : 'max-h-48';
-        const triggerVariant = options.compact ? 'outline' : 'secondary';
-        const triggerSize = options.compact ? 'sm' : 'default';
-        const hasValue = options.effectiveValue.trim() !== '';
-        const triggerLabel = options.isVideoField
-            ? (hasValue ? t('Replace Video') : t('Upload Video'))
-            : (hasValue ? t('Replace Image') : t('Upload Image'));
-        const openUploadPicker = (origin: HTMLElement | null) => {
-            const input = origin
-                ?.closest<HTMLElement>('[data-builder-media-field="true"]')
-                ?.querySelector('input[data-builder-media-upload="true"]');
-            if (input instanceof HTMLInputElement) {
-                input.click();
-            }
-        };
-        const handleDirectUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0];
-            event.target.value = '';
-
-            if (!file) {
-                return;
-            }
-
-            const uploaded = await uploadMediaFile(file);
-            if (!uploaded) {
-                return;
-            }
-
-            options.onChange(uploaded.asset_url);
-            toast.success(options.isVideoField ? t('Video uploaded') : t('Image uploaded'));
-        };
-
-        return (
-            <div
-                data-builder-media-field="true"
-                className={options.compact ? 'space-y-1' : 'space-y-1.5'}
-            >
-                <Label className={CMS_BUILDER_PARAM_LABEL_CLASS}>{t(options.fieldLabel)}</Label>
-                {options.pathCaption ? (
-                    <p className="text-[10px] text-muted-foreground break-all">{options.pathCaption}</p>
-                ) : null}
-                <input
-                    data-builder-media-upload="true"
-                    type="file"
-                    accept={options.isVideoField ? 'video/*' : 'image/*'}
-                    className="sr-only"
-                    onChange={(event) => {
-                        void handleDirectUpload(event);
-                    }}
-                />
-                {options.isVideoField ? (
-                    <Input
-                        className={inputClassName}
-                        value={options.effectiveValue}
-                        onChange={(event) => options.onChange(event.target.value)}
-                        placeholder="https://youtube.com/... or /storage/... video"
-                    />
-                ) : null}
-                <Button
-                    type="button"
-                    variant={triggerVariant}
-                    size={triggerSize}
-                    className="w-full"
-                    onPointerDown={(event) => {
-                        event.stopPropagation();
-                    }}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        openUploadPicker(event.currentTarget);
-                    }}
-                >
-                    {triggerLabel}
-                </Button>
-                {hasValue ? (
-                    <div className="relative">
-                        <div
-                            role="button"
-                            tabIndex={0}
-                            onPointerDown={(event) => {
-                                event.stopPropagation();
-                            }}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                openUploadPicker(event.currentTarget);
-                            }}
-                            onKeyDown={(event) => {
-                                if (event.key !== 'Enter' && event.key !== ' ') {
-                                    return;
-                                }
-
-                                event.preventDefault();
-                                event.stopPropagation();
-                                openUploadPicker(event.currentTarget);
-                            }}
-                            className={`${options.compact ? 'rounded-md border bg-muted/20 p-1' : 'rounded-md border bg-muted/20 p-1.5'} w-full text-left hover:border-primary/50`}
-                        >
-                            {options.isVideoField ? (
-                                <video src={options.effectiveValue} controls className={`${previewClassName} w-full rounded object-cover`} />
-                            ) : (
-                                <img src={options.effectiveValue} alt={options.fieldLabel} className={`${previewClassName} w-full rounded object-cover`} loading="lazy" />
-                            )}
-                        </div>
-                        {!options.isVideoField ? (
-                            <Button
-                                type="button"
-                                size="icon"
-                                variant="destructive"
-                                className="absolute right-2 top-2 h-7 w-7 shadow-sm"
-                                onPointerDown={(event) => {
-                                    event.stopPropagation();
-                                }}
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    options.onChange('');
-                                }}
-                                aria-label={t('Remove image')}
-                                title={t('Remove image')}
-                            >
-                                <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                        ) : null}
-                    </div>
-                ) : null}
-            </div>
-        );
-    };
-
     const renderSidebarLinkObjectFieldControls = (options: {
         fieldLabel: string;
         value: Record<string, unknown>;
@@ -27930,13 +27849,16 @@ ${showRules}
         if (field.type === 'string' && (isImageField || isVideoField)) {
             return (
                 <div key={`${options.itemKeyPrefix}-${pathKey}`}>
-                    {renderSidebarMediaFieldControls({
-                        fieldLabel: displayFieldLabel,
-                        effectiveValue: typeof effectiveValue === 'string' ? effectiveValue : String(effectiveValue ?? ''),
-                        isVideoField,
-                        compact,
-                        onChange: (value) => options.onChangePath(field.path, value),
-                    })}
+                    <CmsMediaFieldControl
+                        t={t}
+                        fieldLabel={displayFieldLabel}
+                        effectiveValue={typeof effectiveValue === 'string' ? effectiveValue : String(effectiveValue ?? '')}
+                        isVideoField={isVideoField}
+                        compact={compact}
+                        onChange={(value) => options.onChangePath(field.path, value)}
+                        uploadMediaFile={uploadMediaFile}
+                        labelClassName={CMS_BUILDER_PARAM_LABEL_CLASS}
+                    />
                     {renderDynamicBindingHint(field, effectiveValue, { compact, bindingMeta: options.bindingMeta })}
                     {renderDynamicBindingActions(field, effectiveValue, {
                         compact,

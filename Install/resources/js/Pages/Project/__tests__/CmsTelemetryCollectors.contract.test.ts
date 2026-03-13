@@ -35,7 +35,8 @@ describe('CMS telemetry collectors contracts (P6-G1-01)', () => {
     it('keeps runtime telemetry collector helper and public endpoint wiring in BuilderService runtime script', () => {
         const builderService = read('app/Services/BuilderService.php');
 
-        expect(builderService).toContain("'telemetry_url' => $site ? $apiBaseUrl.\"/public/sites/{$site->id}/cms/telemetry\" : null");
+        expect(builderService).toContain("var explicit = typeof cms.telemetry_url === 'string' ? cms.telemetry_url.trim() : '';");
+        expect(builderService).toContain("return base + '/public/sites/' + encodeURIComponent(siteId) + '/cms/telemetry';");
         expect(builderService).toContain('function telemetryEndpointUrl()');
         expect(builderService).toContain('function postRuntimeTelemetry(eventName, routeInfo, meta)');
         expect(builderService).toContain("source: 'runtime'");

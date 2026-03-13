@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
-const d2DocPath = path.join(ROOT, 'docs/qa/CMS_RESPONSIVE_OVERRIDES_D2_BASELINE.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -36,21 +36,16 @@ describe('CMS responsive typography override contracts (D2 baseline)', () => {
         expect(cms).toContain("{t('Responsive Target')}");
         expect(cms).toContain("t('Blank values inherit from desktop base style.')");
         expect(cms).toContain("t('Desktop edits define the base typography style.')");
-        expect(cms).toContain("t('Reset Breakpoint Override')");
+        expect(cms).toContain("{t('Reset')}");
         expect(cms).toContain('resolveTextTypographyStyleForViewportAndInteractionState(');
     });
 
-    it('documents D2 responsive override baseline and rollout scope', () => {
-        const doc = read(d2DocPath);
+    it('documents the current canonical registry and mutation pipeline instead of the removed D2 baseline note', () => {
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('# CMS Responsive Overrides D2 Baseline');
-        expect(doc).toContain('P3-D2-01');
-        expect(doc).toContain('responsive.desktop');
-        expect(doc).toContain('responsive.tablet');
-        expect(doc).toContain('responsive.mobile');
-        expect(doc).toContain('builderPreviewMode');
-        expect(doc).toContain('selected page section editor controls');
-        expect(doc).toContain('fixed header/footer editor controls');
-        expect(doc).toContain('future D2 rollout to other control families');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('Sidebar generates controls from schema');
+        expect(doc).toContain('Props updates');
     });
 });

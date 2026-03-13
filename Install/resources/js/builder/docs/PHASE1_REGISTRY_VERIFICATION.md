@@ -2,21 +2,26 @@
 
 ## Registry file location
 
-- **Central registry (full schema-driven components):**  
-  `Install/resources/js/builder/centralComponentRegistry.ts`
-
-- **Main registry (all builder section types):**  
-  `Install/resources/js/builder/componentRegistry.ts`  
+- **Canonical registry (all builder section types + full-fidelity helper subset):**
+  `Install/resources/js/builder/componentRegistry.ts`
   (object: `REGISTRY`; keys = registry IDs, e.g. `webu_header_01`)
 
 ---
 
-## Central registry structure
+## Canonical registry structure
 
-Each entry in `centralComponentRegistry.ts` follows:
+The canonical registry file owns:
+
+- `REGISTRY`
+- schema lookup
+- default props
+- runtime render entry lookup
+- full-fidelity helper subset for real React components
+
+The full-fidelity helper subset follows this shape:
 
 ```ts
-componentRegistry = {
+renderEntry = {
   header: {
     component: Header,        // React component
     schema: HeaderSchema,      // ComponentSchemaDef
@@ -27,16 +32,9 @@ componentRegistry = {
 }
 ```
 
-- **component:** React component that renders from props only.
-- **schema:** Schema (ComponentSchemaDef) for sidebar/editing.
-- **defaults:** Default props; merged with saved props by the canvas.
-- **mapBuilderProps:** Optional; maps builder prop names to component API.
-
-`REGISTRY_ID_TO_KEY` maps registry ID → short key (e.g. `webu_header_01` → `'header'`).
-
 ---
 
-## Verified: components in central registry
+## Verified: full-fidelity helper entries in canonical registry
 
 | Registry ID             | Key    | Component | Schema | Defaults |
 |-------------------------|--------|-----------|--------|----------|
@@ -48,7 +46,7 @@ Header includes navigation; there is no separate “Navigation” entry.
 
 ---
 
-## Verified: components in main REGISTRY (schema + defaults via normalization)
+## Verified: components in REGISTRY (schema + defaults via normalization)
 
 All of the following are in the main `REGISTRY` and have:
 
@@ -58,9 +56,9 @@ All of the following are in the main `REGISTRY` and have:
 
 | Registry ID                   | Name / role        | In central? | Canvas component              |
 |------------------------------|--------------------|-------------|-------------------------------|
-| webu_header_01               | Header             | ✓           | Header (central)              |
-| webu_footer_01               | Footer             | ✓           | Footer (central)              |
-| webu_general_hero_01         | Hero               | ✓           | Hero (central)                |
+| webu_header_01               | Header             | ✓           | Header (full-fidelity helper) |
+| webu_footer_01               | Footer             | ✓           | Footer (full-fidelity helper) |
+| webu_general_hero_01         | Hero               | ✓           | Hero (full-fidelity helper)   |
 | webu_general_cta_01          | CTA                | No          | BuilderCTACanvasSection       |
 | webu_general_heading_01       | Feature / Heading  | No          | BuilderHeadingCanvasSection   |
 | webu_general_card_01         | Card               | No          | BuilderCardCanvasSection      |
@@ -68,7 +66,7 @@ All of the following are in the main `REGISTRY` and have:
 | webu_general_button_01       | Button             | No          | BuilderButtonCanvasSection    |
 | … (all other REGISTRY ids)   | …                  | No          | Builder*CanvasSection         |
 
-CTA, Feature (Heading), Card, and Grid are **not** in the central registry because they do not yet have a single unified React component with dedicated schema and defaults files (like Header/Footer/Hero). They are fully wired in the **main** registry: schema and defaults come from parameters + normalization, and the canvas renders them via the corresponding Builder*CanvasSection. Adding them to the central registry later would follow the same pattern: add component + schema + defaults, then register in `REGISTRY_ID_TO_KEY` and `componentRegistry`.
+CTA, Feature (Heading), Card, and Grid do not use the full-fidelity helper subset because they do not yet have a dedicated real-component render entry. They are fully wired in the canonical registry: schema and defaults come from parameters + normalization, and the canvas renders them via the corresponding Builder*CanvasSection.
 
 ---
 
@@ -76,7 +74,7 @@ CTA, Feature (Heading), Card, and Grid are **not** in the central registry becau
 
 - **BuilderCanvas** (`builder/visual/BuilderCanvas.tsx`):  
   Uses `getComponentRuntimeEntry(section.type)` and `getCentralRegistryEntry(section.type)`.  
-  If central entry exists → renders `<Component {...componentProps} />` with `ensureFullComponentProps(defaults, mapBuilderProps(props))`.  
+  If the canonical full-fidelity helper exists → renders `<Component {...componentProps} />` with `ensureFullComponentProps(defaults, mapBuilderProps(props))`.  
   Else → renders the runtime `CanvasComponent` (Builder*CanvasSection) with `resolveComponentProps(section.type, section.props)`.
 
 - **Sidebar / parameters:** Use `getComponentSchema(registryId)` and `getDefaultProps(registryId)` from the main registry (normalized schema applies to all section types).
@@ -87,4 +85,4 @@ CTA, Feature (Heading), Card, and Grid are **not** in the central registry becau
 
 ## Tests
 
-- `builder/__tests__/registryIntegration.test.ts` — Asserts central registry structure (component, schema, defaults), REGISTRY_ID_TO_KEY, main REGISTRY presence and runtime entry for Header, Footer, Hero, CTA, Feature, Card, Grid.
+- `builder/__tests__/registryIntegration.test.ts` — Asserts canonical registry structure, runtime entries, and the full-fidelity helper subset for Header, Footer, Hero, CTA, Feature, Card, Grid.

@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
-const d2DocPath = path.join(ROOT, 'docs/qa/CMS_STATE_CONTROLS_D2_BASELINE.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -38,20 +38,15 @@ describe('CMS typography state override contracts (D2 baseline)', () => {
         expect(cms).toContain('data-webu-role="builder-typography-state-target"');
         expect(cms).toContain("{t('State Target')}");
         expect(cms).toContain("t('State overrides apply after responsive/base resolution.')");
-        expect(cms).toContain("t('Reset State Override')");
+        expect(cms).toContain("{t('Reset')}");
     });
 
-    it('documents D2 state control baseline and normalized typography state override behavior', () => {
-        const doc = read(d2DocPath);
+    it('documents the current canonical registry and mutation pipeline instead of the removed D2 state baseline note', () => {
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('# CMS State Controls D2 Baseline');
-        expect(doc).toContain('P3-D2-02');
-        expect(doc).toContain('states.hover');
-        expect(doc).toContain('states.focus');
-        expect(doc).toContain('states.active');
-        expect(doc).toContain('Normal / Hover / Focus / Active');
-        expect(doc).toContain('State overrides are viewport-agnostic');
-        expect(doc).toContain('selected page section editor controls');
-        expect(doc).toContain('fixed header/footer editor controls');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('Sidebar generates controls from schema');
+        expect(doc).toContain('Props updates');
     });
 });

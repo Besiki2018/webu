@@ -1,4 +1,4 @@
-import { planSite, planToDisplayFormat } from '../sitePlanner';
+import { planSite, planSiteFromPrompt, planToDisplayFormat } from '../sitePlanner';
 import type { PromptAnalysisResult } from '../promptAnalyzer';
 import { buildTreeFromStructure } from '../../aiSiteGeneration';
 
@@ -72,5 +72,31 @@ describe('sitePlanner', () => {
     expect(result.project.type).toBe('booking');
     expect(result.sections.some((section) => section.componentKey === 'webu_ecom_product_grid_01')).toBe(false);
     expect(result.sections.some((section) => section.componentKey === 'webu_general_form_wrapper_01')).toBe(true);
+  });
+
+  describe('planSiteFromPrompt', () => {
+    it('builds a prompt-driven AI plan with pages and allowed components only', () => {
+      const result = planSiteFromPrompt({
+        prompt: 'Create a cosmetics online store',
+      });
+
+      expect(result.projectType).toBe('ecommerce');
+      expect(result.builderProjectType).toBe('ecommerce');
+      expect(result.pages).toHaveLength(1);
+      expect(result.pages[0]?.name).toBe('home');
+      expect(result.pages[0]?.sections.some((section) => section.layoutType === 'product-grid')).toBe(true);
+      expect(result.available_components).toContain('webu_ecom_product_grid_01');
+    });
+
+    it('switches to booking-safe structure for clinic prompts', () => {
+      const result = planSiteFromPrompt({
+        prompt: 'Create a veterinary clinic website',
+      });
+
+      expect(result.projectType).toBe('clinic');
+      expect(result.project.type).toBe('booking');
+      expect(result.pages[0]?.sections.some((section) => section.layoutType === 'form')).toBe(true);
+      expect(result.pages[0]?.sections.some((section) => section.componentKey === 'webu_ecom_product_grid_01')).toBe(false);
+    });
   });
 });

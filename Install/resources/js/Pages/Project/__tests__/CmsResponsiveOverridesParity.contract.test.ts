@@ -44,9 +44,10 @@ describe('CMS responsive overrides parity contracts', () => {
 
     it('implements unified responsive overrides UI: filter responsive fields by current breakpoint and show single breakpoint selector in Style tab', () => {
         const cms = read(cmsPagePath);
+        const filterInspectorSchemaFields = read(path.join(ROOT, 'resources/js/builder/inspector/filterInspectorSchemaFields.ts'));
 
         expect(cms).toContain('selectedSectionEditableSchemaFieldsForDisplay');
-        expect(cms).toContain('return breakpoint === options.previewMode;');
+        expect(filterInspectorSchemaFields).toContain('return breakpoint === options.previewMode;');
         expect(cms).toContain('interactionState: builderPreviewInteractionState');
         expect(cms).toContain('data-webu-role="builder-style-tab-responsive-selector"');
         expect(cms).toContain('styleTabExtraContent');

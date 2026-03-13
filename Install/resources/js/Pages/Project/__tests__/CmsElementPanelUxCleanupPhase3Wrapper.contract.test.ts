@@ -1,27 +1,21 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(TEST_DIR, '../../../../..');
-
-function read(relativePath: string): string {
-    return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
-}
+import { read, readCurrentBuilderDocs } from './builderContractTestUtils';
 
 describe('CMS element panel UX cleanup wrapper summary contracts (Phase 3 line 166)', () => {
-    it('keeps shared semantic field renderer plus dedicated image/link editors in Cms.tsx', () => {
+    it('keeps shared semantic field renderer plus direct-upload image/video and link editors in Cms', () => {
         const cms = read('resources/js/Pages/Project/Cms.tsx');
+        const mediaFieldControl = read('resources/js/builder/cms/CmsMediaFieldControl.tsx');
 
         expect(cms).toContain('const renderSchemaFieldEditorControl = (options: {');
         expect(cms).toContain('{t(field.label)}');
 
-        expect(cms).toContain('const renderSidebarMediaFieldControls = (options: {');
-        expect(cms).toContain("t('Choose / Upload Image')");
-        expect(cms).toContain("t('Choose / Upload Video')");
-        expect(cms).toContain("aria-label={t('Remove image')}");
-        expect(cms).toContain('{renderSidebarMediaFieldControls({');
+        expect(cms).toContain("import { CmsMediaFieldControl } from '@/builder/cms/CmsMediaFieldControl';");
+        expect(cms).toContain('<CmsMediaFieldControl');
+        expect(mediaFieldControl).toContain("hasValue ? t('Replace Image') : t('Upload Image')");
+        expect(mediaFieldControl).toContain("hasValue ? t('Replace Video') : t('Upload Video')");
+        expect(mediaFieldControl).toContain("accept={isVideoField ? 'video/*' : 'image/*'}");
+        expect(mediaFieldControl).toContain("aria-label={t('Remove image')}");
 
         expect(cms).toContain('const renderSidebarLinkObjectFieldControls = (options: {');
         expect(cms).toContain("{t('Label')}");
@@ -41,16 +35,12 @@ describe('CMS element panel UX cleanup wrapper summary contracts (Phase 3 line 1
         expect(cms).toContain("toast.error(parsedExtra.error ?? t('Invalid extra content JSON'))");
     });
 
-    it('documents wrapper-level UX cleanup closure semantics and keeps broader Phase 3 lines explicitly separate', () => {
-        const doc = read('docs/qa/CMS_ELEMENT_PANEL_UX_CLEANUP_PHASE3_WRAPPER_SUMMARY.md');
+    it('documents current canonical builder architecture instead of removed wrapper summary notes', () => {
+        const docs = readCurrentBuilderDocs();
 
-        expect(doc).toContain('PROJECT_ROADMAP_TASKS_KA.md:166');
-        expect(doc).toContain('Closure Semantics (Wrapper Level)');
-        expect(doc).toContain('semantic labels');
-        expect(doc).toContain('media-picker-aware editor');
-        expect(doc).toContain('link objects');
-        expect(doc).toContain('Section props must be a JSON object');
-        expect(doc).toContain('PROJECT_ROADMAP_TASKS_KA.md:154');
-        expect(doc).toContain('PROJECT_ROADMAP_TASKS_KA.md:162');
+        expect(docs).toContain('componentRegistry.ts');
+        expect(docs).toContain('updatePipeline.ts');
+        expect(docs).toContain('Sidebar generates controls from schema');
+        expect(docs).toContain('schema-driven builder');
     });
 });

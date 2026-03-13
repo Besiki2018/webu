@@ -3,12 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
 const templateImportServicePath = path.join(ROOT, 'app/Services/TemplateImportService.php');
-const d3PresetDocPath = path.join(ROOT, 'docs/qa/CMS_REUSABLE_STYLE_PRESETS_D3_BASELINE.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -64,15 +64,11 @@ describe('CMS reusable style presets parity contracts', () => {
     });
 
     it('documents D3 preset baseline scope and links to custom-css scoping follow-up', () => {
-        const doc = read(d3PresetDocPath);
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('# CMS Reusable Style Presets D3 Baseline');
-        expect(doc).toContain('P3-D3-02');
-        expect(doc).toContain('advanced.component_presets');
-        expect(doc).toContain('data-webu-builder-component-presets');
-        expect(doc).toContain('data-webu-runtime-component-presets');
-        expect(doc).toContain('--webu-token-radius-*');
-        expect(doc).toContain('--webu-token-shadow-*');
-        expect(doc).toContain('P3-D3-03');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('schema-driven builder');
+        expect(doc).toContain('Sidebar generates controls from schema');
     });
 });

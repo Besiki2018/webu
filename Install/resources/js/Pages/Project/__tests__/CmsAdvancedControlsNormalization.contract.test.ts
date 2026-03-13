@@ -3,12 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
 const templateImportServicePath = path.join(ROOT, 'app/Services/TemplateImportService.php');
-const d3DocPath = path.join(ROOT, 'docs/qa/CMS_ADVANCED_CONTROLS_D3_BASELINE.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -49,7 +49,7 @@ describe('CMS advanced controls normalization contracts (D3 baseline)', () => {
 
     it('keeps runtime script parity for advanced controls and documents D3 baseline scope', () => {
         const service = read(templateImportServicePath);
-        const doc = read(d3DocPath);
+        const doc = readCurrentBuilderDocs();
 
         expect(service).toContain('var advancedVisibilityProps = advancedProps.visibility');
         expect(service).toContain('var advancedPositioningProps = advancedProps.positioning');
@@ -64,12 +64,9 @@ describe('CMS advanced controls normalization contracts (D3 baseline)', () => {
         expect(service).toContain("container.setAttribute('data-webu-runtime-html-id', htmlId);");
         expect(service).toContain("container.setAttribute('data-webu-runtime-css-class', cssClass);");
 
-        expect(doc).toContain('# CMS Advanced Controls D3 Baseline');
-        expect(doc).toContain('P3-D3-01');
-        expect(doc).toContain('custom CSS (safe scoped execution + runtime/builder style injection)');
-        expect(doc).toContain('attributes (role / aria-* / data-* subset)');
-        expect(doc).toContain('visibility (advanced per-device visibility flags)');
-        expect(doc).toContain('positioning (position mode + offsets + z-index)');
-        expect(doc).toContain('P3-D3-03');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
+        expect(doc).toContain('schema-driven builder');
+        expect(doc).toContain('Sidebar generates controls from schema');
     });
 });

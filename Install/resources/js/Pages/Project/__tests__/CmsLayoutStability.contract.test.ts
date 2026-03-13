@@ -16,14 +16,17 @@ describe('CMS layout stability contract', () => {
     it('keeps CMS admin shell overflow guards on main/content wrappers', () => {
         const adminLayout = read(adminLayoutPath);
 
-        expect(adminLayout).toContain("cms-admin-shell__main overflow-x-hidden");
-        expect(adminLayout).toContain("cms-admin-shell__content overflow-x-hidden");
+        expect(adminLayout).toContain("cn('min-h-screen min-w-0 overflow-x-hidden', isCmsVariant && 'cms-admin-shell__main cms-admin-shell__main--embedded')");
+        expect(adminLayout).toContain("isCmsVariant && 'cms-admin-shell__content cms-admin-shell__content--embedded'");
+        expect(adminLayout).toContain("isCmsVariant && 'cms-admin-shell__content'");
     });
 
     it('keeps visual builder and CMS modal z-index layering above builder canvas', () => {
         const cms = read(cmsPagePath);
 
-        expect(cms).toContain('cms-visual-builder fixed inset-0 z-[120] bg-background');
+        expect(cms).toContain("'cms-visual-builder'");
+        expect(cms).toContain("'cms-visual-builder--embedded'");
+        expect(cms).toContain("'cms-visual-builder--standalone'");
         expect(cms).toContain("const cmsModalOverlayClassName = 'z-[220]';");
         expect(cms).toContain("const cmsModalContentClassName = 'z-[221]';");
     });

@@ -388,7 +388,7 @@ export function useChatEmbeddedBuilderBridge({
             return;
         }
 
-        if (!isBuilderSidebarReady || !isBuilderPreviewReady) {
+        if (!isBuilderSidebarReady) {
             return;
         }
 
@@ -397,8 +397,15 @@ export function useChatEmbeddedBuilderBridge({
             return;
         }
 
+        const deferredQueue: BuilderBridgeMessage[] = [];
         const queue = builderSidebarCommandQueueRef.current.splice(0);
         queue.forEach((message) => {
+            const requiresPreviewReady = message.type !== 'BUILDER_SAVE_DRAFT';
+            if (requiresPreviewReady && !isBuilderPreviewReady) {
+                deferredQueue.push(message);
+                return;
+            }
+
             logChatBridge({
                 phase: 'send',
                 target: 'sidebar',
@@ -407,6 +414,9 @@ export function useChatEmbeddedBuilderBridge({
             });
             postBuilderBridgeEnvelope(frameWindow, window.location.origin, message);
         });
+        if (deferredQueue.length > 0) {
+            builderSidebarCommandQueueRef.current.unshift(...deferredQueue);
+        }
     }, [builderSidebarCommandQueueRef, builderSidebarFrameRef, isBuilderPreviewReady, isBuilderSidebarReady, logChatBridge]);
 
     const postBuilderMessage = useCallback((message: BuilderBridgeMessage) => {
@@ -415,7 +425,8 @@ export function useChatEmbeddedBuilderBridge({
         }
 
         const frameWindow = builderSidebarFrameRef.current?.contentWindow;
-        if (!frameWindow || !isBuilderSidebarReady || !isBuilderPreviewReady) {
+        const requiresPreviewReady = message.type !== 'BUILDER_SAVE_DRAFT';
+        if (!frameWindow || !isBuilderSidebarReady || (requiresPreviewReady && !isBuilderPreviewReady)) {
             builderSidebarCommandQueueRef.current.push(message);
             requestSidebarState('queued-command');
             return;
@@ -621,7 +632,7 @@ export function useChatEmbeddedBuilderBridge({
     ]);
 
     useEffect(() => {
-        if (viewMode !== 'inspect' || typeof window === 'undefined') {
+        if (typeof window === 'undefined') {
             return;
         }
 

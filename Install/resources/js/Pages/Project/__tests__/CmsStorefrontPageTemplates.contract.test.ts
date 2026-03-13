@@ -99,7 +99,7 @@ describe('CMS storefront page template presets contracts', () => {
 
         expect(cms).toContain("headerVariant: 'webu_header_01'");
         expect(cms).toContain("footerVariant: 'webu_footer_01'");
-        expect(cms).toContain("layout.header_section_key = builderLayoutForm.headerVariant || 'webu_header_01';");
-        expect(cms).toContain("layout.footer_section_key = builderLayoutForm.footerVariant || 'webu_footer_01';");
+        expect(cms).toContain("layout.header_section_key = effectiveLayoutForm.headerVariant || 'webu_header_01';");
+        expect(cms).toContain("layout.footer_section_key = effectiveLayoutForm.footerVariant || 'webu_footer_01';");
     });
 });

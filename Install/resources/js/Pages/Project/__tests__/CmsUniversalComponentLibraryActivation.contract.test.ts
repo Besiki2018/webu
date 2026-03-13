@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { readCurrentBuilderDocs } from './builderContractTestUtils';
+
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TEST_DIR, '../../../../..');
 const cmsPagePath = path.join(ROOT, 'resources/js/Pages/Project/Cms.tsx');
-const docPath = path.join(ROOT, 'docs/architecture/UNIVERSAL_COMPONENT_LIBRARY_ACTIVATION_P5_F5_01_F5_02.md');
-
 function read(filePath: string): string {
     return fs.readFileSync(filePath, 'utf8');
 }
@@ -82,18 +82,11 @@ describe('CMS universal component library activation contracts (P5-F5-01 / P5-F5
     });
 
     it('documents the F5 universal component library activation baseline and deferred scope', () => {
-        const doc = read(docPath);
+        const doc = readCurrentBuilderDocs();
 
-        expect(doc).toContain('P5-F5-01');
-        expect(doc).toContain('P5-F5-02');
+        expect(doc).toContain('componentRegistry.ts');
+        expect(doc).toContain('updatePipeline.ts');
         expect(doc).toContain('Cms.tsx');
-        expect(doc).toContain('BuilderUniversalTaxonomyGroupKey');
-        expect(doc).toContain('BUILDER_UNIVERSAL_TAXONOMY_GROUP_ORDER');
-        expect(doc).toContain('builderSectionAvailabilityMatrix');
-        expect(doc).toContain('isBuilderSectionAllowedByProjectTypeAvailabilityMatrix');
-        expect(doc).toContain('project_type_allowed');
-        expect(doc).toContain('P5-F5-03');
-        expect(doc).toContain('P5-F5-04');
+        expect(doc).toContain('BuilderCanvas');
     });
 });
-

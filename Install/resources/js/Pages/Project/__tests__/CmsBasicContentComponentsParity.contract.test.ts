@@ -42,7 +42,8 @@ describe('CMS basic content components parity contracts', () => {
         const cms = read(cmsPagePath);
 
         [
-            "const [builderPreviewInteractionState, setBuilderPreviewInteractionState] = useState<BuilderInteractionPreviewState>('normal');",
+            'const builderPreviewInteractionState = currentInteractionState as BuilderInteractionPreviewState;',
+            'const setBuilderPreviewInteractionState = setCurrentInteractionState as (next: BuilderInteractionPreviewState) => void;',
             'resolveGeneralFoundationRuntimeStyleResolution',
             'interactionState: builderPreviewInteractionState',
             'applyGeneralFoundationComponentStylePresetsPreview',

@@ -449,6 +449,66 @@ describe('InspectPreview', () => {
         });
     });
 
+    it('keeps preview-mode element targeting available for chat selection context', async () => {
+        const onElementSelect = vi.fn();
+        render(
+            <InspectPreview
+                {...defaultProps}
+                mode="preview"
+                onElementSelect={onElementSelect}
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: {
+                        title: 'Launch faster',
+                        image: '/hero.jpg',
+                        buttonText: 'Shop now',
+                        buttonLink: '/shop',
+                    },
+                }]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc } = createHeroPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            expect(iframeDoc.querySelector('[data-webu-field], [data-webu-field-url], [data-webu-field-scope]')).toBeTruthy();
+        });
+
+        const hitLayer = iframe.parentElement?.querySelector<HTMLDivElement>('div[aria-hidden="true"]');
+        const annotatedTarget = iframeDoc.querySelector<HTMLElement>('[data-webu-field="title"]')
+            ?? iframeDoc.querySelector<HTMLElement>('[data-webu-field], [data-webu-field-url], [data-webu-field-scope]');
+        expect(hitLayer).toBeTruthy();
+        expect(annotatedTarget).toBeTruthy();
+
+        Object.defineProperty(iframeDoc, 'elementsFromPoint', {
+            configurable: true,
+            value: vi.fn(() => annotatedTarget ? [annotatedTarget] : []),
+        });
+        Object.defineProperty(iframeDoc, 'elementFromPoint', {
+            configurable: true,
+            value: vi.fn(() => annotatedTarget ?? null),
+        });
+
+        fireEvent.click(hitLayer!, { clientX: 24, clientY: 24 });
+
+        await waitFor(() => {
+            expect(onElementSelect).toHaveBeenCalledTimes(1);
+            expect(onElementSelect).toHaveBeenCalledWith(expect.objectContaining({
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                targetId: 'hero-1::title',
+                parameterName: 'title',
+            }));
+        });
+    });
+
     it('keeps section selection working when the live structure snapshot is stale', async () => {
         const onElementSelect = vi.fn();
         render(
