@@ -199,6 +199,15 @@ class TemplateImportServiceTest extends TestCase
         $this->assertStringContainsString("container.setAttribute('data-testid', dataTestIdAttr);", $runtime);
         $this->assertStringContainsString("container.setAttribute('aria-label', ariaLabelAttr);", $runtime);
         $this->assertStringContainsString('if (isGeneralSectionType(type) && container instanceof HTMLElement) {', $runtime);
+        $this->assertStringContainsString('function readRuntimeFirstStringProp(props, keys) {', $runtime);
+        $this->assertStringContainsString('function normalizeRuntimeComponentProps(props) {', $runtime);
+        $this->assertStringContainsString('function readRuntimeCallToActionPayload(props) {', $runtime);
+        $this->assertStringContainsString("var effectiveProps = normalizeRuntimeComponentProps(normalizeFixedSectionProps(type, props) || props);", $runtime);
+        $this->assertStringContainsString("var headingValue = readRuntimeFirstStringProp(effectiveProps, ['title', 'headline', 'heading']);", $runtime);
+        $this->assertStringContainsString("var subtitleValue = readRuntimeFirstStringProp(effectiveProps, ['subtitle', 'description', 'body', 'text']);", $runtime);
+        $this->assertStringContainsString('var ctaPayload = readRuntimeCallToActionPayload(effectiveProps);', $runtime);
+        $this->assertStringContainsString("var localeQuery = state.locale ? ('?locale=' + encodeURIComponent(state.locale)) : '';", $runtime);
+        $this->assertStringContainsString("'/pages/' + encodeURIComponent(String(page.id)) + localeQuery", $runtime);
     }
 
     public function test_import_command_preserves_utf8_text_in_default_section_props(): void

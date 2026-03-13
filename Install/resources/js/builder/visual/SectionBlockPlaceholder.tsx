@@ -32,12 +32,14 @@ export function SectionBlockPlaceholder({ section }: { section: BuilderSection }
     const subtitle = getStr(props, 'subtitle', 'description', 'body');
     const label = getStr(props, 'label', 'button_label', 'cta_label');
     const imageUrl = getStr(props, 'image_url', 'src', 'url');
+    const headingText = title || 'Unknown component';
+    const detailText = title ? subtitle : section.type;
 
     return (
         <div className="px-3 py-2 text-left space-y-1">
             <p className="text-[10px] text-muted-foreground/80 uppercase tracking-wide truncate">{section.type}</p>
-            {title ? <p className="text-sm font-medium text-foreground truncate">{title}</p> : null}
-            {subtitle ? <p className="text-xs text-muted-foreground truncate">{subtitle}</p> : null}
+            <p className="text-sm font-medium text-foreground truncate">{headingText}</p>
+            {detailText ? <p className="text-xs text-muted-foreground truncate">{detailText}</p> : null}
             {label ? <span className="inline-block text-xs px-2 py-0.5 rounded bg-muted">{label}</span> : null}
             {imageUrl ? (
                 <div className="mt-1 rounded overflow-hidden bg-muted/50 max-h-20 flex items-center justify-center">

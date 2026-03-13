@@ -8,7 +8,11 @@ function makeSection(localId: string, type = 'webu_general_hero_01'): SectionDra
     return {
         localId,
         type,
-        propsText: JSON.stringify({ headline: localId }),
+        propsText: JSON.stringify({
+            title: `${localId} title`,
+            buttonLink: `/${localId}`,
+            image: `/${localId}.jpg`,
+        }),
         propsError: null,
         bindingMeta: null,
     };
@@ -74,6 +78,57 @@ describe('useCmsEmbeddedBuilderMutationHandlers', () => {
             type: 'builder:mutation-result',
             requestId: 'req-add-1',
             mutation: 'add-section',
+            success: true,
+            changed: true,
+        }));
+    });
+
+    it('applies text, link, and image change sets through one mutation state update', () => {
+        const options = buildOptions();
+        const emit = vi.fn();
+        const { result } = renderHook(() => useCmsEmbeddedBuilderMutationHandlers(options));
+
+        act(() => {
+            result.current.handleEmbeddedBuilderChangeSet({
+                requestId: 'req-change-set-1',
+                changeSet: {
+                    operations: [
+                        {
+                            op: 'updateText',
+                            sectionId: 'hero-1',
+                            path: 'title',
+                            value: 'Updated title',
+                        },
+                        {
+                            op: 'setField',
+                            sectionId: 'hero-1',
+                            path: 'buttonLink',
+                            value: '/updated-link',
+                        },
+                        {
+                            op: 'replaceImage',
+                            sectionId: 'hero-1',
+                            url: 'https://example.com/updated.jpg',
+                            alt: 'Updated image',
+                        },
+                    ],
+                },
+            }, emit);
+        });
+
+        expect(options.applyMutationState).toHaveBeenCalledTimes(1);
+        const nextState = (options.applyMutationState as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+            sectionsDraft: SectionDraft[];
+        };
+        const nextProps = JSON.parse(nextState.sectionsDraft[0]?.propsText ?? '{}') as Record<string, unknown>;
+        expect(nextProps.title).toBe('Updated title');
+        expect(nextProps.buttonLink).toBe('/updated-link');
+        expect(nextProps.image).toBe('https://example.com/updated.jpg');
+        expect(nextProps.imageAlt).toBe('Updated image');
+        expect(emit).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'builder:mutation-result',
+            requestId: 'req-change-set-1',
+            mutation: 'apply-change-set',
             success: true,
             changed: true,
         }));

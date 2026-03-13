@@ -194,6 +194,17 @@ function createHeroPreviewDocument() {
     };
 }
 
+function createEmptyPreviewDocument() {
+    const iframeDoc = document.implementation.createHTMLDocument('');
+    const main = iframeDoc.createElement('main');
+    iframeDoc.body.appendChild(main);
+
+    return {
+        iframeDoc,
+        main,
+    };
+}
+
 function toInspectorFields(componentKey: string, props: Record<string, unknown>): InspectorSchemaField[] {
     const schema = getComponentSchema(componentKey);
     const resolvedProps = resolveComponentProps(componentKey, props);
@@ -601,5 +612,212 @@ describe('InspectPreview', () => {
         expect(mentions[1]?.parameterName).toBeTruthy();
         expect(mentions[2]?.parameterName).toBeTruthy();
         expect(new Set(mentions.map((mention) => mention.targetId)).size).toBe(3);
+    });
+
+    it('reconciles optimistic placeholders instead of stacking duplicates on repeated unsaved syncs', async () => {
+        const { rerender } = render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'draft-hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Draft hero',
+                    props: {},
+                }]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc } = createEmptyPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            expect(iframeDoc.querySelectorAll('[data-webu-chat-placeholder="true"]')).toHaveLength(1);
+        });
+
+        rerender(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'draft-hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Draft hero updated',
+                    props: {},
+                }]}
+            />
+        );
+
+        await waitFor(() => {
+            const placeholders = iframeDoc.querySelectorAll<HTMLElement>('[data-webu-chat-placeholder="true"]');
+            expect(placeholders).toHaveLength(1);
+            expect(placeholders[0]?.textContent).toContain('Draft hero updated');
+        });
+    });
+
+    it('keeps placeholder text, link, and image metadata in sync for unsaved sections', async () => {
+        const { rerender } = render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'draft-hero-2',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Draft hero',
+                    props: {
+                        title: 'Draft hero',
+                        subtitle: 'Initial subtitle',
+                        buttonText: 'Explore now',
+                        buttonLink: '/shop',
+                        image_url: '/hero-initial.jpg',
+                    },
+                }]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc } = createEmptyPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            const placeholder = iframeDoc.querySelector<HTMLElement>('[data-webu-chat-placeholder="true"]');
+            expect(placeholder).toBeTruthy();
+            expect(placeholder?.textContent).toContain('Draft hero');
+            expect(placeholder?.textContent).toContain('Initial subtitle');
+            expect(placeholder?.textContent).toContain('Explore now -> /shop');
+            expect(iframeDoc.querySelector<HTMLImageElement>('[data-webu-chat-placeholder-image="true"]')?.getAttribute('src')).toBe('/hero-initial.jpg');
+        });
+
+        rerender(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'draft-hero-2',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Draft hero updated',
+                    props: {
+                        title: 'Draft hero updated',
+                        subtitle: 'Updated subtitle',
+                        buttonText: 'Read more',
+                        buttonLink: '/offers',
+                        image_url: '/hero-updated.jpg',
+                    },
+                }]}
+            />
+        );
+
+        await waitFor(() => {
+            const placeholder = iframeDoc.querySelector<HTMLElement>('[data-webu-chat-placeholder="true"]');
+            expect(placeholder).toBeTruthy();
+            expect(placeholder?.textContent).toContain('Draft hero updated');
+            expect(placeholder?.textContent).toContain('Updated subtitle');
+            expect(placeholder?.textContent).toContain('Read more -> /offers');
+            expect(iframeDoc.querySelector<HTMLImageElement>('[data-webu-chat-placeholder-image="true"]')?.getAttribute('src')).toBe('/hero-updated.jpg');
+        });
+    });
+
+    it('removes a placeholder once a real preview section with the same local id exists', async () => {
+        const liveStructureItems = [{
+            localId: 'draft-hero-1',
+            sectionKey: 'webu_general_hero_01',
+            label: 'Hero',
+            previewText: 'Draft hero',
+            props: {},
+        }];
+        const { rerender } = render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={liveStructureItems}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc, main } = createEmptyPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            expect(iframeDoc.querySelectorAll('[data-webu-chat-placeholder="true"]')).toHaveLength(1);
+        });
+
+        const realSection = iframeDoc.createElement('section');
+        realSection.setAttribute('data-webu-section', 'webu_general_hero_01');
+        realSection.setAttribute('data-webu-section-local-id', 'draft-hero-1');
+        const title = iframeDoc.createElement('h1');
+        title.textContent = 'Saved hero';
+        realSection.appendChild(title);
+        main.appendChild(realSection);
+
+        rerender(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[...liveStructureItems]}
+            />
+        );
+
+        await waitFor(() => {
+            expect(iframeDoc.querySelectorAll('[data-webu-chat-placeholder="true"]')).toHaveLength(0);
+            expect(iframeDoc.querySelectorAll('[data-webu-section-local-id="draft-hero-1"]')).toHaveLength(1);
+        });
+    });
+
+    it('finalizes a placeholder once real preview content is wrapped with the matching local id', async () => {
+        const liveStructureItems = [{
+            localId: 'draft-hero-3',
+            sectionKey: 'webu_general_hero_01',
+            label: 'Hero',
+            previewText: 'Draft hero',
+            props: {
+                title: 'Draft hero',
+            },
+        }];
+        const { rerender } = render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={liveStructureItems}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc, main } = createEmptyPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            expect(iframeDoc.querySelectorAll('[data-webu-chat-placeholder="true"]')).toHaveLength(1);
+        });
+
+        const realContent = iframeDoc.createElement('div');
+        realContent.textContent = 'Saved hero';
+        main.appendChild(realContent);
+
+        rerender(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[...liveStructureItems]}
+            />
+        );
+
+        await waitFor(() => {
+            expect(iframeDoc.querySelectorAll('[data-webu-chat-placeholder="true"]')).toHaveLength(0);
+            expect(iframeDoc.querySelector('[data-webu-section-local-id="draft-hero-3"]')).toBeTruthy();
+            expect(main.querySelectorAll('[data-webu-section-local-id="draft-hero-3"]')).toHaveLength(1);
+        });
     });
 });

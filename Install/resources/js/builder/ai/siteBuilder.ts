@@ -9,11 +9,15 @@
 import type { BuilderComponentInstance } from '../core/types';
 import type { SitePlanResult, PlannedSection } from './sitePlanner';
 import {
-  getEntry,
   DEFAULT_HERO_REGISTRY_ID,
   DEFAULT_FEATURES_REGISTRY_ID,
   DEFAULT_FOOTER_REGISTRY_ID,
 } from '../registry/componentRegistry';
+import {
+  getDefaultProps,
+  isValidComponent,
+  resolveComponentRegistryKey,
+} from '../componentRegistry';
 
 // ---------------------------------------------------------------------------
 // Builder state types (serializable page format)
@@ -51,7 +55,8 @@ function generateSectionId(componentKey: string, index: number): string {
 
 /** Part 13 — Resolve to a registry key when plan has an invalid componentKey (never emit non-registry components). */
 function resolveToRegistryKey(componentKey: string, index: number, total: number): string {
-  if (getEntry(componentKey)) return componentKey;
+  const canonicalKey = resolveComponentRegistryKey(componentKey);
+  if (canonicalKey && isValidComponent(canonicalKey)) return canonicalKey;
   if (total <= 0) return DEFAULT_HERO_REGISTRY_ID;
   if (index === 0) return DEFAULT_HERO_REGISTRY_ID;
   if (index === total - 1) return DEFAULT_FOOTER_REGISTRY_ID;
@@ -109,11 +114,7 @@ export function sectionPlanToComponentTree(
     const section = plan.sections[i]!;
     const { componentKey, variant, props: planProps } = section;
     const safeKey = resolveToRegistryKey(componentKey, i, total);
-    const entry = getEntry(safeKey);
-    const defaults =
-      entry?.defaults && typeof entry.defaults === 'object'
-        ? (entry.defaults as Record<string, unknown>)
-        : {};
+    const defaults = getDefaultProps(safeKey);
     const id = generateId(safeKey, i);
     const overrideProps = { ...(planProps ?? {}), ...(propsByIndex[i] ?? {}) };
     const mergedProps = { ...defaults, ...overrideProps };

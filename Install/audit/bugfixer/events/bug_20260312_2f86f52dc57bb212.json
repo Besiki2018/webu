@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260312_2f86f52dc57bb212",
+    "timestamp": "2026-03-12T20:34:07+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019cbe17-dd88-728e-940f-da7443accae2?tab=inspect",
+    "event": "[console.error] Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s \n    at InspectPreview (http:\/\/[::1]:5173\/resources\/js\/components\/Preview\/InspectPreview.tsx?t=1773347563351:155:3)\n    at Suspense\n    at div\n    at div\n    at BuilderPreviewSurface (http:\/\/[::1]:5173\/resources\/js\/builder\/workspace\/BuilderPreviewSurface.tsx:19:3)\n    at div\n    at BuilderWorkspaceShell (http:\/\/[::1]:5173\/resources\/js\/builder\/workspace\/BuilderWorkspaceShell.tsx:18:3)\n    at div\n    at Chat (http:\/\/[::1]:5173\/resources\/js\/Pages\/Chat.tsx?t=1773347563351:151:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/LanguageContext.tsx:715:36)\n    at AppWrapper (http:\/\/[::1]:5173\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=d0c01302:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5173\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/ThemeContext.tsx:41:33)",
+    "stack": null,
+    "context": {
+        "sectionId": null,
+        "componentStack": null
+    },
+    "dedupKey": "2f86f52dc57bb212",
+    "frequency": 1
+}

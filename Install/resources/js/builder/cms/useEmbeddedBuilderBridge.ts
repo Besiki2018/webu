@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
     hasBuilderBridgePageIdentity,
     payloadTargetsBuilderBridgePage,
@@ -25,6 +25,7 @@ import {
     inspectBuilderBridgeEnvelope,
     logBuilderBridgeDiagnostic,
     postBuilderBridgeEnvelope,
+    rememberBuilderBridgeEnvelopeSignature,
     type BuilderBridgeMessage,
 } from '@/lib/builderBridge';
 
@@ -157,9 +158,14 @@ export function useEmbeddedBuilderBridge({
     onRemoveSection,
     onMoveSection,
 }: UseEmbeddedBuilderBridgeOptions): void {
+    const hasChatBridgeHandshakeRef = useRef(false);
     const lastSelectedTargetEventSignatureRef = useRef<string | null>(null);
     const lastReceivedChatVisualStateSignatureRef = useRef<string | null>(null);
     const lastReceivedChatSelectionSignatureRef = useRef<string | null>(null);
+    const lastEmittedVisualStateSignatureRef = useRef<string | null>(null);
+    const lastEmittedStructureSnapshotSignatureRef = useRef<string | null>(null);
+    const lastEmittedLibrarySnapshotSignatureRef = useRef<string | null>(null);
+    const processedChatEnvelopeSignaturesRef = useRef<Set<string>>(new Set());
     const targetOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const logSidebarBridge = (input: {
         phase: 'send' | 'receive' | 'ignore' | 'drop';
@@ -175,7 +181,7 @@ export function useEmbeddedBuilderBridge({
         });
     };
 
-    const emitEnvelope = (message: BuilderBridgeMessage) => {
+    const emitEnvelope = useCallback((message: BuilderBridgeMessage) => {
         if (typeof window === 'undefined' || window.parent === window) {
             return;
         }
@@ -186,9 +192,9 @@ export function useEmbeddedBuilderBridge({
             message,
         });
         postBuilderBridgeEnvelope(window.parent, targetOrigin, message);
-    };
+    }, [targetOrigin]);
 
-    const emit: EmitEmbeddedBuilderMessage = (message) => {
+    const emit: EmitEmbeddedBuilderMessage = useCallback((message) => {
         const type = readTrimmedString(message.type);
         if (!type) {
             logSidebarBridge({
@@ -289,9 +295,19 @@ export function useEmbeddedBuilderBridge({
             requestId: baseInput.requestId,
             reason: 'unsupported-legacy-emit-message',
         });
-    };
+    }, [
+        emitEnvelope,
+        projectId,
+        revisionId,
+        revisionVersion,
+        selectedPage.pageId,
+        selectedPage.pageSlug,
+        selectedPage.pageTitle,
+        stateVersion,
+        structureHash,
+    ]);
 
-    const emitCurrentReady = (requestId?: string | null) => {
+    const emitCurrentReady = useCallback((requestId?: string | null) => {
         emitEnvelope(buildBuilderReadyMessage({
             channel: 'sidebar',
             stateVersion,
@@ -304,9 +320,21 @@ export function useEmbeddedBuilderBridge({
             page: selectedPage,
             requestId: requestId ?? null,
         }));
-    };
+    }, [
+        emitEnvelope,
+        projectId,
+        revisionId,
+        revisionVersion,
+        selectedPage,
+        stateVersion,
+        structureHash,
+    ]);
 
-    const emitCurrentVisualState = (requestId?: string | null) => {
+    const emitCurrentVisualState = useCallback((requestId?: string | null) => {
+        if (!requestId && !hasChatBridgeHandshakeRef.current) {
+            return;
+        }
+
         const visualStateSignature = buildBuilderBridgeVisualStateSignature({
             pageId: selectedPage.pageId,
             pageSlug: selectedPage.pageSlug,
@@ -321,6 +349,11 @@ export function useEmbeddedBuilderBridge({
             return;
         }
 
+        if (!requestId && lastEmittedVisualStateSignatureRef.current === visualStateSignature) {
+            return;
+        }
+
+        lastEmittedVisualStateSignatureRef.current = visualStateSignature;
         emitEnvelope(buildBuilderSyncStateMessage({
             viewport: builderViewport,
             structureOpen: !isStructurePanelCollapsed,
@@ -335,10 +368,24 @@ export function useEmbeddedBuilderBridge({
             page: selectedPage,
             requestId: requestId ?? null,
         }));
-    };
+    }, [
+        builderInteractionState,
+        builderViewport,
+        emitEnvelope,
+        isStructurePanelCollapsed,
+        projectId,
+        revisionId,
+        revisionVersion,
+        selectedPage,
+        stateVersion,
+        structureHash,
+    ]);
 
-    const emitCurrentSelectedTarget = (requestId?: string | null, force = false) => {
+    const emitCurrentSelectedTarget = useCallback((requestId?: string | null, force = false) => {
         if (!isEmbeddedVisualBuilder || typeof window === 'undefined' || window.parent === window) {
+            return;
+        }
+        if (!requestId && !force && !hasChatBridgeHandshakeRef.current) {
             return;
         }
 
@@ -399,10 +446,30 @@ export function useEmbeddedBuilderBridge({
                 requestId: requestId ?? null,
             }));
         }
-    };
+    }, [
+        buildSectionPreviewText,
+        builderViewport,
+        emitEnvelope,
+        getBuilderSectionExplicitProps,
+        isEmbeddedVisualBuilder,
+        normalizeSectionTypeKey,
+        projectId,
+        sectionDisplayLabelByKey,
+        selectedBuilderTarget,
+        selectedFixedSectionKey,
+        selectedPage,
+        selectedSectionDraft,
+        selectedSectionLocalId,
+        selectedTargetInteractionState,
+        selectedTargetViewport,
+        t,
+    ]);
 
-    const emitCurrentStructureSnapshot = (requestId?: string | null) => {
+    const emitCurrentStructureSnapshot = useCallback((requestId?: string | null) => {
         if (!isEmbeddedSidebarMode) {
+            return;
+        }
+        if (!requestId && !hasChatBridgeHandshakeRef.current) {
             return;
         }
 
@@ -422,6 +489,22 @@ export function useEmbeddedBuilderBridge({
             };
         });
 
+        const structureSnapshotSignature = JSON.stringify({
+            pageId: selectedPage.pageId ?? null,
+            pageSlug: selectedPage.pageSlug ?? null,
+            pageTitle: selectedPage.pageTitle ?? null,
+            stateVersion,
+            structureHash,
+            revisionId,
+            revisionVersion,
+            sections,
+        });
+
+        if (!requestId && lastEmittedStructureSnapshotSignatureRef.current === structureSnapshotSignature) {
+            return;
+        }
+
+        lastEmittedStructureSnapshotSignatureRef.current = structureSnapshotSignature;
         emitEnvelope(buildBuilderSyncStateMessage({
             stateVersion,
             structureHash,
@@ -434,10 +517,27 @@ export function useEmbeddedBuilderBridge({
             page: selectedPage,
             requestId: requestId ?? null,
         }));
-    };
+    }, [
+        emitEnvelope,
+        getBuilderSectionExplicitProps,
+        isEmbeddedSidebarMode,
+        normalizeSectionTypeKey,
+        projectId,
+        revisionId,
+        revisionVersion,
+        sectionDisplayLabelByKey,
+        sectionsDraft,
+        selectedPage,
+        stateVersion,
+        structureHash,
+        t,
+    ]);
 
-    const emitCurrentLibrarySnapshot = (requestId?: string | null) => {
+    const emitCurrentLibrarySnapshot = useCallback((requestId?: string | null) => {
         if (!isEmbeddedSidebarMode) {
+            return;
+        }
+        if (!requestId && !hasChatBridgeHandshakeRef.current) {
             return;
         }
 
@@ -451,6 +551,22 @@ export function useEmbeddedBuilderBridge({
             };
         });
 
+        const librarySnapshotSignature = JSON.stringify({
+            pageId: selectedPage.pageId ?? null,
+            pageSlug: selectedPage.pageSlug ?? null,
+            pageTitle: selectedPage.pageTitle ?? null,
+            stateVersion,
+            structureHash,
+            revisionId,
+            revisionVersion,
+            items,
+        });
+
+        if (!requestId && lastEmittedLibrarySnapshotSignatureRef.current === librarySnapshotSignature) {
+            return;
+        }
+
+        lastEmittedLibrarySnapshotSignatureRef.current = librarySnapshotSignature;
         emitEnvelope(buildBuilderSyncStateMessage({
             stateVersion,
             structureHash,
@@ -463,7 +579,34 @@ export function useEmbeddedBuilderBridge({
             page: selectedPage,
             requestId: requestId ?? null,
         }));
-    };
+    }, [
+        builderSectionLibrary,
+        emitEnvelope,
+        isEmbeddedSidebarMode,
+        normalizeSectionTypeKey,
+        projectId,
+        revisionId,
+        revisionVersion,
+        sectionDisplayLabelByKey,
+        selectedPage,
+        stateVersion,
+        structureHash,
+    ]);
+
+    useEffect(() => {
+        hasChatBridgeHandshakeRef.current = false;
+        lastReceivedChatVisualStateSignatureRef.current = null;
+        lastReceivedChatSelectionSignatureRef.current = null;
+        lastEmittedVisualStateSignatureRef.current = null;
+        lastEmittedStructureSnapshotSignatureRef.current = null;
+        lastEmittedLibrarySnapshotSignatureRef.current = null;
+        lastSelectedTargetEventSignatureRef.current = null;
+        processedChatEnvelopeSignaturesRef.current.clear();
+    }, [
+        projectId,
+        selectedPage.pageId,
+        selectedPage.pageSlug,
+    ]);
 
     useEffect(() => {
         if (!isEmbeddedVisualBuilder || typeof window === 'undefined' || window.parent === window) {
@@ -534,6 +677,18 @@ export function useEmbeddedBuilderBridge({
                 });
                 return;
             }
+
+            if (!rememberBuilderBridgeEnvelopeSignature(processedChatEnvelopeSignaturesRef.current, payload.signature)) {
+                logSidebarBridge({
+                    phase: 'ignore',
+                    target: 'sidebar',
+                    message: payload,
+                    reason: 'duplicate-envelope-signature',
+                });
+                return;
+            }
+
+            hasChatBridgeHandshakeRef.current = true;
 
             if (payload.type === 'BUILDER_REQUEST_STATE') {
                 logSidebarBridge({
@@ -741,15 +896,5 @@ export function useEmbeddedBuilderBridge({
         emitCurrentLibrarySnapshot();
     }, [
         emitCurrentLibrarySnapshot,
-    ]);
-
-    useEffect(() => {
-        lastReceivedChatVisualStateSignatureRef.current = null;
-        lastReceivedChatSelectionSignatureRef.current = null;
-        lastSelectedTargetEventSignatureRef.current = null;
-    }, [
-        projectId,
-        selectedPage.pageId,
-        selectedPage.pageSlug,
     ]);
 }

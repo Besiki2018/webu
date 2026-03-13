@@ -62,7 +62,9 @@ describe('BuilderCanvas registry rendering', () => {
         expect(screen.queryByText('No preview content')).not.toBeInTheDocument();
     });
 
-    it('falls back to placeholder when a section key is not registered', () => {
+    it('renders an explicit unknown component fallback when a section key is not registered', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
         renderBuilderCanvas([
             {
                 localId: 'unknown-1',
@@ -72,8 +74,13 @@ describe('BuilderCanvas registry rendering', () => {
             },
         ]);
 
-        expect(screen.getByText('unknown_section')).toBeInTheDocument();
-        expect(screen.getByText('No preview content')).toBeInTheDocument();
+        expect(screen.getByText('Unknown component: unknown_section')).toBeInTheDocument();
+        expect(consoleError).toHaveBeenCalledWith('[BuilderCanvas] Unknown component', {
+            sectionLocalId: 'unknown-1',
+            sectionType: 'unknown_section',
+        });
+
+        consoleError.mockRestore();
     });
 
     it('renders production-ready previews for basic content components instead of the generic schema card', () => {

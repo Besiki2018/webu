@@ -10,12 +10,15 @@ import type {
 } from '@/builder/editingState';
 import {
     areBuilderEditableTargetsEqual,
+    buildEditableTargetFromMessagePayload,
     buildTargetId,
+    editableTargetToMessagePayload,
     getBuilderTargetPropPaths,
     getBuilderTargetSchemaKey,
     getBuilderTargetStableNodeId,
 } from '@/builder/editingState';
 import { normalizeBuilderSectionDrafts } from '@/builder/model/pageModel';
+import { buildSectionPreviewText, getValueAtPath } from '@/builder/state/sectionProps';
 import type { BuilderSection } from '@/builder/visual/treeUtils';
 import type { DropTarget } from '@/builder/visual/types';
 
@@ -113,7 +116,48 @@ function reconcileBuilderTarget(
         return target;
     }
 
-    return hasSectionLocalId(sectionsDraft, sectionLocalId) ? target : null;
+    const section = sectionsDraft.find((entry) => entry.localId === sectionLocalId) ?? null;
+    if (!section) {
+        return null;
+    }
+
+    const payload = editableTargetToMessagePayload(target);
+    if (!payload) {
+        return target;
+    }
+
+    const nextProps = section.props ?? {};
+    const targetPath = target?.path?.trim() ?? '';
+    const nextTextPreview = targetPath !== ''
+        ? (() => {
+            const nextValue = getValueAtPath(nextProps, targetPath);
+            if (typeof nextValue === 'string' && nextValue.trim() !== '') {
+                return nextValue.trim();
+            }
+            if (typeof nextValue === 'number' || typeof nextValue === 'boolean') {
+                return String(nextValue);
+            }
+
+            return buildSectionPreviewText(
+                nextProps,
+                target?.textPreview ?? '',
+                payload.sectionKey ?? payload.componentType ?? section.type,
+            );
+        })()
+        : buildSectionPreviewText(
+            nextProps,
+            target?.textPreview ?? '',
+            payload.sectionKey ?? payload.componentType ?? section.type,
+        );
+
+    return buildEditableTargetFromMessagePayload({
+        ...payload,
+        sectionLocalId: section.localId,
+        sectionKey: payload.sectionKey ?? section.type,
+        componentType: payload.componentType ?? section.type,
+        props: nextProps,
+        textPreview: nextTextPreview,
+    });
 }
 
 function shouldKeepCurrentBuilderTarget(
@@ -164,7 +208,6 @@ export interface BuilderEditingStoreState {
     isPreviewReady: boolean;
     isSidebarReady: boolean;
     lastMutationId: string | null;
-    lastSyncedAt: number | null;
     setSectionsDraft: (next: SetStateActionLike<SectionDraft[]>) => void;
     setSelectedSectionLocalId: (next: SetStateActionLike<string | null>) => void;
     setSelectedBuilderTarget: (next: SetStateActionLike<BuilderEditableTarget | null>) => void;
@@ -201,7 +244,6 @@ export interface BuilderEditingStoreState {
         currentBreakpoint?: BuilderBreakpoint;
         currentInteractionState?: BuilderInteractionState;
         builderMode?: BuilderSidebarMode;
-        syncedAt?: number | null;
         mutationId?: string | null;
     }) => void;
     markPreviewReady: (ready?: boolean) => void;
@@ -248,15 +290,89 @@ export const createInitialBuilderEditingState = () => ({
     isPreviewReady: false,
     isSidebarReady: false,
     lastMutationId: null,
-    lastSyncedAt: null,
 });
+
+function reconcileStructureState(
+    state: Pick<
+        BuilderEditingStoreState,
+        | 'selectedSectionLocalId'
+        | 'selectedBuilderTarget'
+        | 'hoveredBuilderTarget'
+        | 'builderHoveredElementId'
+    >,
+    sectionsDraft: SectionDraft[],
+    overrides?: {
+        selectedSectionLocalId?: string | null;
+        selectedBuilderTarget?: BuilderEditableTarget | null;
+        hoveredBuilderTarget?: BuilderEditableTarget | null;
+        builderHoveredElementId?: string | null;
+    },
+): Pick<
+    BuilderEditingStoreState,
+    | 'sectionsDraft'
+    | 'selectedSectionLocalId'
+    | 'selectedBuilderTarget'
+    | 'hoveredBuilderTarget'
+    | 'builderHoveredElementId'
+    | 'selectedTargetId'
+    | 'selectedTargetType'
+    | 'selectedNodePath'
+    | 'selectedNodeId'
+    | 'selectedComponentKey'
+    | 'selectedSchemaKey'
+    | 'selectedPropPaths'
+    | 'selectedElementId'
+    | 'selectedComponentType'
+    | 'selectedComponentName'
+    | 'selectedPath'
+    | 'selectedComponentProps'
+    | 'hoveredTargetId'
+    | 'hoveredElementId'
+> {
+    const selectedBuilderTarget = reconcileBuilderTarget(
+        overrides && hasOwnKey(overrides, 'selectedBuilderTarget')
+            ? overrides.selectedBuilderTarget ?? null
+            : state.selectedBuilderTarget,
+        sectionsDraft,
+    );
+    const explicitSelectedSectionLocalId = overrides && hasOwnKey(overrides, 'selectedSectionLocalId')
+        ? overrides.selectedSectionLocalId ?? null
+        : state.selectedSectionLocalId;
+    const selectedSectionLocalId = hasSectionLocalId(sectionsDraft, explicitSelectedSectionLocalId)
+        ? explicitSelectedSectionLocalId
+        : (selectedBuilderTarget?.sectionLocalId ?? null);
+    const hoveredBuilderTarget = reconcileBuilderTarget(
+        overrides && hasOwnKey(overrides, 'hoveredBuilderTarget')
+            ? overrides.hoveredBuilderTarget ?? null
+            : state.hoveredBuilderTarget,
+        sectionsDraft,
+    );
+    const builderHoveredElementId = hoveredBuilderTarget
+        ? (
+            overrides && hasOwnKey(overrides, 'builderHoveredElementId')
+                ? overrides.builderHoveredElementId ?? null
+                : state.builderHoveredElementId
+        )
+        : null;
+
+    return {
+        sectionsDraft,
+        selectedSectionLocalId,
+        selectedBuilderTarget,
+        hoveredBuilderTarget,
+        builderHoveredElementId,
+        ...deriveSelectedState(selectedBuilderTarget, selectedSectionLocalId),
+        ...deriveHoveredState(hoveredBuilderTarget, builderHoveredElementId),
+    };
+}
 
 export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => ({
     ...createInitialBuilderEditingState(),
     setSectionsDraft: (next) => {
-        set((state) => ({
-            sectionsDraft: normalizeBuilderSectionDrafts(resolveStateAction(state.sectionsDraft, next)),
-        }));
+        set((state) => reconcileStructureState(
+            state,
+            normalizeBuilderSectionDrafts(resolveStateAction(state.sectionsDraft, next)),
+        ));
     },
     setSelectedSectionLocalId: (next) => {
         set((state) => {
@@ -303,7 +419,6 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
                 selectedSectionLocalId,
                 selectedBuilderTarget: target,
                 ...deriveSelectedState(target, selectedSectionLocalId),
-                lastSyncedAt: Date.now(),
             };
         });
     },
@@ -341,14 +456,20 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
                 hoveredBuilderTarget: target,
                 builderHoveredElementId,
                 ...deriveHoveredState(target, builderHoveredElementId),
-                lastSyncedAt: Date.now(),
             };
         });
     },
     setActiveDragId: (next) => {
-        set((state) => ({
-            activeDragId: resolveStateAction(state.activeDragId, next),
-        }));
+        set((state) => {
+            const activeDragId = resolveStateAction(state.activeDragId, next);
+            if (state.activeDragId === activeDragId) {
+                return state;
+            }
+
+            return {
+                activeDragId,
+            };
+        });
     },
     setBuilderHoveredElementId: (next) => {
         set((state) => {
@@ -365,34 +486,79 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
         });
     },
     setBuilderCurrentDropTarget: (next) => {
-        set((state) => ({
-            builderCurrentDropTarget: resolveStateAction(state.builderCurrentDropTarget, next),
-        }));
+        set((state) => {
+            const builderCurrentDropTarget = resolveStateAction(state.builderCurrentDropTarget, next);
+            if (state.builderCurrentDropTarget === builderCurrentDropTarget) {
+                return state;
+            }
+
+            return {
+                builderCurrentDropTarget,
+            };
+        });
     },
     setCurrentBreakpoint: (next) => {
-        set((state) => ({
-            currentBreakpoint: resolveStateAction(state.currentBreakpoint, next),
-        }));
+        set((state) => {
+            const currentBreakpoint = resolveStateAction(state.currentBreakpoint, next);
+            if (state.currentBreakpoint === currentBreakpoint) {
+                return state;
+            }
+
+            return {
+                currentBreakpoint,
+            };
+        });
     },
     setCurrentInteractionState: (next) => {
-        set((state) => ({
-            currentInteractionState: resolveStateAction(state.currentInteractionState, next),
-        }));
+        set((state) => {
+            const currentInteractionState = resolveStateAction(state.currentInteractionState, next);
+            if (state.currentInteractionState === currentInteractionState) {
+                return state;
+            }
+
+            return {
+                currentInteractionState,
+            };
+        });
     },
     setSelectedSidebarTab: (next) => {
-        set((state) => ({
-            selectedSidebarTab: resolveStateAction(state.selectedSidebarTab, next),
-        }));
+        set((state) => {
+            const selectedSidebarTab = resolveStateAction(state.selectedSidebarTab, next);
+            if (state.selectedSidebarTab === selectedSidebarTab) {
+                return state;
+            }
+
+            return {
+                selectedSidebarTab,
+            };
+        });
     },
     setIsStructurePanelCollapsed: (next) => {
-        set((state) => ({
-            isStructurePanelCollapsed: resolveStateAction(state.isStructurePanelCollapsed, next),
-        }));
+        set((state) => {
+            const isStructurePanelCollapsed = resolveStateAction(state.isStructurePanelCollapsed, next);
+            if (state.isStructurePanelCollapsed === isStructurePanelCollapsed) {
+                return state;
+            }
+
+            return {
+                isStructurePanelCollapsed,
+            };
+        });
     },
     setStructurePanelPosition: (next) => {
-        set((state) => ({
-            structurePanelPosition: resolveStateAction(state.structurePanelPosition, next),
-        }));
+        set((state) => {
+            const structurePanelPosition = resolveStateAction(state.structurePanelPosition, next);
+            if (
+                state.structurePanelPosition.x === structurePanelPosition.x
+                && state.structurePanelPosition.y === structurePanelPosition.y
+            ) {
+                return state;
+            }
+
+            return {
+                structurePanelPosition,
+            };
+        });
     },
     setBuilderMode: (next) => {
         set((state) => {
@@ -450,7 +616,6 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
                 selectedBuilderTarget: nextTarget,
                 ...deriveSelectedState(nextTarget, state.selectedSectionLocalId),
                 lastMutationId: mutationId,
-                lastSyncedAt: Date.now(),
             };
         });
     },
@@ -460,37 +625,31 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
                 return {
                     ...state,
                     lastMutationId: mutationId,
-                    lastSyncedAt: Date.now(),
                 };
             }
 
             const nextSectionsDraft = state.sectionsDraft.filter((section) => section.localId !== state.selectedSectionLocalId);
             const shouldClearHover = state.hoveredBuilderTarget?.sectionLocalId === state.selectedSectionLocalId
                 || state.builderHoveredElementId === state.selectedSectionLocalId;
-            const hoveredBuilderTarget = shouldClearHover ? null : state.hoveredBuilderTarget;
-            const builderHoveredElementId = shouldClearHover ? null : state.builderHoveredElementId;
 
             return {
-                sectionsDraft: nextSectionsDraft,
-                selectedSectionLocalId: null,
-                selectedBuilderTarget: null,
-                hoveredBuilderTarget,
-                builderHoveredElementId,
-                ...deriveHoveredState(hoveredBuilderTarget, builderHoveredElementId),
-                ...deriveSelectedState(null, null),
+                ...reconcileStructureState(state, nextSectionsDraft, {
+                    selectedSectionLocalId: null,
+                    selectedBuilderTarget: null,
+                    hoveredBuilderTarget: shouldClearHover ? null : state.hoveredBuilderTarget,
+                    builderHoveredElementId: shouldClearHover ? null : state.builderHoveredElementId,
+                }),
                 lastMutationId: mutationId,
-                lastSyncedAt: Date.now(),
             };
         });
     },
     insertNode: ({ sectionsDraft, selectedSectionLocalId = null, selectedBuilderTarget = null, mutationId = null }) => {
-        set(() => ({
-            sectionsDraft: normalizeBuilderSectionDrafts(sectionsDraft),
-            selectedSectionLocalId,
-            selectedBuilderTarget,
-            ...deriveSelectedState(selectedBuilderTarget, selectedSectionLocalId),
+        set((state) => ({
+            ...reconcileStructureState(state, normalizeBuilderSectionDrafts(sectionsDraft), {
+                selectedSectionLocalId,
+                selectedBuilderTarget,
+            }),
             lastMutationId: mutationId,
-            lastSyncedAt: Date.now(),
         }));
     },
     syncFromRemote: (payload) => {
@@ -529,64 +688,50 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
                     ?? (hasSectionLocalId(nextSectionsDraft, state.selectedSectionLocalId) ? state.selectedSectionLocalId : null)
                 );
 
-            const nextHoveredTarget = reconcileBuilderTarget(
-                hasHoveredBuilderTargetUpdate ? payload.hoveredBuilderTarget ?? null : state.hoveredBuilderTarget,
-                nextSectionsDraft,
-            );
-            const builderHoveredElementId = nextHoveredTarget ? state.builderHoveredElementId : null;
-
             return {
-                sectionsDraft: nextSectionsDraft,
-                selectedSectionLocalId: nextSelectedSectionLocalId,
-                selectedBuilderTarget: nextSelectedTarget,
-                hoveredBuilderTarget: nextHoveredTarget,
-                builderHoveredElementId,
-                ...deriveHoveredState(nextHoveredTarget, builderHoveredElementId),
+                ...reconcileStructureState(state, nextSectionsDraft, {
+                    selectedSectionLocalId: nextSelectedSectionLocalId,
+                    selectedBuilderTarget: nextSelectedTarget,
+                    hoveredBuilderTarget: hasHoveredBuilderTargetUpdate ? payload.hoveredBuilderTarget ?? null : state.hoveredBuilderTarget,
+                }),
                 currentBreakpoint: payload.currentBreakpoint ?? state.currentBreakpoint,
                 currentInteractionState: payload.currentInteractionState ?? state.currentInteractionState,
                 builderMode: payload.builderMode ?? state.builderMode,
                 builderSidebarMode: payload.builderMode ?? state.builderSidebarMode,
-                ...deriveSelectedState(nextSelectedTarget, nextSelectedSectionLocalId),
                 lastMutationId: payload.mutationId ?? null,
-                lastSyncedAt: payload.syncedAt ?? Date.now(),
             };
         });
     },
     markPreviewReady: (ready = true) => {
-        set(() => ({
-            isPreviewReady: ready,
-            lastSyncedAt: Date.now(),
-        }));
+        set((state) => {
+            if (state.isPreviewReady === ready) {
+                return state;
+            }
+
+            return {
+                isPreviewReady: ready,
+            };
+        });
     },
     markSidebarReady: (ready = true) => {
-        set(() => ({
-            isSidebarReady: ready,
-            lastSyncedAt: Date.now(),
-        }));
+        set((state) => {
+            if (state.isSidebarReady === ready) {
+                return state;
+            }
+
+            return {
+                isSidebarReady: ready,
+            };
+        });
     },
     applyMutationState: (next) => {
         set((state) => {
-            const normalizedSectionsDraft = normalizeBuilderSectionDrafts(next.sectionsDraft);
-            const selectedBuilderTarget = reconcileBuilderTarget(next.selectedBuilderTarget, normalizedSectionsDraft);
-            const selectedSectionLocalId = hasSectionLocalId(
-                normalizedSectionsDraft,
-                next.selectedSectionLocalId,
-            )
-                ? next.selectedSectionLocalId
-                : (selectedBuilderTarget?.sectionLocalId ?? null);
-            const hoveredBuilderTarget = reconcileBuilderTarget(state.hoveredBuilderTarget, normalizedSectionsDraft);
-            const builderHoveredElementId = hoveredBuilderTarget ? state.builderHoveredElementId : null;
-
             return {
-                sectionsDraft: normalizedSectionsDraft,
-                selectedSectionLocalId,
-                selectedBuilderTarget,
-                hoveredBuilderTarget,
-                builderHoveredElementId,
-                ...deriveHoveredState(hoveredBuilderTarget, builderHoveredElementId),
-                ...deriveSelectedState(selectedBuilderTarget, selectedSectionLocalId),
+                ...reconcileStructureState(state, normalizeBuilderSectionDrafts(next.sectionsDraft), {
+                    selectedSectionLocalId: next.selectedSectionLocalId,
+                    selectedBuilderTarget: next.selectedBuilderTarget,
+                }),
                 lastMutationId: next.mutationId ?? null,
-                lastSyncedAt: Date.now(),
             };
         });
     },
@@ -600,7 +745,6 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
             activeDragId: null,
             ...deriveHoveredState(null, null),
             ...deriveSelectedState(null, null),
-            lastSyncedAt: Date.now(),
         }));
     },
     reset: () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
     BUILDER_BRIDGE_VERSION,
+    buildBuilderBridgeEnvelopeSignature,
     buildBuilderInsertNodeMessage,
     buildBuilderBridgeSelectionSignature,
     buildBuilderBridgeVisualStateSignature,
@@ -105,6 +106,34 @@ describe('builderBridge', () => {
         })).toEqual({
             message: null,
             error: 'invalid-message-source',
+        });
+    });
+
+    it('requires a valid envelope signature', () => {
+        const message = buildBuilderSyncStateMessage({
+            viewport: 'desktop',
+            structureOpen: true,
+        }, input);
+
+        expect(message.signature).toBe(buildBuilderBridgeEnvelopeSignature({
+            type: message.type,
+            source: message.source,
+            projectId: message.projectId,
+            requestId: message.requestId,
+            timestamp: message.timestamp,
+            version: message.version,
+            pageId: message.pageId,
+            pageSlug: message.pageSlug,
+            pageTitle: message.pageTitle,
+            payload: message.payload,
+        }));
+
+        expect(inspectBuilderBridgeEnvelope({
+            ...message,
+            signature: 'invalid-signature',
+        })).toEqual({
+            message: null,
+            error: 'invalid-message-signature',
         });
     });
 

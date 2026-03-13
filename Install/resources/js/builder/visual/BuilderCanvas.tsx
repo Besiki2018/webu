@@ -2,13 +2,35 @@ import { useCallback } from 'react';
 import { EditableNodeWrapper } from './EditableNodeWrapper';
 import { BuilderCanvasSectionSurface } from './BuilderCanvasSectionSurface';
 import { RootDropZone } from './RootDropZone';
-import { SectionBlockPlaceholder } from './SectionBlockPlaceholder';
 import type { BuilderSection } from './treeUtils';
 import type { DropTarget } from './types';
-import { getComponentRuntimeEntry, resolveComponentProps } from '../componentRegistry';
+import {
+    getComponentRuntimeEntry,
+    resolveComponentProps,
+    resolveComponentRegistryKey,
+} from '../componentRegistry';
 import { getCentralRegistryEntry } from '../registry/componentRegistry';
 import { mergeDefaults } from '../utils';
 import type { BuilderEditableTarget } from '../editingState';
+
+const loggedUnknownSectionTypes = new Set<string>();
+
+function logUnknownSectionType(section: BuilderSection): void {
+    const normalizedType = (
+        resolveComponentRegistryKey(section.type)
+        ?? section.type?.trim()
+        ?? 'unknown-section'
+    );
+    if (loggedUnknownSectionTypes.has(normalizedType)) {
+        return;
+    }
+
+    loggedUnknownSectionTypes.add(normalizedType);
+    console.error('[BuilderCanvas] Unknown component', {
+        sectionLocalId: section.localId,
+        sectionType: normalizedType,
+    });
+}
 
 function parseSectionProps(input: unknown): Record<string, unknown> {
     if (input !== null && typeof input === 'object' && !Array.isArray(input)) {
@@ -25,6 +47,14 @@ function parseSectionProps(input: unknown): Record<string, unknown> {
         }
     }
     return {};
+}
+
+function UnknownComponentFallback({ type }: { type: string }) {
+    return (
+        <div className="rounded-lg border border-dashed border-amber-500/60 bg-amber-50 px-4 py-3 text-left text-amber-950">
+            <p className="text-sm font-medium">{`Unknown component: ${type}`}</p>
+        </div>
+    );
 }
 
 export interface BuilderCanvasProps {
@@ -100,16 +130,18 @@ export function BuilderCanvas({
 
     const renderRegistrySection = useCallback(
         (section: BuilderSection, displayLabel: string) => {
-            const runtimeEntry = getComponentRuntimeEntry(section.type);
+            const registryKey = resolveComponentRegistryKey(section.type);
+            const runtimeEntry = getComponentRuntimeEntry(registryKey ?? section.type);
             if (!runtimeEntry) {
-                return <SectionBlockPlaceholder section={section} />;
+                logUnknownSectionType(section);
+                return <UnknownComponentFallback type={registryKey ?? section.type} />;
             }
 
-            const props = resolveComponentProps(section.type, section.props ?? section.propsText);
+            const props = resolveComponentProps(runtimeEntry.componentKey, section.props ?? section.propsText);
 
             // Use central component registry when available (Header, Footer, Hero).
             // Phase 6: props = saved component props + default props; render <Component {...props} />.
-            const centralEntry = getCentralRegistryEntry(section.type);
+            const centralEntry = getCentralRegistryEntry(runtimeEntry.componentKey);
             if (centralEntry) {
                 const Component = centralEntry.component;
                 const savedProps = parseSectionProps(section.props ?? section.propsText);

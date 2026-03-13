@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 
 import { useEmbeddedBuilderBridge } from '@/builder/cms/useEmbeddedBuilderBridge';
+import {
+    buildBuilderInsertNodeMessage,
+    buildBuilderRequestStateMessage,
+    buildBuilderSelectTargetMessage,
+    buildBuilderSyncStateMessage,
+} from '@/lib/builderBridge';
 
 function buildOptions(overrides: Partial<Parameters<typeof useEmbeddedBuilderBridge>[0]> = {}) {
     return {
@@ -47,6 +53,16 @@ function buildOptions(overrides: Partial<Parameters<typeof useEmbeddedBuilderBri
     };
 }
 
+function buildChatInput(requestId: string) {
+    return {
+        source: 'chat' as const,
+        projectId: 'project-1',
+        page: { pageId: null, pageSlug: null, pageTitle: null },
+        requestId,
+        timestamp: 12345,
+    };
+}
+
 describe('useEmbeddedBuilderBridge', () => {
     const originalParent = window.parent;
 
@@ -72,17 +88,9 @@ describe('useEmbeddedBuilderBridge', () => {
 
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
-            data: {
-                type: 'BUILDER_REQUEST_STATE',
-                source: 'chat',
-                projectId: 'project-1',
-                requestId: 'req-state-1',
-                timestamp: Date.now(),
-                version: 1,
-                payload: {
-                    reason: 'inspect-open',
-                },
-            },
+            data: buildBuilderRequestStateMessage({
+                reason: 'inspect-open',
+            }, buildChatInput('req-state-1')),
         }));
 
         expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -106,20 +114,12 @@ describe('useEmbeddedBuilderBridge', () => {
 
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
-            data: {
-                type: 'BUILDER_INSERT_NODE',
-                source: 'chat',
-                projectId: 'project-1',
-                requestId: 'req-insert-1',
-                timestamp: Date.now(),
-                version: 1,
-                payload: {
-                    sectionKey: 'webu_general_text_01',
-                    sectionLocalId: 'builder-section-1',
-                    afterSectionLocalId: 'hero-1',
-                    placement: 'after',
-                },
-            },
+            data: buildBuilderInsertNodeMessage({
+                sectionKey: 'webu_general_text_01',
+                sectionLocalId: 'builder-section-1',
+                afterSectionLocalId: 'hero-1',
+                placement: 'after',
+            }, buildChatInput('req-insert-1')),
         }));
 
         expect(options.onAddSectionByKey).toHaveBeenCalledWith(expect.objectContaining({
@@ -148,26 +148,27 @@ describe('useEmbeddedBuilderBridge', () => {
         const { rerender } = renderHook(() => useEmbeddedBuilderBridge(options));
         postMessage.mockClear();
 
+        const message = buildBuilderSyncStateMessage({
+            viewport: 'mobile',
+            interactionState: 'hover',
+            structureOpen: false,
+        }, buildChatInput('req-chat-sync-1'));
+
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
-            data: {
-                type: 'BUILDER_SYNC_STATE',
-                source: 'chat',
-                projectId: 'project-1',
-                requestId: 'req-chat-sync-1',
-                timestamp: Date.now(),
-                version: 1,
-                payload: {
-                    viewport: 'mobile',
-                    interactionState: 'hover',
-                    structureOpen: false,
-                },
-            },
+            data: message,
+        }));
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: message,
         }));
 
         expect(options.onSetViewport).toHaveBeenCalledWith('mobile');
         expect(options.onSetInteractionState).toHaveBeenCalledWith('hover');
         expect(options.onSetStructureOpen).toHaveBeenCalledWith(false);
+        expect(options.onSetViewport).toHaveBeenCalledTimes(1);
+        expect(options.onSetInteractionState).toHaveBeenCalledTimes(1);
+        expect(options.onSetStructureOpen).toHaveBeenCalledTimes(1);
 
         options = {
             ...options,
@@ -215,26 +216,16 @@ describe('useEmbeddedBuilderBridge', () => {
 
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
-            data: {
-                type: 'BUILDER_SELECT_TARGET',
-                source: 'chat',
-                projectId: 'project-1',
-                requestId: 'req-chat-select-1',
-                timestamp: Date.now(),
-                version: 1,
-                payload: {
-                    target: {
-                        sectionLocalId: 'hero-1',
-                        sectionKey: 'webu_general_hero_01',
-                        componentType: 'webu_general_hero_01',
-                        componentName: 'Hero',
-                        textPreview: 'Hero',
-                        props: { headline: 'Hello' },
-                        currentBreakpoint: 'desktop',
-                        currentInteractionState: 'normal',
-                    },
-                },
-            },
+            data: buildBuilderSelectTargetMessage({
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Hero',
+                textPreview: 'Hero',
+                props: { headline: 'Hello' },
+                currentBreakpoint: 'desktop',
+                currentInteractionState: 'normal',
+            }, buildChatInput('req-chat-select-1')),
         }));
 
         expect(options.onSetSelectedTarget).toHaveBeenCalledWith(expect.objectContaining({
@@ -250,5 +241,68 @@ describe('useEmbeddedBuilderBridge', () => {
         rerender();
 
         expect(postMessage.mock.calls.some(([message]) => message?.type === 'BUILDER_SELECT_TARGET')).toBe(false);
+    });
+
+    it('does not resend unchanged sidebar snapshots on equivalent rerenders', async () => {
+        const postMessage = vi.fn();
+        Object.defineProperty(window, 'parent', {
+            configurable: true,
+            value: { postMessage },
+        });
+
+        let options = buildOptions({
+            sectionsDraft: [{
+                localId: 'hero-1',
+                type: 'webu_general_hero_01',
+                props: { headline: 'Hello world' },
+                propsText: JSON.stringify({ headline: 'Hello world' }),
+            }],
+            builderSectionLibrary: [{
+                key: 'webu_general_hero_01',
+                label: 'Hero',
+                category: 'hero',
+            }],
+            sectionDisplayLabelByKey: new Map([
+                ['webu_general_hero_01', 'Hero'],
+            ]),
+            getBuilderSectionExplicitProps: (section) => section.props as Record<string, unknown>,
+        });
+
+        const { rerender } = renderHook(() => useEmbeddedBuilderBridge(options));
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderRequestStateMessage({
+                reason: 'inspect-open',
+            }, buildChatInput('req-rerender-1')),
+        }));
+
+        await waitFor(() => {
+            expect(postMessage.mock.calls.some(([message]) => message?.type === 'BUILDER_SYNC_STATE')).toBe(true);
+        });
+
+        postMessage.mockClear();
+
+        options = buildOptions({
+            sectionsDraft: [{
+                localId: 'hero-1',
+                type: 'webu_general_hero_01',
+                props: { headline: 'Hello world' },
+                propsText: JSON.stringify({ headline: 'Hello world' }),
+            }],
+            builderSectionLibrary: [{
+                key: 'webu_general_hero_01',
+                label: 'Hero',
+                category: 'hero',
+            }],
+            sectionDisplayLabelByKey: new Map([
+                ['webu_general_hero_01', 'Hero'],
+            ]),
+            getBuilderSectionExplicitProps: (section) => section.props as Record<string, unknown>,
+        });
+        rerender();
+
+        await waitFor(() => {
+            expect(postMessage).not.toHaveBeenCalled();
+        });
     });
 });

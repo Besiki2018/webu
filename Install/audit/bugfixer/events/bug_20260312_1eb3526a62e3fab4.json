@@ -1,18 +1,18 @@
 {
-    "bugId": "bug_20260305_184a7e92d01ccbe2",
-    "timestamp": "2026-03-12T12:21:34+00:00",
+    "bugId": "bug_20260312_1eb3526a62e3fab4",
+    "timestamp": "2026-03-12T12:20:10+00:00",
     "severity": "high",
     "source": "frontend",
     "tenantId": null,
     "websiteId": null,
     "userId": null,
-    "route": "\/",
+    "route": "\/project\/019cdf23-5316-707f-9cbb-03851fd40711\/builder",
     "event": "[console.error] Warning: Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https:\/\/reactjs.org\/link\/invalid-hook-call for tips about how to debug and fix this problem.",
     "stack": null,
     "context": {
         "sectionId": null,
         "componentStack": null
     },
-    "dedupKey": "184a7e92d01ccbe2",
-    "frequency": 20
+    "dedupKey": "1eb3526a62e3fab4",
+    "frequency": 1
 }

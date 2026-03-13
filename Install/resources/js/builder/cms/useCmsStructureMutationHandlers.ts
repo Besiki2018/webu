@@ -20,6 +20,13 @@ import { isRecord } from '@/builder/state/sectionProps';
 import { duplicateSection, getInsertIndex, moveSection } from '@/builder/visual/treeUtils';
 import { parseVisualDropId, type DropTarget, VISUAL_DROP_PREFIX } from '@/builder/visual/types';
 import { getEntry, hasEntry } from '@/builder/registry/componentRegistry';
+import {
+    getDefaultProps as getBuilderDefaultProps,
+    isComponentAllowedForProjectSiteType,
+    isValidComponent,
+    resolveComponentRegistryKey,
+} from '@/builder/componentRegistry';
+import type { ProjectSiteType } from '@/builder/projectTypes';
 
 type StateUpdater<T> = (value: T | ((current: T) => T)) => void;
 
@@ -28,6 +35,7 @@ interface UseCmsStructureMutationHandlersOptions {
     scheduleStructuralDraftPersistRef: MutableRefObject<() => void>;
     syncPreviewVisibleSections: () => void;
     nextSectionLocalId: () => string;
+    projectSiteType: ProjectSiteType | string;
     selectedSectionLocalId: string | null;
     selectedBuilderTarget: BuilderEditableTarget | null;
     selectedNestedSectionParentLocalId: string | null;
@@ -74,6 +82,7 @@ export function useCmsStructureMutationHandlers({
     scheduleStructuralDraftPersistRef,
     syncPreviewVisibleSections,
     nextSectionLocalId,
+    projectSiteType,
     selectedSectionLocalId,
     selectedBuilderTarget,
     selectedNestedSectionParentLocalId,
@@ -137,6 +146,13 @@ export function useCmsStructureMutationHandlers({
             ? cloneRecord(templateDefaults)
             : buildPropsFromSchema(templateSchema);
 
+        if (Object.keys(defaultProps).length === 0) {
+            const registryDefaults = getBuilderDefaultProps(sectionKey);
+            if (Object.keys(registryDefaults).length > 0) {
+                defaultProps = cloneRecord(registryDefaults);
+            }
+        }
+
         if (Object.keys(defaultProps).length === 0 && hasEntry(sectionKey)) {
             const registryEntry = getEntry(sectionKey);
             if (registryEntry?.defaults && typeof registryEntry.defaults === 'object' && !Array.isArray(registryEntry.defaults)) {
@@ -163,7 +179,24 @@ export function useCmsStructureMutationHandlers({
         source: 'library' | 'toolbar' = 'toolbar',
         options?: { insertIndex?: number; localId?: string | null },
     ) => {
-        const sectionDefaults = buildSectionDefaultProps(sectionKey);
+        const resolvedSectionKey = resolveComponentRegistryKey(sectionKey) ?? normalizeSectionTypeKey(sectionKey);
+        if (resolvedSectionKey === '') {
+            return;
+        }
+
+        const isFixedLayoutSection = isFixedLayoutSectionKey(resolvedSectionKey);
+
+        if (!isFixedLayoutSection && !isValidComponent(resolvedSectionKey)) {
+            toast.error(t('Component is not registered for this builder'));
+            return;
+        }
+
+        if (!isFixedLayoutSection && !isComponentAllowedForProjectSiteType(resolvedSectionKey, projectSiteType)) {
+            toast.error(t('Component is not allowed for this project type'));
+            return;
+        }
+
+        const sectionDefaults = buildSectionDefaultProps(resolvedSectionKey);
         if (!sectionDefaults) {
             return;
         }
@@ -215,6 +248,7 @@ export function useCmsStructureMutationHandlers({
         setBuilderSidebarMode('settings');
 
         const sectionLabel = sectionDisplayLabelByKey.get(normalizedSectionKey)
+            ?? sectionDisplayLabelByKey.get(resolvedSectionKey)
             ?? sectionDisplayLabelByKey.get(sectionKey)
             ?? normalizedSectionKey;
         if (!isEmbeddedSidebarMode) {
@@ -233,6 +267,7 @@ export function useCmsStructureMutationHandlers({
         formatPropsText,
         isEmbeddedSidebarMode,
         nextSectionLocalId,
+        projectSiteType,
         normalizeSectionTypeKey,
         scheduleStructuralDraftPersistRef,
         sectionDisplayLabelByKey,

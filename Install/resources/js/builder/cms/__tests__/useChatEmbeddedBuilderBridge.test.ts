@@ -4,7 +4,12 @@ import { toast } from 'sonner';
 
 import { useChatEmbeddedBuilderBridge } from '@/builder/cms/useChatEmbeddedBuilderBridge';
 import type { PendingBuilderStructureMutation } from '@/builder/cms/chatBuilderStructureMutations';
-import type { BuilderBridgeMessage } from '@/lib/builderBridge';
+import {
+    buildBuilderAckMessage,
+    buildBuilderSelectTargetMessage,
+    buildBuilderSyncStateMessage,
+    type BuilderBridgeMessage,
+} from '@/lib/builderBridge';
 
 vi.mock('sonner', () => ({
     toast: {
@@ -65,6 +70,20 @@ function buildOptions(overrides: Partial<Parameters<typeof useChatEmbeddedBuilde
     };
 }
 
+function buildSidebarInput(requestId: string) {
+    return {
+        source: 'sidebar' as const,
+        projectId: 'project-1',
+        page: {
+            pageId: 11,
+            pageSlug: 'home',
+            pageTitle: 'Home',
+        },
+        requestId,
+        timestamp: 12345,
+    };
+}
+
 describe('useChatEmbeddedBuilderBridge', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -98,31 +117,24 @@ describe('useChatEmbeddedBuilderBridge', () => {
 
         renderHook(() => useChatEmbeddedBuilderBridge(options));
 
+        const message = buildBuilderSelectTargetMessage({
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            textPreview: 'Hello',
+            props: { headline: 'Hello' },
+            currentBreakpoint: 'desktop',
+            currentInteractionState: 'normal',
+        }, buildSidebarInput('req-select-1'));
+
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
-            data: {
-                type: 'BUILDER_SELECT_TARGET',
-                source: 'sidebar',
-                projectId: 'project-1',
-                requestId: 'req-select-1',
-                timestamp: Date.now(),
-                version: 1,
-                pageId: 11,
-                pageSlug: 'home',
-                pageTitle: 'Home',
-                payload: {
-                    target: {
-                        sectionLocalId: 'hero-1',
-                        sectionKey: 'webu_general_hero_01',
-                        componentType: 'webu_general_hero_01',
-                        componentName: 'Hero',
-                        textPreview: 'Hello',
-                        props: { headline: 'Hello' },
-                        currentBreakpoint: 'desktop',
-                        currentInteractionState: 'normal',
-                    },
-                },
-            },
+            data: message,
+        }));
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: message,
         }));
 
         await waitFor(() => {
@@ -132,6 +144,7 @@ describe('useChatEmbeddedBuilderBridge', () => {
                 path: null,
                 componentPath: null,
             }));
+            expect(options.selectBuilderTarget).toHaveBeenCalledTimes(1);
             expect(options.setBuilderPaneMode).toHaveBeenCalledWith('settings');
         });
     });
@@ -166,23 +179,17 @@ describe('useChatEmbeddedBuilderBridge', () => {
 
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
-            data: {
-                type: 'BUILDER_ACK',
-                source: 'sidebar',
-                projectId: 'project-1',
-                requestId: 'req-remove-1',
-                timestamp: Date.now(),
-                version: 1,
-                pageId: 11,
-                pageSlug: 'home',
-                pageTitle: 'Home',
-                payload: {
-                    ackType: 'BUILDER_DELETE_NODE',
-                    success: false,
-                    changed: false,
-                    error: 'Builder update failed',
-                },
-            },
+            data: buildBuilderAckMessage({
+                ackType: 'BUILDER_DELETE_NODE',
+                success: false,
+                changed: false,
+                error: 'Builder update failed',
+                stateVersion: null,
+                structureHash: null,
+                revisionId: null,
+                revisionVersion: null,
+                mutation: null,
+            }, buildSidebarInput('req-remove-1')),
         }));
 
         await waitFor(() => {
@@ -215,31 +222,20 @@ describe('useChatEmbeddedBuilderBridge', () => {
 
         const snapshotEvent = {
             origin: window.location.origin,
-            data: {
-                type: 'BUILDER_SYNC_STATE',
-                source: 'sidebar',
-                projectId: 'project-1',
-                requestId: 'req-sync-1',
-                timestamp: Date.now(),
-                version: 1,
-                pageId: 11,
-                pageSlug: 'home',
-                pageTitle: 'Home',
-                payload: {
-                    stateVersion: 9,
-                    revisionVersion: 4,
-                    structureHash: 'hash-9',
-                    structureSections: [{
-                        localId: 'hero-1',
-                        sectionKey: 'webu_general_hero_01',
-                        type: 'webu_general_hero_01',
-                        label: 'Hero',
-                        previewText: 'Fresh preview',
-                        propsText: JSON.stringify({ title: 'Fresh preview' }),
-                        props: { title: 'Fresh preview' },
-                    }],
-                },
-            },
+            data: buildBuilderSyncStateMessage({
+                stateVersion: 9,
+                revisionVersion: 4,
+                structureHash: 'hash-9',
+                structureSections: [{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    type: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Fresh preview',
+                    propsText: JSON.stringify({ title: 'Fresh preview' }),
+                    props: { title: 'Fresh preview' },
+                }],
+            }, buildSidebarInput('req-sync-1')),
         };
 
         window.dispatchEvent(new MessageEvent('message', snapshotEvent));
@@ -275,23 +271,12 @@ describe('useChatEmbeddedBuilderBridge', () => {
 
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
-            data: {
-                type: 'BUILDER_SYNC_STATE',
-                source: 'sidebar',
-                projectId: 'project-1',
-                requestId: 'req-sync-loop-1',
-                timestamp: Date.now(),
-                version: 1,
-                pageId: 11,
-                pageSlug: 'home',
-                pageTitle: 'Home',
-                payload: {
-                    viewport: 'mobile',
-                    interactionState: 'hover',
-                    sidebarMode: 'elements',
-                    structureOpen: false,
-                },
-            },
+            data: buildBuilderSyncStateMessage({
+                viewport: 'mobile',
+                interactionState: 'hover',
+                sidebarMode: 'elements',
+                structureOpen: false,
+            }, buildSidebarInput('req-sync-loop-1')),
         }));
 
         await waitFor(() => {
@@ -341,29 +326,16 @@ describe('useChatEmbeddedBuilderBridge', () => {
 
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
-            data: {
-                type: 'BUILDER_SELECT_TARGET',
-                source: 'sidebar',
-                projectId: 'project-1',
-                requestId: 'req-select-loop-1',
-                timestamp: Date.now(),
-                version: 1,
-                pageId: 11,
-                pageSlug: 'home',
-                pageTitle: 'Home',
-                payload: {
-                    target: {
-                        sectionLocalId: 'hero-1',
-                        sectionKey: 'webu_general_hero_01',
-                        componentType: 'webu_general_hero_01',
-                        componentName: 'Hero',
-                        textPreview: 'Hello',
-                        props: { headline: 'Hello' },
-                        currentBreakpoint: 'desktop',
-                        currentInteractionState: 'normal',
-                    },
-                },
-            },
+            data: buildBuilderSelectTargetMessage({
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Hero',
+                textPreview: 'Hello',
+                props: { headline: 'Hello' },
+                currentBreakpoint: 'desktop',
+                currentInteractionState: 'normal',
+            }, buildSidebarInput('req-select-loop-1')),
         }));
 
         await waitFor(() => {
@@ -382,5 +354,48 @@ describe('useChatEmbeddedBuilderBridge', () => {
 
         expect(postMessage.mock.calls.some(([message]) => message?.type === 'BUILDER_SELECT_TARGET')).toBe(false);
         expect(postMessage.mock.calls.some(([message]) => message?.type === 'BUILDER_CLEAR_SELECTION')).toBe(false);
+    });
+
+    it('does not resend unchanged visual sync envelopes on equivalent rerenders', async () => {
+        const postMessage = vi.fn();
+        let options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            builderSidebarFrameRef: {
+                current: {
+                    contentWindow: { postMessage },
+                } as unknown as HTMLIFrameElement,
+            },
+        });
+
+        const { rerender } = renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        await waitFor(() => {
+            expect(postMessage.mock.calls.some(([message]) => (
+                message?.type === 'BUILDER_SYNC_STATE'
+                && message?.payload?.viewport === 'desktop'
+                && message?.payload?.interactionState === 'normal'
+                && message?.payload?.structureOpen === true
+                && message?.payload?.sidebarMode === 'settings'
+            ))).toBe(true);
+            expect(postMessage.mock.calls.some(([message]) => message?.type === 'BUILDER_CLEAR_SELECTION')).toBe(true);
+        });
+
+        postMessage.mockClear();
+
+        options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            builderSidebarFrameRef: {
+                current: {
+                    contentWindow: { postMessage },
+                } as unknown as HTMLIFrameElement,
+            },
+        });
+        rerender();
+
+        await waitFor(() => {
+            expect(postMessage).not.toHaveBeenCalled();
+        });
     });
 });

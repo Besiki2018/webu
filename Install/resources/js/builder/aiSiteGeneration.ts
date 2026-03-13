@@ -11,6 +11,7 @@
 import type { BuilderComponentInstance } from './core/types';
 import type { ProjectType } from './projectTypes';
 import { getEntry } from './registry/componentRegistry';
+import { getDefaultProps } from './componentRegistry';
 import type { BuilderSection } from './visual/treeUtils';
 
 /** One section in the generated site structure (from AI or template). */
@@ -62,7 +63,7 @@ export function buildTreeFromStructure(input: BuildTreeFromStructureInput): Buil
     const entry = getEntry(componentKey);
     const defaults = entry?.defaults && typeof entry.defaults === 'object'
       ? (entry.defaults as Record<string, unknown>)
-      : {};
+      : getDefaultProps(componentKey);
     const mergedProps = { ...defaults, ...overrideProps };
     if (variant !== undefined) {
       mergedProps.variant = variant;

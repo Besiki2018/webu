@@ -37,6 +37,7 @@ export interface BuilderBridgeEnvelopeBase<
 > extends BuilderBridgePageIdentity {
     type: TType;
     source: BuilderBridgeRuntimeSource;
+    signature: string;
     projectId: string;
     requestId: string;
     timestamp: number;
@@ -171,7 +172,36 @@ interface BuilderBridgeDiagnosticInput {
     reason?: string | null;
 }
 
+interface BuilderBridgeEnvelopeSignatureInput extends BuilderBridgePageIdentity {
+    type: BuilderBridgeMessageType;
+    source: BuilderBridgeRuntimeSource;
+    projectId: string;
+    requestId: string;
+    timestamp: number;
+    version: typeof BUILDER_BRIDGE_VERSION;
+    payload: unknown;
+}
+
+interface BuilderBridgeEnvelopeMetadata extends BuilderBridgePageIdentity {
+    source: BuilderBridgeRuntimeSource;
+    signature: string;
+    projectId: string;
+    requestId: string;
+    timestamp: number;
+    version: typeof BUILDER_BRIDGE_VERSION;
+}
+
+const BUILDER_BRIDGE_TRACKED_SIGNATURE_LIMIT = 200;
+
 function readBuilderBridgeDebugFlag(): boolean {
+    try {
+        if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
+            return true;
+        }
+    } catch {
+        // Ignore environments without process.
+    }
+
     try {
         return typeof import.meta !== 'undefined'
             && Boolean(import.meta.env?.DEV)
@@ -278,6 +308,7 @@ export function logBuilderBridgeDiagnostic({
         actor,
         type: message?.type ?? rawType ?? null,
         source: message?.source ?? actor,
+        signature: message?.signature ?? null,
         target,
         projectId: message?.projectId ?? null,
         requestId: message?.requestId ?? requestId ?? null,
@@ -336,6 +367,62 @@ function readStringArray(value: unknown): string[] | null {
 
 function readRecord(value: unknown): Record<string, unknown> | null {
     return isRecord(value) ? value : null;
+}
+
+function canonicalizeBuilderBridgeSignatureValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map((entry) => canonicalizeBuilderBridgeSignatureValue(entry));
+    }
+
+    if (!isRecord(value)) {
+        return value ?? null;
+    }
+
+    return Object.keys(value)
+        .sort()
+        .reduce<Record<string, unknown>>((normalized, key) => {
+            normalized[key] = canonicalizeBuilderBridgeSignatureValue(value[key]);
+            return normalized;
+        }, {});
+}
+
+export function buildBuilderBridgeEnvelopeSignature(message: BuilderBridgeEnvelopeSignatureInput): string {
+    return JSON.stringify(canonicalizeBuilderBridgeSignatureValue({
+        type: message.type,
+        source: message.source,
+        projectId: message.projectId,
+        requestId: message.requestId,
+        timestamp: message.timestamp,
+        version: message.version,
+        pageId: message.pageId ?? null,
+        pageSlug: message.pageSlug ?? null,
+        pageTitle: message.pageTitle ?? null,
+        payload: normalizeBuilderBridgePayloadForSignature(message.type, message.payload),
+    }));
+}
+
+export function rememberBuilderBridgeEnvelopeSignature(
+    signatures: Set<string>,
+    signature: string | null | undefined,
+): boolean {
+    const normalizedSignature = readText(signature);
+    if (!normalizedSignature) {
+        return false;
+    }
+
+    if (signatures.has(normalizedSignature)) {
+        return false;
+    }
+
+    signatures.add(normalizedSignature);
+    if (signatures.size > BUILDER_BRIDGE_TRACKED_SIGNATURE_LIMIT) {
+        const oldestSignature = signatures.values().next().value;
+        if (typeof oldestSignature === 'string') {
+            signatures.delete(oldestSignature);
+        }
+    }
+
+    return true;
 }
 
 function readStateMeta(record: Record<string, unknown>): BuilderBridgeStateMeta {
@@ -423,6 +510,120 @@ function parseSelectionPayload(value: unknown): BuilderSelectionMessagePayload |
     };
 }
 
+function normalizeBuilderBridgePayloadForSignature(
+    type: BuilderBridgeMessageType,
+    payload: unknown,
+): unknown {
+    const record = readRecord(payload) ?? {};
+
+    switch (type) {
+        case 'BUILDER_READY':
+            return {
+                channel: record.channel === 'preview' || record.channel === 'sidebar'
+                    ? record.channel
+                    : null,
+                ...readStateMeta(record),
+            };
+        case 'BUILDER_SYNC_STATE':
+            return {
+                ...readStateMeta(record),
+                viewport: readViewport(record.viewport),
+                interactionState: readInteractionState(record.interactionState),
+                structureOpen: readBoolean(record.structureOpen),
+                sidebarMode: readSidebarMode(record.sidebarMode),
+                selectedTarget: parseSelectionPayload(record.selectedTarget),
+                hoveredTarget: parseSelectionPayload(record.hoveredTarget),
+                structureSections: Array.isArray(record.structureSections)
+                    ? record.structureSections
+                        .map((entry) => parseStructureSection(entry))
+                        .filter((entry): entry is BuilderBridgeStructureSection => entry !== null)
+                    : null,
+                libraryItems: Array.isArray(record.libraryItems)
+                    ? record.libraryItems
+                        .map((entry) => parseLibraryItem(entry))
+                        .filter((entry): entry is BuilderBridgeLibraryItem => entry !== null)
+                    : null,
+                draftSaveState: (() => {
+                    const draftSaveState = readRecord(record.draftSaveState);
+                    if (!draftSaveState) {
+                        return null;
+                    }
+
+                    const isSaving = readBoolean(draftSaveState.isSaving);
+                    if (isSaving === null) {
+                        return null;
+                    }
+
+                    return {
+                        isSaving,
+                        success: readBoolean(draftSaveState.success),
+                        message: typeof draftSaveState.message === 'string' ? draftSaveState.message : null,
+                    };
+                })(),
+                previewRefresh: readBoolean(record.previewRefresh) ?? false,
+            };
+        case 'BUILDER_SELECT_TARGET':
+        case 'BUILDER_HOVER_TARGET':
+            return {
+                target: parseSelectionPayload(record.target),
+            };
+        case 'BUILDER_PATCH_PROPS':
+            return {
+                changeSet: readRecord(record.changeSet) ?? {},
+            };
+        case 'BUILDER_DELETE_NODE':
+            return {
+                sectionLocalId: readText(record.sectionLocalId),
+                sectionIndex: readNumber(record.sectionIndex),
+                sectionKey: readText(record.sectionKey),
+            };
+        case 'BUILDER_INSERT_NODE':
+            return {
+                sectionKey: readText(record.sectionKey),
+                sectionLocalId: readText(record.sectionLocalId),
+                afterSectionLocalId: readText(record.afterSectionLocalId),
+                targetSectionKey: readText(record.targetSectionKey),
+                placement: record.placement === 'before' || record.placement === 'after' || record.placement === 'inside'
+                    ? record.placement
+                    : null,
+                sections: Array.isArray(record.sections)
+                    ? record.sections.filter((entry): entry is Record<string, unknown> => isRecord(entry))
+                    : undefined,
+            };
+        case 'BUILDER_MOVE_NODE':
+            return {
+                sectionLocalId: readText(record.sectionLocalId),
+                targetSectionLocalId: readText(record.targetSectionLocalId),
+                position: record.position === 'before' || record.position === 'after'
+                    ? record.position
+                    : null,
+            };
+        case 'BUILDER_CLEAR_SELECTION':
+        case 'BUILDER_REQUEST_STATE':
+        case 'BUILDER_SAVE_DRAFT':
+        case 'BUILDER_REFRESH_PREVIEW':
+            return {
+                reason: readText(record.reason),
+            };
+        case 'BUILDER_ACK':
+            return {
+                ackType: readText(record.ackType),
+                success: readBoolean(record.success),
+                changed: readBoolean(record.changed),
+                error: typeof record.error === 'string' ? record.error : null,
+                mutation: record.mutation === 'apply-change-set'
+                    || record.mutation === 'add-section'
+                    || record.mutation === 'remove-section'
+                    || record.mutation === 'move-section'
+                    ? record.mutation
+                    : null,
+                ...readStateMeta(record),
+            };
+        default:
+            return {};
+    }
+}
+
 export function createBuilderBridgeRequestId(prefix = 'builder'): string {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -432,7 +633,7 @@ function createBuilderBridgeEnvelope<TType extends BuilderBridgeMessageType, TPa
     payload: TPayload,
     input: BuilderBridgeMessageBaseInput,
 ): BuilderBridgeEnvelopeBase<TType, TPayload> {
-    return {
+    const envelope = {
         type,
         payload,
         source: input.source,
@@ -447,6 +648,11 @@ function createBuilderBridgeEnvelope<TType extends BuilderBridgeMessageType, TPa
         pageId: input.page?.pageId ?? null,
         pageSlug: input.page?.pageSlug ?? null,
         pageTitle: input.page?.pageTitle ?? null,
+    };
+
+    return {
+        ...envelope,
+        signature: buildBuilderBridgeEnvelopeSignature(envelope),
     };
 }
 
@@ -564,6 +770,7 @@ export function inspectBuilderBridgeEnvelope(value: unknown): BuilderBridgeParse
 
     const type = readText(record.type) as BuilderBridgeMessageType | null;
     const source = readText(record.source) as BuilderBridgeRuntimeSource | null;
+    const signature = readText(record.signature);
     const projectId = readText(record.projectId);
     const requestId = readText(record.requestId);
     const timestamp = readNumber(record.timestamp);
@@ -574,6 +781,7 @@ export function inspectBuilderBridgeEnvelope(value: unknown): BuilderBridgeParse
         !type
         || !source
         || (source !== 'chat' && source !== 'preview' && source !== 'sidebar')
+        || !signature
         || !projectId
         || !requestId
         || timestamp === null
@@ -584,6 +792,9 @@ export function inspectBuilderBridgeEnvelope(value: unknown): BuilderBridgeParse
         }
         if (!source || (source !== 'chat' && source !== 'preview' && source !== 'sidebar')) {
             return fail('invalid-message-source');
+        }
+        if (!signature) {
+            return fail('missing-message-signature');
         }
         if (!projectId) {
             return fail('missing-project-id');
@@ -598,8 +809,9 @@ export function inspectBuilderBridgeEnvelope(value: unknown): BuilderBridgeParse
         return fail('unsupported-message-version');
     }
 
-    const base = {
+    const base: BuilderBridgeEnvelopeMetadata = {
         source,
+        signature,
         projectId,
         requestId,
         timestamp,
@@ -607,7 +819,19 @@ export function inspectBuilderBridgeEnvelope(value: unknown): BuilderBridgeParse
         pageId: readNumber(record.pageId),
         pageSlug: readText(record.pageSlug),
         pageTitle: readText(record.pageTitle),
-    } satisfies Omit<BuilderBridgeEnvelopeBase<BuilderBridgeMessageType, Record<string, unknown>>, 'type' | 'payload'>;
+    };
+
+    const finalize = (message: BuilderBridgeMessage): BuilderBridgeParseResult => {
+        const { signature: _signature, ...unsignedMessage } = message;
+        if (signature !== buildBuilderBridgeEnvelopeSignature(unsignedMessage)) {
+            return fail('invalid-message-signature');
+        }
+
+        return {
+            message,
+            error: null,
+        };
+    };
 
     switch (type) {
         case 'BUILDER_READY': {
@@ -617,134 +841,126 @@ export function inspectBuilderBridgeEnvelope(value: unknown): BuilderBridgeParse
             if (!channel) {
                 return fail('invalid-ready-channel');
             }
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        channel,
-                        ...readStateMeta(payload),
-                    },
+            const message: BuilderReadyMessage = {
+                ...base,
+                type,
+                payload: {
+                    channel,
+                    ...readStateMeta(payload),
                 },
-                error: null,
             };
+            return finalize(message);
         }
-        case 'BUILDER_SYNC_STATE':
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        ...readStateMeta(payload),
-                        viewport: readViewport(payload.viewport),
-                        interactionState: readInteractionState(payload.interactionState),
-                        structureOpen: readBoolean(payload.structureOpen),
-                        sidebarMode: readSidebarMode(payload.sidebarMode),
-                        selectedTarget: parseSelectionPayload(payload.selectedTarget),
-                        hoveredTarget: parseSelectionPayload(payload.hoveredTarget),
-                        structureSections: Array.isArray(payload.structureSections)
-                            ? payload.structureSections
-                                .map((entry) => parseStructureSection(entry))
-                                .filter((entry): entry is BuilderBridgeStructureSection => entry !== null)
-                            : null,
-                        libraryItems: Array.isArray(payload.libraryItems)
-                            ? payload.libraryItems
-                                .map((entry) => parseLibraryItem(entry))
-                                .filter((entry): entry is BuilderBridgeLibraryItem => entry !== null)
-                            : null,
-                        draftSaveState: (() => {
-                            const draftSaveState = readRecord(payload.draftSaveState);
-                            if (!draftSaveState) {
-                                return null;
-                            }
+        case 'BUILDER_SYNC_STATE': {
+            const message: BuilderSyncStateMessage = {
+                ...base,
+                type,
+                payload: {
+                    ...readStateMeta(payload),
+                    viewport: readViewport(payload.viewport),
+                    interactionState: readInteractionState(payload.interactionState),
+                    structureOpen: readBoolean(payload.structureOpen),
+                    sidebarMode: readSidebarMode(payload.sidebarMode),
+                    selectedTarget: parseSelectionPayload(payload.selectedTarget),
+                    hoveredTarget: parseSelectionPayload(payload.hoveredTarget),
+                    structureSections: Array.isArray(payload.structureSections)
+                        ? payload.structureSections
+                            .map((entry) => parseStructureSection(entry))
+                            .filter((entry): entry is BuilderBridgeStructureSection => entry !== null)
+                        : null,
+                    libraryItems: Array.isArray(payload.libraryItems)
+                        ? payload.libraryItems
+                            .map((entry) => parseLibraryItem(entry))
+                            .filter((entry): entry is BuilderBridgeLibraryItem => entry !== null)
+                        : null,
+                    draftSaveState: (() => {
+                        const draftSaveState = readRecord(payload.draftSaveState);
+                        if (!draftSaveState) {
+                            return null;
+                        }
 
-                            const isSaving = readBoolean(draftSaveState.isSaving);
-                            if (isSaving === null) {
-                                return null;
-                            }
+                        const isSaving = readBoolean(draftSaveState.isSaving);
+                        if (isSaving === null) {
+                            return null;
+                        }
 
-                            return {
-                                isSaving,
-                                success: readBoolean(draftSaveState.success),
-                                message: typeof draftSaveState.message === 'string' ? draftSaveState.message : null,
-                            };
-                        })(),
-                        previewRefresh: readBoolean(payload.previewRefresh) ?? false,
-                    },
+                        return {
+                            isSaving,
+                            success: readBoolean(draftSaveState.success),
+                            message: typeof draftSaveState.message === 'string' ? draftSaveState.message : null,
+                        };
+                    })(),
+                    previewRefresh: readBoolean(payload.previewRefresh) ?? false,
                 },
-                error: null,
             };
-        case 'BUILDER_SELECT_TARGET':
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        target: parseSelectionPayload(payload.target),
-                    },
+            return finalize(message);
+        }
+        case 'BUILDER_SELECT_TARGET': {
+            const message: BuilderSelectTargetMessage = {
+                ...base,
+                type,
+                payload: {
+                    target: parseSelectionPayload(payload.target),
                 },
-                error: null,
             };
-        case 'BUILDER_HOVER_TARGET':
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        target: parseSelectionPayload(payload.target),
-                    },
+            return finalize(message);
+        }
+        case 'BUILDER_HOVER_TARGET': {
+            const message: BuilderHoverTargetMessage = {
+                ...base,
+                type,
+                payload: {
+                    target: parseSelectionPayload(payload.target),
                 },
-                error: null,
             };
+            return finalize(message);
+        }
         case 'BUILDER_PATCH_PROPS': {
             const changeSet = readRecord(payload.changeSet);
             if (!changeSet) {
                 return fail('invalid-change-set');
             }
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        changeSet,
-                    },
+            const message: BuilderPatchPropsMessage = {
+                ...base,
+                type,
+                payload: {
+                    changeSet,
                 },
-                error: null,
             };
+            return finalize(message);
         }
-        case 'BUILDER_DELETE_NODE':
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        sectionLocalId: readText(payload.sectionLocalId),
-                        sectionIndex: readNumber(payload.sectionIndex),
-                        sectionKey: readText(payload.sectionKey),
-                    },
+        case 'BUILDER_DELETE_NODE': {
+            const message: BuilderDeleteNodeMessage = {
+                ...base,
+                type,
+                payload: {
+                    sectionLocalId: readText(payload.sectionLocalId),
+                    sectionIndex: readNumber(payload.sectionIndex),
+                    sectionKey: readText(payload.sectionKey),
                 },
-                error: null,
             };
-        case 'BUILDER_INSERT_NODE':
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        sectionKey: readText(payload.sectionKey),
-                        sectionLocalId: readText(payload.sectionLocalId),
-                        afterSectionLocalId: readText(payload.afterSectionLocalId),
-                        targetSectionKey: readText(payload.targetSectionKey),
-                        placement: payload.placement === 'before' || payload.placement === 'after' || payload.placement === 'inside'
-                            ? payload.placement
-                            : null,
-                        sections: Array.isArray(payload.sections)
-                            ? payload.sections.filter((entry): entry is Record<string, unknown> => isRecord(entry))
-                            : undefined,
-                    },
+            return finalize(message);
+        }
+        case 'BUILDER_INSERT_NODE': {
+            const placement = payload.placement === 'before' || payload.placement === 'after' || payload.placement === 'inside'
+                ? payload.placement
+                : null;
+            const message: BuilderInsertNodeMessage = {
+                ...base,
+                type,
+                payload: {
+                    sectionKey: readText(payload.sectionKey),
+                    sectionLocalId: readText(payload.sectionLocalId),
+                    afterSectionLocalId: readText(payload.afterSectionLocalId),
+                    targetSectionKey: readText(payload.targetSectionKey),
+                    placement,
+                    sections: Array.isArray(payload.sections)
+                        ? payload.sections.filter((entry): entry is Record<string, unknown> => isRecord(entry))
+                        : undefined,
                 },
-                error: null,
             };
+            return finalize(message);
+        }
         case 'BUILDER_MOVE_NODE': {
             const sectionLocalId = readText(payload.sectionLocalId);
             const targetSectionLocalId = readText(payload.targetSectionLocalId);
@@ -754,41 +970,37 @@ export function inspectBuilderBridgeEnvelope(value: unknown): BuilderBridgeParse
             if (!sectionLocalId || !targetSectionLocalId || !position) {
                 return fail('invalid-move-payload');
             }
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        sectionLocalId,
-                        targetSectionLocalId,
-                        position,
-                    },
+            const message: BuilderMoveNodeMessage = {
+                ...base,
+                type,
+                payload: {
+                    sectionLocalId,
+                    targetSectionLocalId,
+                    position,
                 },
-                error: null,
             };
+            return finalize(message);
         }
-        case 'BUILDER_CLEAR_SELECTION':
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        reason: readText(payload.reason),
-                    },
+        case 'BUILDER_CLEAR_SELECTION': {
+            const message: BuilderClearSelectionMessage = {
+                ...base,
+                type,
+                payload: {
+                    reason: readText(payload.reason),
                 },
-                error: null,
             };
-        case 'BUILDER_REQUEST_STATE':
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        reason: readText(payload.reason),
-                    },
+            return finalize(message);
+        }
+        case 'BUILDER_REQUEST_STATE': {
+            const message: BuilderRequestStateMessage = {
+                ...base,
+                type,
+                payload: {
+                    reason: readText(payload.reason),
                 },
-                error: null,
             };
+            return finalize(message);
+        }
         case 'BUILDER_ACK': {
             const ackType = readText(payload.ackType) as BuilderBridgeMessageType | null;
             const success = readBoolean(payload.success);
@@ -803,44 +1015,40 @@ export function inspectBuilderBridgeEnvelope(value: unknown): BuilderBridgeParse
                 ? payload.mutation
                 : null;
 
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        ackType,
-                        success,
-                        changed: readBoolean(payload.changed),
-                        error: typeof payload.error === 'string' ? payload.error : null,
-                        mutation,
-                        ...readStateMeta(payload),
-                    },
+            const message: BuilderAckMessage = {
+                ...base,
+                type,
+                payload: {
+                    ackType,
+                    success,
+                    changed: readBoolean(payload.changed),
+                    error: typeof payload.error === 'string' ? payload.error : null,
+                    mutation,
+                    ...readStateMeta(payload),
                 },
-                error: null,
             };
+            return finalize(message);
         }
-        case 'BUILDER_SAVE_DRAFT':
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        reason: readText(payload.reason),
-                    },
+        case 'BUILDER_SAVE_DRAFT': {
+            const message: BuilderSaveDraftMessage = {
+                ...base,
+                type,
+                payload: {
+                    reason: readText(payload.reason),
                 },
-                error: null,
             };
-        case 'BUILDER_REFRESH_PREVIEW':
-            return {
-                message: {
-                    ...base,
-                    type,
-                    payload: {
-                        reason: readText(payload.reason),
-                    },
+            return finalize(message);
+        }
+        case 'BUILDER_REFRESH_PREVIEW': {
+            const message: BuilderRefreshPreviewMessage = {
+                ...base,
+                type,
+                payload: {
+                    reason: readText(payload.reason),
                 },
-                error: null,
             };
+            return finalize(message);
+        }
         default:
             return fail('unsupported-message-type');
     }

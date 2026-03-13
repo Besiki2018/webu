@@ -263,19 +263,13 @@ export function useCmsEmbeddedBuilderMutationHandlers({
         }
 
         handleRemoveSection(resolvedLocalId);
-        if (selectedSectionLocalId === resolvedLocalId || selectedSectionLocalId === requestedLocalId) {
-            setSelectedSectionLocalId(null);
-            setSelectedNestedSection(null);
-            setSelectedFixedSectionKey(null);
-            setBuilderSidebarMode('elements');
-        }
         emitEmbeddedBuilderMutationResult(emit, {
             requestId,
             mutation: 'remove-section',
             success: true,
             changed: true,
         });
-    }, [handleRemoveSection, isEmbeddedMode, normalizeSectionTypeKey, pageEditorMode, sectionsDraftRef, selectedSectionLocalId, setBuilderSidebarMode, setPageEditorMode, setSelectedFixedSectionKey, setSelectedNestedSection, setSelectedSectionLocalId, t]);
+    }, [handleRemoveSection, isEmbeddedMode, normalizeSectionTypeKey, pageEditorMode, sectionsDraftRef, setPageEditorMode, t]);
 
     const handleEmbeddedBuilderMoveSection = useCallback((payload: EmbeddedBuilderMoveSectionPayload, emit: EmitEmbeddedBuilderMessage) => {
         if (isEmbeddedMode && pageEditorMode !== 'builder') {

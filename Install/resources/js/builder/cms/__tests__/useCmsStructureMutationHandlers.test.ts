@@ -77,6 +77,7 @@ function buildHarness(overrides: {
         scheduleStructuralDraftPersistRef: { current: scheduleStructuralDraftPersist },
         syncPreviewVisibleSections,
         nextSectionLocalId: vi.fn(() => `generated-${nextGeneratedId++}`),
+        projectSiteType: 'website' as const,
         selectedSectionLocalId: overrides.selectedSectionLocalId ?? null,
         selectedBuilderTarget: overrides.selectedBuilderTarget ?? null,
         selectedNestedSectionParentLocalId: overrides.selectedNestedSectionParentLocalId ?? null,
@@ -265,5 +266,19 @@ describe('useCmsStructureMutationHandlers', () => {
         }));
         expect(harness.options.setActiveDragId).toHaveBeenCalledWith(null);
         expect(harness.options.setBuilderCurrentDropTarget).toHaveBeenCalledWith(null);
+    });
+
+    it('rejects components that are not allowed for the current project type', () => {
+        const harness = buildHarness();
+        harness.options.projectSiteType = 'website';
+        const { result } = renderHook(() => useCmsStructureMutationHandlers(harness.options));
+
+        act(() => {
+            result.current.addSectionByKey('webu_ecom_product_grid_01', 'library');
+        });
+
+        expect(harness.getSectionsDraft()).toHaveLength(0);
+        expect(harness.applyMutationState).not.toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalledWith('Component is not allowed for this project type');
     });
 });

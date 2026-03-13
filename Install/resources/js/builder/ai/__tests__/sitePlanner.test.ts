@@ -15,11 +15,13 @@ describe('sitePlanner', () => {
     it('returns builder-compatible sections from prompt analysis', () => {
       const result = planSite(analysisEcommerce);
       expect(result.sections.length).toBeGreaterThan(0);
+      expect(result.project.type).toBe('ecommerce');
+      expect(result.available_components).toContain('webu_ecom_product_grid_01');
       expect(result.sections[0]).toMatchObject({ componentKey: 'webu_header_01', variant: 'header-1' });
       expect(result.sections.some((s) => s.componentKey === 'webu_general_hero_01')).toBe(true);
-      expect(result.sections.some((s) => s.componentKey === 'webu_general_grid_01')).toBe(true);
+      expect(result.sections.some((s) => s.componentKey === 'webu_ecom_product_grid_01')).toBe(true);
       expect(result.sections.some((s) => s.componentKey === 'webu_general_features_01')).toBe(true);
-      expect(result.sections.some((s) => s.componentKey === 'webu_general_cards_01')).toBe(true);
+      expect(result.sections.some((s) => s.componentKey === 'webu_general_testimonials_01')).toBe(true);
       expect(result.sections.some((s) => s.componentKey === 'webu_general_cta_01')).toBe(true);
       expect(result.sections.some((s) => s.componentKey === 'webu_footer_01')).toBe(true);
     });
@@ -43,6 +45,7 @@ describe('sitePlanner', () => {
       const result = planSite(empty);
       expect(result.sections.length).toBeGreaterThanOrEqual(5);
       expect(result.sections[0].componentKey).toBe('webu_header_01');
+      expect(result.project.type).toBe('landing');
     });
   });
 
@@ -55,5 +58,19 @@ describe('sitePlanner', () => {
       const headerDisplay = display.find((d) => d.component.includes('header') || d.variant === 'header-1');
       expect(headerDisplay).toBeDefined();
     });
+  });
+
+  it('normalizes hospitality projects to booking governance and keeps booking-safe components', () => {
+    const result = planSite({
+      projectType: 'restaurant',
+      industry: 'food',
+      tone: 'modern',
+      requiredSections: ['header', 'hero', 'menu', 'booking', 'footer'],
+      functionalNeeds: ['booking'],
+    });
+
+    expect(result.project.type).toBe('booking');
+    expect(result.sections.some((section) => section.componentKey === 'webu_ecom_product_grid_01')).toBe(false);
+    expect(result.sections.some((section) => section.componentKey === 'webu_general_form_wrapper_01')).toBe(true);
   });
 });

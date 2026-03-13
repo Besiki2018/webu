@@ -1165,6 +1165,21 @@ class TemplateImportService
         return typeof value === 'string' && value.trim() !== '' ? value : null;
     }
 
+    function readRuntimeFirstStringProp(props, keys) {
+        if (!Array.isArray(keys)) {
+            return null;
+        }
+
+        for (var i = 0; i < keys.length; i++) {
+            var value = readRuntimeStringProp(props, keys[i]);
+            if (value !== null) {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
     function readRuntimeLinkLabel(props, key) {
         if (!props || typeof props !== 'object' || Array.isArray(props)) {
             return null;
@@ -1185,6 +1200,138 @@ class TemplateImportService
             return null;
         }
         return typeof value.url === 'string' && value.url.trim() !== '' ? value.url : null;
+    }
+
+    function normalizeRuntimeLinkObject(value, fallbackLabel, fallbackUrl) {
+        var normalized = value && typeof value === 'object' && !Array.isArray(value)
+            ? Object.assign({}, value)
+            : {};
+        var label = typeof fallbackLabel === 'string' && fallbackLabel.trim() !== ''
+            ? fallbackLabel
+            : (typeof normalized.label === 'string' && normalized.label.trim() !== '' ? normalized.label : null);
+        var url = typeof fallbackUrl === 'string' && fallbackUrl.trim() !== ''
+            ? fallbackUrl
+            : (typeof normalized.url === 'string' && normalized.url.trim() !== '' ? normalized.url : null);
+
+        if (label !== null) {
+            normalized.label = label;
+        }
+        if (url !== null) {
+            normalized.url = url;
+        }
+
+        return Object.keys(normalized).length > 0 ? normalized : null;
+    }
+
+    function readRuntimeCallToActionPayload(props) {
+        if (!props || typeof props !== 'object' || Array.isArray(props)) {
+            return null;
+        }
+
+        var label = readRuntimeFirstStringProp(props, [
+            'buttonText',
+            'buttonLabel',
+            'button_text',
+            'button_label',
+            'ctaText',
+            'ctaLabel',
+            'cta_text',
+            'cta_label'
+        ]);
+        var url = readRuntimeFirstStringProp(props, [
+            'buttonLink',
+            'buttonUrl',
+            'button_link',
+            'button_url',
+            'ctaLink',
+            'ctaUrl',
+            'cta_link',
+            'cta_url'
+        ]);
+        var primaryCta = normalizeRuntimeLinkObject(props.primary_cta, label, url);
+        var button = normalizeRuntimeLinkObject(props.button, label, url);
+
+        if (primaryCta) {
+            return primaryCta;
+        }
+
+        if (button) {
+            return button;
+        }
+
+        return label !== null || url !== null
+            ? normalizeRuntimeLinkObject(null, label, url)
+            : null;
+    }
+
+    function normalizeRuntimeComponentProps(props) {
+        if (!props || typeof props !== 'object' || Array.isArray(props)) {
+            return props;
+        }
+
+        var next = Object.assign({}, props);
+        var headingValue = readRuntimeFirstStringProp(next, ['title', 'headline', 'heading', 'name']);
+        var subtitleValue = readRuntimeFirstStringProp(next, ['subtitle', 'description', 'body', 'text']);
+        var ctaPayload = readRuntimeCallToActionPayload(next);
+        var imageValue = readRuntimeFirstStringProp(next, [
+            'image',
+            'imageUrl',
+            'image_url',
+            'hero_image',
+            'backgroundImage',
+            'background_image'
+        ]);
+
+        if (headingValue !== null) {
+            next.title = headingValue;
+            next.headline = headingValue;
+            next.heading = headingValue;
+        }
+
+        if (subtitleValue !== null) {
+            next.subtitle = subtitleValue;
+            next.description = subtitleValue;
+            next.body = subtitleValue;
+            next.text = subtitleValue;
+        }
+
+        if (ctaPayload) {
+            next.primary_cta = Object.assign({}, ctaPayload);
+            next.button = Object.assign({}, ctaPayload);
+
+            if (typeof ctaPayload.label === 'string' && ctaPayload.label.trim() !== '') {
+                next.buttonText = ctaPayload.label;
+                next.buttonLabel = ctaPayload.label;
+                next.button_text = ctaPayload.label;
+                next.button_label = ctaPayload.label;
+                next.ctaText = ctaPayload.label;
+                next.ctaLabel = ctaPayload.label;
+                next.cta_text = ctaPayload.label;
+                next.cta_label = ctaPayload.label;
+            }
+
+            if (typeof ctaPayload.url === 'string' && ctaPayload.url.trim() !== '') {
+                next.buttonLink = ctaPayload.url;
+                next.buttonUrl = ctaPayload.url;
+                next.button_link = ctaPayload.url;
+                next.button_url = ctaPayload.url;
+                next.ctaLink = ctaPayload.url;
+                next.ctaUrl = ctaPayload.url;
+                next.cta_link = ctaPayload.url;
+                next.cta_url = ctaPayload.url;
+            }
+        }
+
+        if (imageValue !== null) {
+            next.image = imageValue;
+            next.imageUrl = imageValue;
+            next.image_url = imageValue;
+            next.hero_image = imageValue;
+            next.backgroundImage = imageValue;
+            next.background_image = imageValue;
+        }
+
+        return next;
     }
 
     function normalizeFixedSectionProps(type, props) {
@@ -2164,7 +2311,7 @@ class TemplateImportService
             return;
         }
 
-        var effectiveProps = normalizeFixedSectionProps(type, props) || props;
+        var effectiveProps = normalizeRuntimeComponentProps(normalizeFixedSectionProps(type, props) || props);
 
         if (isGeneralSectionType(type) && container instanceof HTMLElement) {
             applyGeneralSectionStyleRuntime(container, effectiveProps);
@@ -2175,29 +2322,20 @@ class TemplateImportService
         var button = container.querySelector('[data-webu-field="button"], [data-webu-field="primary_cta"], button, a.btn, a.button');
 
         if (heading) {
-            var headingValue = effectiveProps.headline || effectiveProps.title;
+            var headingValue = readRuntimeFirstStringProp(effectiveProps, ['title', 'headline', 'heading']);
             if (typeof headingValue === 'string' && headingValue.trim() !== '') {
                 heading.textContent = headingValue;
             }
         }
 
         if (subtitle) {
-            var subtitleValue = effectiveProps.subtitle || effectiveProps.body;
+            var subtitleValue = readRuntimeFirstStringProp(effectiveProps, ['subtitle', 'description', 'body', 'text']);
             if (typeof subtitleValue === 'string' && subtitleValue.trim() !== '') {
                 subtitle.textContent = subtitleValue;
             }
         }
 
-        var ctaPayload = null;
-        if (effectiveProps.primary_cta && typeof effectiveProps.primary_cta === 'object') {
-            ctaPayload = effectiveProps.primary_cta;
-        } else if (effectiveProps.button && typeof effectiveProps.button === 'object') {
-            ctaPayload = effectiveProps.button;
-        } else if (typeof effectiveProps.button === 'string' && effectiveProps.button.trim() !== '') {
-            ctaPayload = { label: effectiveProps.button };
-        } else if (typeof effectiveProps.cta_label === 'string' && effectiveProps.cta_label.trim() !== '') {
-            ctaPayload = { label: effectiveProps.cta_label };
-        }
+        var ctaPayload = readRuntimeCallToActionPayload(effectiveProps);
 
         if (button && ctaPayload && typeof ctaPayload === 'object') {
             if (typeof ctaPayload.label === 'string' && ctaPayload.label.trim() !== '') {
@@ -2502,6 +2640,7 @@ class TemplateImportService
             });
         };
         var fetchDraftPage = function () {
+            var localeQuery = state.locale ? ('?locale=' + encodeURIComponent(state.locale)) : '';
             return jsonFetch('/panel/sites/' + encodeURIComponent(siteId) + '/pages')
                 .then(function (payload) {
                     var pages = Array.isArray(payload && payload.pages) ? payload.pages : [];
@@ -2528,7 +2667,7 @@ class TemplateImportService
                         throw new Error('DRAFT_PAGE_NOT_FOUND');
                     }
 
-                    return jsonFetch('/panel/sites/' + encodeURIComponent(siteId) + '/pages/' + encodeURIComponent(String(page.id)));
+                    return jsonFetch('/panel/sites/' + encodeURIComponent(siteId) + '/pages/' + encodeURIComponent(String(page.id)) + localeQuery);
                 })
                 .then(function (detail) {
                     return {
@@ -2658,6 +2797,7 @@ class TemplateImportService
             }
             var targetSlug = String(pageSlug || 'home');
             if (state.draftMode) {
+                var localeQuery = state.locale ? ('?locale=' + encodeURIComponent(state.locale)) : '';
                 return jsonFetch('/panel/sites/' + encodeURIComponent(state.siteId) + '/pages')
                     .then(function (payload) {
                         var pages = Array.isArray(payload && payload.pages) ? payload.pages : [];
@@ -2675,7 +2815,7 @@ class TemplateImportService
                             throw new Error('DRAFT_PAGE_NOT_FOUND');
                         }
 
-                        return jsonFetch('/panel/sites/' + encodeURIComponent(state.siteId) + '/pages/' + encodeURIComponent(String(page.id)));
+                        return jsonFetch('/panel/sites/' + encodeURIComponent(state.siteId) + '/pages/' + encodeURIComponent(String(page.id)) + localeQuery);
                     })
                     .then(function (detail) {
                         return {

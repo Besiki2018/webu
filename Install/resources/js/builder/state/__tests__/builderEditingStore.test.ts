@@ -267,4 +267,97 @@ describe('builderEditingStore', () => {
         expect(next.hoveredElementId).toBeNull();
         expect(next.builderHoveredElementId).toBeNull();
     });
+
+    it('reconciles stale selection and hover state when sectionsDraft changes directly', () => {
+        const store = useBuilderEditingStore.getState();
+        store.selectTarget({
+            targetId: 'hero-1::section',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: null,
+            elementId: null,
+            selector: '[data-webu-section-local-id="hero-1"]',
+            textPreview: 'Hero',
+            props: { headline: 'Hero' },
+        });
+        store.hoverTarget({
+            targetId: 'hero-1::title',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: 'title',
+            elementId: 'Hero.title',
+            selector: '[data-webu-field="title"]',
+            textPreview: 'Hello',
+            props: { title: 'Hello' },
+        });
+        store.setBuilderHoveredElementId('hero-1');
+
+        store.setSectionsDraft([{
+            localId: 'hero-2',
+            type: 'webu_general_text_01',
+            propsText: JSON.stringify({ body: 'Hello' }),
+            propsError: null,
+            bindingMeta: null,
+        }]);
+
+        const next = useBuilderEditingStore.getState();
+        expect(next.selectedBuilderTarget).toBeNull();
+        expect(next.selectedSectionLocalId).toBeNull();
+        expect(next.hoveredBuilderTarget).toBeNull();
+        expect(next.hoveredTargetId).toBeNull();
+        expect(next.hoveredElementId).toBeNull();
+        expect(next.builderHoveredElementId).toBeNull();
+    });
+
+    it('refreshes selected target props from the normalized sections draft without changing the selected node id', () => {
+        const store = useBuilderEditingStore.getState();
+
+        store.selectTarget({
+            targetId: 'hero-1::headline',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            path: 'headline',
+            elementId: 'Hero.headline',
+            selector: '[data-webu-field="headline"]',
+            textPreview: 'Old headline',
+            props: { headline: 'Old headline' },
+            builderId: 'hero-1::headline',
+            parentId: 'hero-1',
+            editableFields: ['headline'],
+            sectionId: 'hero-1',
+            instanceId: 'hero-1::headline',
+        });
+
+        const before = useBuilderEditingStore.getState();
+        expect(before.selectedNodeId).toBe('hero-1::headline');
+
+        store.setSectionsDraft([{
+            localId: 'hero-1',
+            type: 'webu_general_hero_01',
+            props: {
+                headline: 'Updated headline',
+            },
+            propsText: JSON.stringify({
+                headline: 'Updated headline',
+            }),
+            propsError: null,
+            bindingMeta: null,
+        }]);
+
+        const next = useBuilderEditingStore.getState();
+        expect(next.selectedNodeId).toBe('hero-1::headline');
+        expect(next.selectedBuilderTarget?.props).toMatchObject({
+            headline: 'Updated headline',
+        });
+        expect(next.selectedBuilderTarget?.textPreview).toBe('Updated headline');
+        expect(next.selectedComponentProps).toMatchObject({
+            headline: 'Updated headline',
+        });
+    });
 });

@@ -31,8 +31,7 @@ function makeStateSnapshot(): BuilderUpdateStateSnapshot {
             sectionKey: 'webu_general_hero_01',
             componentType: 'webu_general_hero_01',
             componentName: 'Hero',
-            parameterPath: 'buttonText',
-            elementId: 'HeroSection.buttonText',
+            elementId: null,
             props: JSON.parse(heroSection.propsText) as Record<string, unknown>,
         }),
     };
@@ -191,6 +190,19 @@ describe('updatePipeline', () => {
         expect(nextProps.title).toBe('Chat title');
         expect(nextProps.image).toBe('https://example.com/hero.jpg');
         expect(nextProps.imageAlt).toBe('Hero image');
+    });
+
+    it('updates link fields through the same validated pipeline path', () => {
+        const initialState = makeStateSnapshot();
+        const result = applyBuilderChangeSetPipeline(initialState, {
+            operations: [
+                { op: 'setField', sectionId: 'hero-1', path: 'buttonLink', value: '/collections/new' },
+            ],
+        });
+
+        expect(result.ok).toBe(true);
+        const nextProps = JSON.parse(result.state.sectionsDraft[0]?.propsText ?? '{}') as Record<string, unknown>;
+        expect(nextProps.buttonLink).toBe('/collections/new');
     });
 
     it('supports structural chat operations through the same pipeline entrypoint', () => {

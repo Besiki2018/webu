@@ -17,7 +17,7 @@ async function openVisualBuilder(page: Page) {
 }
 
 async function visibleStructureItems(page: Page): Promise<Locator> {
-  const items = page.locator('.workspace-floating-structure-item, [data-structure-item-id], [draggable="true"]').filter({ has: page.locator('button, span, p, div') });
+  const items = page.locator('.workspace-floating-structure-item, [data-structure-item-id]').filter({ has: page.locator('button, span, p, div') });
   if (!(await items.first().isVisible().catch(() => false))) {
     const openStructure = page.getByRole('button', { name: /open structure|structure|სტრუქტურის გახსნა/i }).first();
     if (await openStructure.isVisible().catch(() => false)) {
@@ -58,6 +58,6 @@ test.describe('Builder authoritative sync flow', () => {
 
     const refreshedItems = await visibleStructureItems(page);
     await expect(refreshedItems).toHaveCount(initialCount);
-    await expect(page.locator('iframe[title="Preview"]').first()).toBeVisible();
+    await expect(page.locator('iframe[title="Preview"], iframe[title="პრევიუ"]').first()).toBeVisible();
   });
 });

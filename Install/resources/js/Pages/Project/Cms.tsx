@@ -152,9 +152,12 @@ import { resolveCmsPageHydrationContent } from '@/builder/cms/pageHydration';
 import { useCmsCanvasInteractionHandlers } from '@/builder/cms/useCmsCanvasInteractionHandlers';
 import { useCmsEmbeddedBuilderSync } from '@/builder/cms/useCmsEmbeddedBuilderSync';
 import { useCmsFixedSectionVariantController } from '@/builder/cms/useCmsFixedSectionVariantController';
+import { CmsInspectorPanel } from '@/builder/cms/CmsInspectorPanel';
+import { buildCmsInspectorMutationDispatcher } from '@/builder/cms/CmsMutationDispatcher';
 import { useCmsPageSelectionLifecycle } from '@/builder/cms/useCmsPageSelectionLifecycle';
 import { useCmsPreviewIframeBinding } from '@/builder/cms/useCmsPreviewIframeBinding';
 import { useCmsPreviewSelectionController } from '@/builder/cms/useCmsPreviewSelectionController';
+import { resolveCmsSelectedSectionSchemaState } from '@/builder/cms/CmsSchemaResolver';
 import { useCmsSelectionStateSync } from '@/builder/cms/useCmsSelectionStateSync';
 import { useCmsSidebarSelectionActions } from '@/builder/cms/useCmsSidebarSelectionActions';
 import {
@@ -162,7 +165,6 @@ import {
     updateNestedSectionPropsAtPath,
 } from '@/builder/cms/nestedSectionTree';
 import { useCmsStructureMutationHandlers } from '@/builder/cms/useCmsStructureMutationHandlers';
-import { SelectedSectionEditableFields } from '@/builder/inspector/SelectedSectionEditableFields';
 import { filterInspectorSchemaFields } from '@/builder/inspector/filterInspectorSchemaFields';
 import {
     buildCanonicalControlMetadataForSchemaField,
@@ -179,8 +181,6 @@ import {
     buildCanonicalPrimaryPanelTabFieldSetBuckets,
     type CanonicalControlGroupAuditRow,
 } from '@/builder/inspector/InspectorRenderer';
-import { buildSelectedSectionInspectorState } from '@/builder/inspector/selectedSectionInspectorState';
-import { buildInspectorMutationHandlers } from '@/builder/mutations/applyInspectorMutation';
 import { resolveSchemaPreferredStringProp } from '@/builder/schema/schemaBindingResolver';
 import {
     DesignSystemPanel,
@@ -191,13 +191,16 @@ import {
 import { generateDesignSystemFromPrompt } from '@/builder/ai/aiBrandGenerator';
 import {
     getAvailableComponents,
+    getAllowedComponents,
     getComponent,
     getComponentSchema,
     getComponentSchemaJson,
+    isComponentAllowedForProjectSiteType,
     resolveComponentProps,
 } from '@/builder/componentRegistry';
 import { isComponentCompatibleWithProjectType } from '@/builder/componentCompatibility';
 import { getEntry, hasEntry } from '@/builder/registry/componentRegistry';
+import { normalizeProjectSiteType } from '@/builder/projectTypes';
 import { useBuilderStore } from '@/builder/store/builderStore';
 import { invalidateDOMMapCache } from '@/builder/domMapper';
 import {
@@ -231,6 +234,7 @@ function getShortLibraryLabel(sectionKey: string, displayLabel: string): string 
 interface ProjectResource {
     id: string;
     name: string;
+    type?: string | null;
     subdomain?: string | null;
     custom_domain?: string | null;
     custom_domain_verified?: boolean;
@@ -7476,6 +7480,10 @@ export default function Cms({
     const isEmbeddedSidebarMode = embeddedMode === 'sidebar';
     const isEmbeddedPreviewMode = embeddedMode === 'preview';
     const projectType = useBuilderStore((s) => s.projectType);
+    const projectSiteType = useMemo(
+        () => normalizeProjectSiteType(projectType, project.type),
+        [project.type, projectType],
+    );
     const { auth } = page.props;
     const isAdminUser = auth.user?.role === 'admin'
         || auth.user?.email?.toLowerCase?.() === 'besiki.ekseulidze@gmail.com';
@@ -7763,6 +7771,7 @@ export default function Cms({
     const builderPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
     const builderPreviewDocumentRef = useRef<Document | null>(null);
     const builderPreviewSelectedElementRef = useRef<HTMLElement | null>(null);
+    const loggedUnknownBuilderPreviewSectionKeysRef = useRef<Set<string>>(new Set());
     const structurePanelInitializedRef = useRef(false);
     const mediaPickerApplyRef = useRef<((assetUrl: string) => void) | null>(null);
     const preferredPageEditorModeRef = useRef<PageEditorMode | null>(null);
@@ -8305,7 +8314,6 @@ export default function Cms({
         }
 
         const slug = selectedPageEditorSlug || 'home';
-        const previewFile = templatePageHtmlFileBySlug.get(slug) ?? 'index.html';
         const query = new URLSearchParams({
             site: site.id,
             slug,
@@ -8313,8 +8321,8 @@ export default function Cms({
             live_design: '1',
         });
 
-        return `/template-demos/${templateSlug}/${previewFile}?${query.toString()}`;
-    }, [selectedPageEditorSlug, site.id, templateBlueprint?.template_slug, templatePageHtmlFileBySlug]);
+        return `/themes/${templateSlug}?${query.toString()}`;
+    }, [selectedPageEditorSlug, site.id, templateBlueprint?.template_slug]);
     const selectedPageEditorLiveUrl = useMemo(() => {
         if (!publicDomain) {
             return null;
@@ -8548,6 +8556,9 @@ export default function Cms({
 
         return keys;
     }, [fixedTemplateSectionPreviewByKey, templateSectionsForActivePage]);
+    const allowedBuilderComponentKeySet = useMemo(() => new Set(
+        getAllowedComponents(projectSiteType).map((component) => normalizeSectionTypeKey(component.type)),
+    ), [normalizeSectionTypeKey, projectSiteType]);
     const filteredSectionLibrary = useMemo(() => {
         const map = new Map<string, SectionLibraryItem>();
         builderSectionLibrary.forEach((item) => {
@@ -8570,6 +8581,17 @@ export default function Cms({
             const normalizedKey = normalizeSectionTypeKey(item.key);
             if (!hasEntry(normalizedKey)) return true;
             return isComponentCompatibleWithProjectType(normalizedKey, projectType);
+        });
+
+        source = source.filter((item) => {
+            const normalizedKey = normalizeSectionTypeKey(item.key);
+            const resolvedComponent = getComponent(normalizedKey);
+            if (!resolvedComponent) {
+                return true;
+            }
+
+            return allowedBuilderComponentKeySet.has(normalizeSectionTypeKey(resolvedComponent.id))
+                && isComponentAllowedForProjectSiteType(resolvedComponent.id, projectSiteType);
         });
 
         // E-commerce template: show only General + E-commerce components in the Elements panel.
@@ -8643,7 +8665,9 @@ export default function Cms({
         generalSectionKeySet,
         isBuilderSectionAllowedByProjectTypeAvailabilityMatrix,
         locale,
+        allowedBuilderComponentKeySet,
         projectType,
+        projectSiteType,
         sectionSearch,
         syntheticEcommerceSectionKeySet,
         t,
@@ -11259,18 +11283,35 @@ main[data-webu-role="page-root"],
                 return;
             }
 
+            const isKnownComponent = hasEntry(normalized)
+                || getComponentSchema(normalized) !== null
+                || getComponent(normalized) !== null;
+            if (!isKnownComponent && !loggedUnknownBuilderPreviewSectionKeysRef.current.has(normalized)) {
+                loggedUnknownBuilderPreviewSectionKeysRef.current.add(normalized);
+                console.error('[CmsBuilderPreview] Unknown component', {
+                    sectionKey: normalized,
+                });
+            }
+
             const createDefaultPlaceholder = () => {
                 const placeholder = doc.createElement('section');
                 placeholder.setAttribute('data-webu-section', normalized);
                 placeholder.setAttribute('data-webu-builder-placeholder', 'true');
+                if (!isKnownComponent) {
+                    placeholder.setAttribute('data-webu-builder-unknown-component', 'true');
+                }
 
                 const title = doc.createElement('div');
                 title.setAttribute('data-webu-field', 'title');
-                title.textContent = label?.trim() ? label : normalized;
+                title.textContent = isKnownComponent
+                    ? (label?.trim() ? label : normalized)
+                    : t('Unknown component');
 
                 const desc = doc.createElement('div');
                 desc.setAttribute('data-webu-field', 'description');
-                desc.textContent = t('New section added in builder. Save draft to persist.');
+                desc.textContent = isKnownComponent
+                    ? t('New section added in builder. Save draft to persist.')
+                    : normalized;
 
                 placeholder.appendChild(title);
                 placeholder.appendChild(desc);
@@ -16119,6 +16160,15 @@ main[data-webu-role="page-root"],
         }
 
         const normalizedSectionType = normalizeSectionTypeKey(sectionType);
+        const isKnownComponent = hasEntry(normalizedSectionType)
+            || getComponentSchema(normalizedSectionType) !== null
+            || getComponent(normalizedSectionType) !== null;
+        if (!isKnownComponent && !loggedUnknownBuilderPreviewSectionKeysRef.current.has(normalizedSectionType)) {
+            loggedUnknownBuilderPreviewSectionKeysRef.current.add(normalizedSectionType);
+            console.error('[CmsBuilderPreview] Unknown component', {
+                sectionKey: normalizedSectionType,
+            });
+        }
         const schema = getComponentSchema(normalizedSectionType);
         const effectiveProps = resolveComponentProps(
             normalizedSectionType,
@@ -22182,7 +22232,6 @@ ${showRules}
         }
 
         const pageSlug = (selectedPageDetail?.page.slug || 'home').trim() || 'home';
-        const previewFile = templatePageHtmlFileBySlug.get(pageSlug) ?? 'index.html';
         const query = new URLSearchParams({
             site: site.id,
             slug: pageSlug,
@@ -22192,8 +22241,8 @@ ${showRules}
             live_design: '1',
         });
 
-        return `/template-demos/${templateSlug}/${previewFile}?${query.toString()}`;
-    }, [activeContentLocale, builderPreviewRefreshToken, selectedPageDetail?.page.slug, site.id, templateBlueprint?.template_slug, templatePageHtmlFileBySlug]);
+        return `/themes/${templateSlug}?${query.toString()}`;
+    }, [activeContentLocale, builderPreviewRefreshToken, selectedPageDetail?.page.slug, site.id, templateBlueprint?.template_slug]);
     const activeSectionLabel = useMemo(() => {
         switch (activeSection) {
             case 'dashboard':
@@ -23126,10 +23175,8 @@ ${showRules}
             return null;
         }
 
-        const previewFile = templatePageHtmlFileBySlug.get('home') ?? 'index.html';
-
-        return `/template-demos/${templateBlueprint.template_slug}/${previewFile}?site=${site.id}&slug=home&draft=1&live_design=1`;
-    }, [templateBlueprint.template_slug, site.id, templatePageHtmlFileBySlug]);
+        return `/themes/${templateBlueprint.template_slug}?site=${site.id}&slug=home&draft=1&live_design=1`;
+    }, [templateBlueprint.template_slug, site.id]);
     const dashboardPageCounts = useMemo(() => {
         const published = pages.filter((item) => item.status === 'published').length;
         return {
@@ -24656,6 +24703,7 @@ ${showRules}
     };
 
     const buildContentJsonPayload = useCallback((): Record<string, unknown> | null => {
+        const currentSectionsDraft = sectionsDraftRef.current;
         const parsedExtra = parseJsonRecord(extraContentJsonText);
         if (!parsedExtra.value) {
             toast.error(parsedExtra.error ?? t('Invalid extra content JSON'));
@@ -24674,7 +24722,7 @@ ${showRules}
 
         const sectionErrors = new Map<string, string | null>();
 
-        sectionsDraft.forEach((draft, index) => {
+        currentSectionsDraft.forEach((draft, index) => {
             const normalizedType = normalizeSectionTypeKey(draft.type);
             if (normalizedType === '' || isFixedLayoutSectionKey(normalizedType)) {
                 sectionErrors.set(draft.localId, null);
@@ -24709,7 +24757,7 @@ ${showRules}
             return null;
         }
 
-        const pageModel = buildBuilderPageModelFromSectionDrafts(sectionsDraft, {
+        const pageModel = buildBuilderPageModelFromSectionDrafts(currentSectionsDraft, {
             editorMode: 'builder',
             textEditorHtml: '',
             extraContent: parsedExtra.value,
@@ -24734,7 +24782,7 @@ ${showRules}
                     : props
             ),
         });
-    }, [effectivePageEditorMode, extraContentJsonText, hydrateSectionDefaultsFromCms, pageRichTextHtml, sectionsDraft, t]);
+    }, [effectivePageEditorMode, extraContentJsonText, hydrateSectionDefaultsFromCms, pageRichTextHtml, setSectionsDraft, t]);
 
     const {
         layoutPrimitiveSectionKeys,
@@ -24754,6 +24802,7 @@ ${showRules}
         scheduleStructuralDraftPersistRef,
         syncPreviewVisibleSections,
         nextSectionLocalId,
+        projectSiteType,
         selectedSectionLocalId,
         selectedBuilderTarget,
         selectedNestedSectionParentLocalId: selectedNestedSection?.parentLocalId ?? null,
@@ -24868,6 +24917,7 @@ ${showRules}
                 language: payload.language,
                 brandName: payload.brandName ?? undefined,
                 contentProvider: undefined,
+                projectType: payload.projectType,
             });
             setSectionsDraft(result.sectionsDraft);
             useBuilderStore.getState().setProjectType(result.projectType);
@@ -25219,7 +25269,8 @@ ${showRules}
         usesSafeFallbackInspector: selectedSectionUsesSafeFallbackInspector,
         usesEcommerceProductsBinding: selectedSectionUsesEcommerceProductsBinding,
         usesEcommerceProductDetailBinding: selectedSectionUsesEcommerceProductDetailBinding,
-    } = useMemo(() => buildSelectedSectionInspectorState({
+        controlGroupAuditRows: selectedSectionControlGroupAuditRows,
+    } = useMemo(() => resolveCmsSelectedSectionSchemaState({
         selectedSectionDraft: selectedSectionDraft
             ? {
                 localId: selectedSectionDraft.localId,
@@ -25235,7 +25286,6 @@ ${showRules}
         interactionState: builderPreviewInteractionState,
         elementorLike: CMS_BUILDER_ELEMENTOR_LIKE_PARAMS,
         normalizeSectionTypeKey,
-        buildControlMeta: buildCanonicalControlMetadataForSchemaField,
     }), [
         builderPreviewInteractionState,
         builderPreviewMode,
@@ -25246,10 +25296,6 @@ ${showRules}
         selectedSectionSchemaHtmlTemplate,
         selectedSectionSchemaProperties,
     ]);
-    const selectedSectionControlGroupAuditRows = useMemo(
-        () => buildCanonicalControlGroupAuditRows(selectedSectionEditableSchemaFieldsForDisplay),
-        [selectedSectionEditableSchemaFieldsForDisplay]
-    );
 
     const createBuilderSectionDraft = useCallback((input: {
         sectionType: string;
@@ -25941,7 +25987,11 @@ ${showRules}
             return;
         }
         previewRefreshScheduler.schedule(() => {
-                void saveDraftRevisionInternalRef.current({ silent: true, refreshAfterSave: true });
+                void saveDraftRevisionInternalRef.current({
+                    silent: true,
+                    refreshAfterSave: false,
+                    notifyParentPreviewRefresh: false,
+                });
             }, 1500);
     }, [activeTab, effectivePageEditorMode, selectedPageId, previewRefreshScheduler]);
 
@@ -25950,7 +26000,11 @@ ${showRules}
             return;
         }
         previewRefreshScheduler.schedule(() => {
-                void saveDraftRevisionInternalRef.current({ silent: true, refreshAfterSave: true });
+                void saveDraftRevisionInternalRef.current({
+                    silent: true,
+                    refreshAfterSave: false,
+                    notifyParentPreviewRefresh: false,
+                });
             }, 0);
     }, [activeTab, effectivePageEditorMode, selectedPageId, previewRefreshScheduler]);
 
@@ -28415,7 +28469,7 @@ ${showRules}
         const effectiveProps = selectedSectionResolvedProps ?? selectedSectionEffectiveParsedProps ?? selectedSectionParsedProps;
         const isNested = selectedNestedSection != null && selectedNestedSection.parentLocalId === selectedSectionDraft.localId && selectedNestedSection.path.length > 0;
         const nestedPath = selectedNestedSection?.path ?? [];
-        const { onChangePath, onChangeTextTypography, onClearTextTypography } = buildInspectorMutationHandlers<TextTypographyStyle>({
+        const { onChangePath, onChangeTextTypography, onClearTextTypography } = buildCmsInspectorMutationDispatcher<TextTypographyStyle>({
             selectedSectionLocalId: selectedSectionDraft.localId,
             selectedNestedSection: isNested && selectedNestedSection
                 ? {
@@ -28431,7 +28485,7 @@ ${showRules}
         const resolvedEffectiveProps = effectiveProps ?? {};
 
         return (
-            <SelectedSectionEditableFields
+            <CmsInspectorPanel
                 compact={compact}
                 t={t}
                 selectedSectionDraft={selectedSectionDraft}

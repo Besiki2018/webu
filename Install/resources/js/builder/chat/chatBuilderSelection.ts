@@ -56,7 +56,9 @@ export function resolveMentionBuilderTarget(input: {
         componentType: matchedItem?.sectionKey ?? nextSectionKey,
         componentName: matchedItem?.label ?? null,
         props: resolvedProps,
-        textPreview: matchedItem ? buildSectionPreviewText(matchedItem.props, matchedItem.previewText) : (input.element.textPreview ?? null),
+        textPreview: matchedItem
+            ? buildSectionPreviewText(matchedItem.props, matchedItem.previewText, matchedItem.sectionKey)
+            : (input.element.textPreview ?? null),
         currentBreakpoint: input.currentBreakpoint ?? null,
         currentInteractionState: input.currentInteractionState ?? null,
     });
@@ -71,7 +73,7 @@ export function resolveMentionBuilderTarget(input: {
 }
 
 export function buildStructureItemSelection(item: BuilderStructureItem): StructureItemSelectionResult {
-    const textPreview = buildSectionPreviewText(item.props, item.previewText);
+    const textPreview = buildSectionPreviewText(item.props, item.previewText, item.sectionKey);
     const payload = {
         sectionLocalId: item.localId,
         sectionKey: item.sectionKey,

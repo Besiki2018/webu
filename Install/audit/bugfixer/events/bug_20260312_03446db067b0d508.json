@@ -1,0 +1,18 @@
+{
+    "bugId": "bug_20260312_03446db067b0d508",
+    "timestamp": "2026-03-12T23:43:45+00:00",
+    "severity": "high",
+    "source": "frontend",
+    "tenantId": null,
+    "websiteId": null,
+    "userId": null,
+    "route": "\/project\/019ce469-fa41-7111-8769-386446033ffe",
+    "event": "Rendered more hooks than during the previous render.",
+    "stack": "Error: Rendered more hooks than during the previous render.\n    at updateWorkInProgressHook (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d0c01302:11726:21)\n    at updateCallback (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d0c01302:12225:22)\n    at Object.useCallback (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d0c01302:12741:22)\n    at useCallback (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-PMKBOVCG.js?v=d0c01302:1090:29)\n    at Chat (http:\/\/[::1]:5173\/resources\/js\/Pages\/Chat.tsx?t=1773359025283:1468:38)\n    at renderWithHooks (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d0c01302:11596:26)\n    at updateFunctionComponent (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d0c01302:14630:28)\n    at beginWork (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d0c01302:15972:22)\n    at beginWork$1 (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d0c01302:19806:22)\n    at performUnitOfWork (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/chunk-LPF6KSF2.js?v=d0c01302:19251:20)",
+    "context": {
+        "sectionId": null,
+        "componentStack": "at Chat (http:\/\/[::1]:5173\/resources\/js\/Pages\/Chat.tsx?t=1773359025283:151:3)\n    at DisabledReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:60:38)\n    at ReCaptchaProvider (http:\/\/[::1]:5173\/resources\/js\/components\/Auth\/ReCaptchaProvider.tsx:77:37)\n    at LanguageProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/LanguageContext.tsx:715:36)\n    at AppWrapper (http:\/\/[::1]:5173\/resources\/js\/app.tsx:30:23)\n    at App (http:\/\/[::1]:5173\/node_modules\/.vite\/deps\/@inertiajs_react.js?v=d0c01302:14984:3)\n    at BugfixerErrorBoundary (http:\/\/[::1]:5173\/resources\/js\/components\/BugfixerErrorBoundary.tsx:7:5)\n    at ThemeProvider (http:\/\/[::1]:5173\/resources\/js\/contexts\/ThemeContext.tsx:41:33)"
+    },
+    "dedupKey": "03446db067b0d508",
+    "frequency": 1
+}

@@ -1,3 +1,5 @@
+import { getComponentSchema } from '@/builder/componentRegistry';
+import { resolveSchemaPreferredStringProp } from '@/builder/schema/schemaBindingResolver';
 import type { BuilderSection } from '@/builder/visual/treeUtils';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -115,10 +117,25 @@ export function updateSectionDraftByLocalId(
     });
 }
 
-export function buildSectionPreviewText(props: Record<string, unknown>, fallback = ''): string {
+export function buildSectionPreviewText(
+    props: Record<string, unknown>,
+    fallback = '',
+    sectionKey: string | null = null,
+): string {
+    const schema = sectionKey ? getComponentSchema(sectionKey) : null;
+    const schemaHeadline = resolveSchemaPreferredStringProp(schema, props, ['title', 'headline', 'heading', 'name']);
+    if (schemaHeadline) {
+        return schemaHeadline;
+    }
+
+    const schemaSecondary = resolveSchemaPreferredStringProp(schema, props, ['subtitle', 'description', 'body', 'text', 'label', 'buttonText']);
+    if (schemaSecondary) {
+        return schemaSecondary;
+    }
+
     const previewPaths = [
-        'headline',
         'title',
+        'headline',
         'subtitle',
         'description',
         'body',

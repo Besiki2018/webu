@@ -70,7 +70,7 @@ export function buildWorkspaceStructureItemsFromCodePage(
     page: Pick<WorkspaceBuilderCodePage, 'sections'> | null | undefined,
     options: {
         getDisplayLabel: (sectionKey: string) => string;
-        buildPreviewText: (props: Record<string, unknown>, fallback: string) => string;
+        buildPreviewText: (props: Record<string, unknown>, fallback: string, sectionKey: string) => string;
     },
 ): WorkspaceBuilderStructureItem[] {
     const sections = page?.sections ?? [];
@@ -83,7 +83,7 @@ export function buildWorkspaceStructureItemsFromCodePage(
             localId: section.localId ?? `generated-section-${sectionKey}`,
             sectionKey,
             label,
-            previewText: options.buildPreviewText(section.props ?? {}, label || sectionKey),
+            previewText: options.buildPreviewText(section.props ?? {}, label || sectionKey, sectionKey),
             props: section.props ?? {},
         };
     });

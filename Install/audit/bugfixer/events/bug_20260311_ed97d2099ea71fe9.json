@@ -1,6 +1,6 @@
 {
     "bugId": "bug_20260311_ed97d2099ea71fe9",
-    "timestamp": "2026-03-11T23:26:49+00:00",
+    "timestamp": "2026-03-12T12:53:23+00:00",
     "severity": "high",
     "source": "frontend",
     "tenantId": null,
@@ -14,5 +14,5 @@
         "componentStack": null
     },
     "dedupKey": "ed97d2099ea71fe9",
-    "frequency": 14
+    "frequency": 15
 }

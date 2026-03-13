@@ -99,6 +99,34 @@ The follow-up hardening pass added one more schema-backed guard in the preview m
 - `Cms.tsx` now resolves preview-applied section props through `resolveComponentProps(...)` before mutating preview DOM
 - preview text fallback now uses `resolveSchemaPreferredStringProp(...)` so schema-backed `title` wins over stale legacy aliases such as `headline` when the schema only defines `title`
 - preview CTA hydration now reads canonical `buttonText` / `buttonLink` and `ctaText` / `ctaLink` combinations before falling back to older loose `button` payloads
+- the generated theme runtime now normalizes preview props before applying them, so iframe refreshes read canonical `title`, `subtitle`, CTA, and image values instead of stale aliases such as `headline` or `primary_cta`
+- draft preview page fetches now append `?locale=...` to the panel detail endpoint, preventing locale drift when the preview iframe reloads
+
+## Placeholder Lifecycle Fix
+
+### Exact root cause
+
+Unsaved insertions in the inspect route are represented by optimistic placeholder nodes in `resources/js/components/Preview/InspectPreview.tsx`.
+
+The accumulation bug came from two legacy behaviors combining:
+
+1. the chat/sidebar bridge could replay the same draft structure snapshot more than once before the iframe rendered a real node for that `localId`
+2. the placeholder reconciliation path appended placeholders opportunistically, but it did not first collapse existing placeholder nodes down to one authoritative node per `localId`
+
+That made repeated unsaved sync events stack duplicate draft placeholders or leave stale placeholder content in place until a full refresh.
+
+### Exact fix
+
+The fix keeps `localId` as the single placeholder identity and makes the lifecycle deterministic:
+
+1. collect expected draft items by `localId`
+2. remove placeholders whose `localId` is no longer expected
+3. remove placeholders immediately when a real preview node with the same `localId` exists
+4. deduplicate any remaining placeholders to one DOM node per `localId`
+5. reuse that node and resync its text, link, and image metadata through `syncPlaceholderSection(...)`
+6. only create a placeholder when neither a real node nor an existing placeholder already represents that `localId`
+
+The related bridge hardening in `resources/js/builder/cms/useChatEmbeddedBuilderBridge.ts` also ignores duplicate structure snapshots keyed by `(pageId, pageSlug, stateVersion, revisionVersion, structureHash)`, so the same optimistic preview state is not replayed multiple times through the sidebar sync path.
 
 ## Cleanup Performed
 
@@ -121,14 +149,13 @@ The follow-up hardening pass added one more schema-backed guard in the preview m
   - `resources/js/builder/__tests__/canvasSelection.test.tsx`
   - `resources/js/builder/__tests__/componentInsertion.test.ts`
   - `resources/js/builder/__tests__/schemaResolution.test.tsx`
-  - `resources/js/builder/__tests__/aiMutationAdapter.test.ts`
 
 ## Risky Areas Preserved
 
 - The embedded iframe bridge remains part of the active architecture and must not be removed until the legacy builder itself is replaced.
 - `Cms.tsx` still contains large amounts of schema, preview, and editor logic in one file. This pass only tightened binding and mutation determinism without redesigning the runtime.
 - The broader `resources/js/builder/*` tree still contains inactive code from earlier experiments. It is isolated from the active product flow, but broad deletion should be done only in a dedicated cleanup pass.
-- Repeated unsaved placeholder insertions still make the legacy preview harder to reason about because draft-only placeholders accumulate in the preview surface until the page is refreshed or persisted.
+- Repeated unsaved placeholder insertions remain the hardest part of the legacy flow because optimistic preview nodes can still be replayed by the iframe bridge faster than the saved draft round-trip.
 
 ## Browser Runtime Verification
 
@@ -149,7 +176,8 @@ Verified in the active legacy route:
 
 Observed residual runtime note:
 
-- live preview updates for repeatedly edited unsaved placeholders remain sensitive to legacy bridge/refresh timing and should be the next cleanup target if deeper stabilization is required
+- preview refresh drift that previously reset hero content back to stale values was traced to generated runtime alias precedence (`headline` over `title`, `primary_cta` over canonical CTA fields) and is now fixed in `TemplateImportService.php`
+- repeated unsaved placeholder edits are improved by the legacy store reconciliation work, but optimistic placeholder churn still depends on the old iframe bridge and remains the main residual risk
 
 ## Verification Targets
 

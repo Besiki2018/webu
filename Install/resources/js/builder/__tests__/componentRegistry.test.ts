@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    getAllowedComponents,
     getCodegenTagMapSnapshot,
     getComponentCodegenMetadata,
     getComponentRegistryIdByCodegenTagName,
     getComponentSchema,
     getComponentSchemaJson,
     getComponentRuntimeEntry,
+    getGovernedComponent,
     getRegistrySnapshot,
+    isComponentAllowedForProjectSiteType,
     resolveComponentProps,
 } from '../componentRegistry';
 import { getComponentParameterMeta } from '../componentParameterMetadata';
@@ -139,6 +142,21 @@ describe('componentRegistry schema normalization', () => {
         expect(props.backgroundImage).toBe('/hero.jpg');
     });
 
+    it('keeps explicit schema-backed hero fields authoritative when stale legacy aliases are also present', () => {
+        const props = resolveComponentProps('webu_general_hero_01', {
+            title: 'Runtime Title',
+            headline: 'Legacy Headline',
+            buttonLink: '/runtime-link',
+            ctaUrl: '/legacy-link',
+            image: '/runtime-image.jpg',
+            imageUrl: '/legacy-image.jpg',
+        });
+
+        expect(props.title).toBe('Runtime Title');
+        expect(props.buttonLink).toBe('/runtime-link');
+        expect(props.image).toBe('/runtime-image.jpg');
+    });
+
     it('exposes deterministic codegen metadata and reverse lookup from the centralized registry', () => {
         const heroCodegen = getComponentCodegenMetadata('webu_general_hero_01');
         const tagMap = getCodegenTagMapSnapshot();
@@ -150,5 +168,34 @@ describe('componentRegistry schema normalization', () => {
         });
         expect(tagMap.webu_general_hero_01).toBe('HeroSection');
         expect(getComponentRegistryIdByCodegenTagName('HeroSection')).toBe('webu_general_hero_01');
+    });
+
+    it('builds a governed component catalog with canonical type, label, category, and schema', () => {
+        const ecommerceProductGrid = getGovernedComponent('webu_ecom_product_grid_01');
+        const landingBanner = getGovernedComponent('webu_general_banner_01');
+
+        expect(ecommerceProductGrid).toMatchObject({
+            type: 'webu_ecom_product_grid_01',
+            label: 'Product Grid',
+            category: 'ecommerce',
+        });
+        expect(ecommerceProductGrid?.schema.componentKey).toBe('webu_ecom_product_grid_01');
+        expect(landingBanner).toMatchObject({
+            type: 'webu_general_banner_01',
+            label: 'Banner',
+            category: 'landing',
+        });
+    });
+
+    it('filters allowed components by normalized project site type', () => {
+        const ecommerceComponents = getAllowedComponents('ecommerce');
+        const websiteComponents = getAllowedComponents('website');
+
+        expect(ecommerceComponents.some((component) => component.type === 'webu_ecom_product_grid_01')).toBe(true);
+        expect(ecommerceComponents.some((component) => component.category === 'marketing')).toBe(false);
+        expect(websiteComponents.some((component) => component.type === 'webu_ecom_product_grid_01')).toBe(false);
+        expect(websiteComponents.some((component) => component.type === 'webu_general_banner_01')).toBe(true);
+        expect(isComponentAllowedForProjectSiteType('webu_general_hero_01', 'website')).toBe(true);
+        expect(isComponentAllowedForProjectSiteType('webu_ecom_product_grid_01', 'website')).toBe(false);
     });
 });

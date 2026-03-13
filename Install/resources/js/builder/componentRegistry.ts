@@ -28,6 +28,7 @@ import {
     BuilderTextCanvasSection,
     BuilderVideoCanvasSection,
 } from './visual/registryComponents';
+import { normalizeProjectSiteType, type ProjectSiteType } from './projectTypes';
 
 export type ParameterType = 'string' | 'number' | 'boolean' | 'image' | 'collection' | 'richtext' | 'url';
 
@@ -190,6 +191,8 @@ export interface ComponentDefinition {
     canvasComponent?: BuilderCanvasComponent;
     metadata?: ComponentMetadata;
     projectTypes?: BuilderProjectType[];
+    /** Normalized AI/builder governance category. Falls back to derived value when omitted. */
+    governanceCategory?: BuilderGovernanceCategory;
 }
 
 export interface BuilderComponentRuntimeEntry {
@@ -216,6 +219,24 @@ export type BuilderCategory =
     | 'booking'
     | 'blog'
     | 'portfolio';
+
+export const BUILDER_GOVERNANCE_CATEGORIES = [
+    'ecommerce',
+    'booking',
+    'landing',
+    'marketing',
+    'blog',
+    'general',
+] as const;
+
+export type BuilderGovernanceCategory = (typeof BUILDER_GOVERNANCE_CATEGORIES)[number];
+
+export interface BuilderGovernedComponent {
+    type: string;
+    label: string;
+    category: BuilderGovernanceCategory;
+    schema: BuilderComponentSchema;
+}
 
 /** Advanced settings applied to every component (padding, margin, background, border radius, animations). */
 export const ADVANCED_SETTINGS: Record<string, ParameterSchema> = {
@@ -1046,6 +1067,11 @@ function mergeResolvedProps(
     pathPrefix: string[] = [],
 ): Record<string, unknown> {
     const next: Record<string, unknown> = { ...base };
+    const explicitOverridePaths = new Set(
+        Object.keys(overrides)
+            .map((key) => [...pathPrefix, key].join('.'))
+            .filter(Boolean),
+    );
 
     Object.entries(overrides).forEach(([key, value]) => {
         const current = next[key];
@@ -1059,6 +1085,12 @@ function mergeResolvedProps(
         if (group && !isPlainObject(value)) {
             group.forEach((alias) => {
                 const aliasPath = [...pathPrefix, alias].join('.');
+                if (aliasPath === [...pathPrefix, key].join('.')) {
+                    return;
+                }
+                if (explicitOverridePaths.has(aliasPath)) {
+                    return;
+                }
                 if (shouldPropagateAliasPath(aliasPath, comparableSchemaPaths)) {
                     next[alias] = value;
                 }
@@ -1971,6 +2003,18 @@ const REGISTRY: Record<string, ComponentDefinition> = {
     },
 };
 
+const EXPLICIT_GOVERNANCE_CATEGORY_BY_ID: Partial<Record<string, BuilderGovernanceCategory>> = {
+    webu_general_newsletter_01: 'marketing',
+    webu_general_banner_01: 'landing',
+};
+
+const PROJECT_SITE_ALLOWED_CATEGORIES: Record<ProjectSiteType, readonly BuilderGovernanceCategory[]> = {
+    ecommerce: ['ecommerce', 'general'],
+    booking: ['booking', 'general'],
+    landing: ['landing', 'marketing', 'general'],
+    website: ['landing', 'marketing', 'blog', 'general'],
+};
+
 /**
  * CMS/live-preview payloads often use short section types instead of canonical builder ids.
  * Resolve those aliases to the canonical registry entry so inspect/sidebar editing keeps working.
@@ -2011,6 +2055,16 @@ function resolveComponentLookupKey(registryId: string): string {
     return COMPONENT_LOOKUP_ALIASES[normalizedKey] ?? normalizedKey;
 }
 
+export function resolveComponentRegistryKey(registryId: string): string | null {
+    const definition = getComponent(registryId);
+    if (definition) {
+        return definition.id;
+    }
+
+    const normalizedKey = resolveComponentLookupKey(registryId);
+    return normalizedKey === '' ? null : normalizedKey;
+}
+
 /**
  * Get all available component IDs. Used by AI and builder panel.
  */
@@ -2024,6 +2078,79 @@ export function getAvailableComponents(): string[] {
 export function getComponent(registryId: string): ComponentDefinition | null {
     const key = resolveComponentLookupKey(registryId);
     return REGISTRY[key] ?? REGISTRY[registryId] ?? null;
+}
+
+function resolveGovernanceCategory(
+    definition: ComponentDefinition,
+    schema: BuilderComponentSchema,
+): BuilderGovernanceCategory {
+    if (definition.governanceCategory) {
+        return definition.governanceCategory;
+    }
+
+    const explicitCategory = EXPLICIT_GOVERNANCE_CATEGORY_BY_ID[definition.id];
+    if (explicitCategory) {
+        return explicitCategory;
+    }
+
+    if (definition.id.startsWith('webu_ecom_') || schema.category === 'ecommerce') {
+        return 'ecommerce';
+    }
+
+    if (definition.id.includes('booking') || schema.category === 'booking') {
+        return 'booking';
+    }
+
+    if (definition.id.includes('blog') || schema.category === 'blog') {
+        return 'blog';
+    }
+
+    return 'general';
+}
+
+export function getGovernedComponent(registryId: string): BuilderGovernedComponent | null {
+    const definition = getComponent(registryId);
+    if (!definition) {
+        return null;
+    }
+
+    const schema = getComponentSchema(definition.id);
+    if (!schema) {
+        return null;
+    }
+
+    return {
+        type: schema.componentKey,
+        label: schema.displayName,
+        category: resolveGovernanceCategory(definition, schema),
+        schema,
+    };
+}
+
+export function getGovernedComponentCatalog(): BuilderGovernedComponent[] {
+    return getAvailableComponents()
+        .map((registryId) => getGovernedComponent(registryId))
+        .filter((entry): entry is BuilderGovernedComponent => entry !== null);
+}
+
+export function getAllowedComponents(projectType: ProjectSiteType | string): BuilderGovernedComponent[] {
+    const projectSiteType = normalizeProjectSiteType(projectType);
+    const allowedCategories = new Set(PROJECT_SITE_ALLOWED_CATEGORIES[projectSiteType]);
+
+    return getGovernedComponentCatalog().filter((component) => allowedCategories.has(component.category));
+}
+
+export function isComponentAllowedForProjectSiteType(
+    registryId: string,
+    projectType: ProjectSiteType | string,
+): boolean {
+    const component = getGovernedComponent(registryId);
+    if (!component) {
+        return false;
+    }
+
+    const allowedCategories = new Set(PROJECT_SITE_ALLOWED_CATEGORIES[normalizeProjectSiteType(projectType)]);
+    return allowedCategories.has(component.category);
 }
 
 /**
@@ -2289,20 +2416,36 @@ export function getShortDisplayName(registryId: string, fallbackLabel: string): 
 /**
  * Registry as plain object (for serialization / API).
  */
-export function getRegistrySnapshot(): Record<string, ComponentDefinition & { id: string; schema_json?: Record<string, unknown> }> {
+export function getRegistrySnapshot(): Record<string, ComponentDefinition & {
+    id: string;
+    type?: string;
+    label?: string;
+    governance_category?: BuilderGovernanceCategory;
+    schema_json?: Record<string, unknown>;
+}> {
     return Object.fromEntries(
-        Object.entries(REGISTRY).map(([id, def]) => [id, {
-            ...def,
-            id,
-            schema: getComponentSchema(id) ?? undefined,
-            schema_json: getComponentSchemaJson(id) ?? undefined,
-            codegen: getComponentCodegenMetadata(id) ?? undefined,
-        }])
+        Object.entries(REGISTRY).map(([id, def]) => {
+            const governed = getGovernedComponent(id);
+
+            return [id, {
+                ...def,
+                id,
+                type: governed?.type ?? id,
+                label: governed?.label ?? def.name,
+                governance_category: governed?.category,
+                schema: governed?.schema ?? getComponentSchema(id) ?? undefined,
+                schema_json: getComponentSchemaJson(id) ?? undefined,
+                codegen: getComponentCodegenMetadata(id) ?? undefined,
+            }];
+        })
     );
 }
 
 export const componentRegistry = {
     getAvailableComponents,
+    getGovernedComponent,
+    getGovernedComponentCatalog,
+    getAllowedComponents,
     getComponent,
     getCategories,
     getComponentsByCategory,
@@ -2320,10 +2463,13 @@ export const componentRegistry = {
     getComponentRegistryIdByCodegenTagName,
     getCodegenTagMapSnapshot,
     isValidComponent,
+    resolveComponentRegistryKey,
     getShortDisplayName,
+    isComponentAllowedForProjectSiteType,
     getRegistrySnapshot,
     ADVANCED_SETTINGS,
     REGISTRY_CATEGORY_ORDER,
+    BUILDER_GOVERNANCE_CATEGORIES,
 };
 
 /** Re-export central component registry (header, hero, footer with component, schema, defaults). */

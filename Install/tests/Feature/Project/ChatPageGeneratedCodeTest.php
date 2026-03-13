@@ -132,7 +132,7 @@ class ChatPageGeneratedCodeTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn (Assert $inertia) => $inertia
             ->component('Chat')
-            ->where('project.cms_preview_url', fn (?string $url) => is_string($url) && str_contains($url, '/template-demos/default/index.html'))
+            ->where('project.cms_preview_url', fn (?string $url) => is_string($url) && str_contains($url, '/themes/default?'))
             ->where('generatedPage.slug', 'home')
             ->where('generatedPage.revision_source', 'latest')
             ->where('generatedPage.sections.0.type', 'hero_split_image')
@@ -144,7 +144,7 @@ class ChatPageGeneratedCodeTest extends TestCase
         $props = is_array($pageData) && isset($pageData['props']) ? $pageData['props'] : (isset($pageData['page']['props']) ? $pageData['page']['props'] : []);
         $cmsPreviewUrl = data_get($props, 'project.cms_preview_url');
         $this->assertIsString($cmsPreviewUrl);
-        $this->assertStringContainsString('/template-demos/default/index.html', $cmsPreviewUrl);
+        $this->assertStringContainsString('/themes/default?', $cmsPreviewUrl);
         $generatedPages = $props['generatedPages'] ?? [];
         $slugs = array_column($generatedPages, 'slug');
         $this->assertContains('home', $slugs, 'generatedPages should include home');
@@ -210,7 +210,7 @@ class ChatPageGeneratedCodeTest extends TestCase
         $cmsPreviewUrl = data_get($props, 'project.cms_preview_url');
 
         $this->assertIsString($cmsPreviewUrl);
-        $this->assertStringContainsString('/template-demos/ecommerce/index.html', $cmsPreviewUrl);
+        $this->assertStringContainsString('/themes/ecommerce?', $cmsPreviewUrl);
     }
 
     public function test_chat_page_uses_default_preview_template_for_generated_non_ecommerce_projects(): void
@@ -261,7 +261,7 @@ class ChatPageGeneratedCodeTest extends TestCase
         $cmsPreviewUrl = data_get($props, 'project.cms_preview_url');
 
         $this->assertIsString($cmsPreviewUrl);
-        $this->assertStringContainsString('/template-demos/default/index.html', $cmsPreviewUrl);
+        $this->assertStringContainsString('/themes/default?', $cmsPreviewUrl);
         $this->assertStringNotContainsString('/template-demos/ecommerce', $cmsPreviewUrl);
     }
 
@@ -323,7 +323,7 @@ class ChatPageGeneratedCodeTest extends TestCase
         $cmsPreviewUrl = data_get($props, 'project.cms_preview_url');
 
         $this->assertIsString($cmsPreviewUrl);
-        $this->assertStringContainsString('/template-demos/default/index.html', $cmsPreviewUrl);
+        $this->assertStringContainsString('/themes/default?', $cmsPreviewUrl);
         $this->assertStringNotContainsString('/template-demos/ecommerce', $cmsPreviewUrl);
     }
 }

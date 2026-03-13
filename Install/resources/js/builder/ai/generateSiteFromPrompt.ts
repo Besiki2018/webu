@@ -6,7 +6,11 @@
  */
 
 import type { BuilderComponentInstance } from '../core/types';
-import type { ProjectType } from '../projectTypes';
+import {
+  normalizeProjectSiteType,
+  type BuilderProject,
+  type ProjectType,
+} from '../projectTypes';
 import { analyzePrompt } from './promptAnalyzer';
 import { planSite } from './sitePlanner';
 import { applyVariantSelection } from './componentSelector';
@@ -23,6 +27,7 @@ import {
   injectImageIntoProps,
   type ImageGeneratorProvider,
 } from './imageGenerator';
+import { getSectionsForProjectType } from './projectTypeIntegration';
 
 // ---------------------------------------------------------------------------
 // Component key → content section type (for AI content generation)
@@ -47,6 +52,8 @@ export interface GenerateSiteFromPromptOptions {
   language?: string;
   /** Optional brand name for content. */
   brandName?: string | null;
+  /** Explicit project type chosen by the user; overrides prompt auto-detection for layout governance. */
+  projectType?: ProjectType;
 }
 
 export interface GenerateSiteFromPromptResult {
@@ -56,6 +63,10 @@ export interface GenerateSiteFromPromptResult {
   sectionsDraft: ReturnType<typeof treeToSectionsDraft>;
   /** Detected project type; caller should setProjectType(projectType). */
   projectType: ProjectType;
+  /** Normalized project metadata for governance-aware callers. */
+  project: BuilderProject;
+  /** Canonical registry ids the AI planner was allowed to use. */
+  available_components: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -77,10 +88,26 @@ export async function generateSiteFromPrompt(
   prompt: string,
   options: GenerateSiteFromPromptOptions = {}
 ): Promise<GenerateSiteFromPromptResult> {
-  const { contentProvider = null, imageProvider = null, language = 'en', brandName = null } = options;
+  const {
+    contentProvider = null,
+    imageProvider = null,
+    language = 'en',
+    brandName = null,
+    projectType: explicitProjectType,
+  } = options;
 
   // 1. Prompt analyzer
-  const analysis = analyzePrompt(prompt);
+  const detectedAnalysis = analyzePrompt(prompt);
+  const analysis = explicitProjectType
+    ? {
+        ...detectedAnalysis,
+        projectType: explicitProjectType,
+        requiredSections: Array.from(new Set([
+          ...getSectionsForProjectType(explicitProjectType),
+          ...detectedAnalysis.requiredSections,
+        ])),
+      }
+    : detectedAnalysis;
 
   // 2. Site planner
   const plan = planSite(analysis);
@@ -154,10 +181,16 @@ export async function generateSiteFromPrompt(
 
   // 7. Section drafts for Cms
   const sectionsDraft = treeToSectionsDraft(tree);
+  const normalizedProjectType = plan.project?.type ?? normalizeProjectSiteType(analysis.projectType);
 
   return {
     tree,
     sectionsDraft,
     projectType: analysis.projectType,
+    project: {
+      projectType: analysis.projectType,
+      type: normalizedProjectType,
+    },
+    available_components: plan.available_components ?? [],
   };
 }

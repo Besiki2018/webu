@@ -6,6 +6,11 @@ describe('generateSiteFromPrompt', () => {
     expect(result.tree.length).toBeGreaterThan(0);
     expect(result.sectionsDraft.length).toBe(result.tree.length);
     expect(result.projectType).toBe('ecommerce');
+    expect(result.project).toEqual({
+      projectType: 'ecommerce',
+      type: 'ecommerce',
+    });
+    expect(result.available_components).toContain('webu_ecom_product_grid_01');
     expect(result.tree[0]).toMatchObject({
       id: expect.any(String),
       componentKey: expect.any(String),
@@ -27,11 +32,12 @@ describe('generateSiteFromPrompt', () => {
   it('"Create a modern SaaS landing page" generates Header, Hero, Features, Pricing, Testimonials, CTA, Footer', async () => {
     const result = await generateSiteFromPrompt('Create a modern SaaS landing page');
     expect(result.projectType).toBe('saas');
+    expect(result.project.type).toBe('website');
     const keys = result.tree.map((n) => n.componentKey);
     expect(keys).toContain('webu_header_01');
     expect(keys).toContain('webu_general_hero_01');
     expect(keys).toContain('webu_general_features_01');
-    expect(keys).toContain('webu_general_cards_01');
+    expect(keys).toContain('webu_general_testimonials_01');
     expect(keys).toContain('webu_general_cta_01');
     expect(keys).toContain('webu_footer_01');
     const featuresCount = keys.filter((k) => k === 'webu_general_features_01').length;
@@ -51,5 +57,16 @@ describe('generateSiteFromPrompt', () => {
     const hero = result.tree.find((n) => n.componentKey === 'webu_general_hero_01');
     expect(hero?.props?.title).toBe('Test Hero Title');
     expect(hero?.props?.buttonText).toBe('Shop Now');
+  });
+
+  it('respects an explicit project type override and only plans allowed components for it', async () => {
+    const result = await generateSiteFromPrompt('Simple brochure website', {
+      projectType: 'ecommerce',
+    });
+
+    expect(result.projectType).toBe('ecommerce');
+    expect(result.project.type).toBe('ecommerce');
+    expect(result.available_components).toContain('webu_ecom_product_grid_01');
+    expect(result.tree.some((node) => node.componentKey === 'webu_ecom_product_grid_01')).toBe(true);
   });
 });

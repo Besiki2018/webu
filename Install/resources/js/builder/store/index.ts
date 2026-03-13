@@ -12,5 +12,13 @@ export type {
   BuilderBreakpoint,
   BuilderMode,
 } from './builderStore';
-export type { ProjectType, BuilderProject } from '../projectTypes';
-export { projectTypes, defaultProjectType, isProjectType } from '../projectTypes';
+export type { ProjectType, ProjectSiteType, BuilderProject } from '../projectTypes';
+export {
+  projectTypes,
+  projectSiteTypes,
+  defaultProjectType,
+  defaultProjectSiteType,
+  isProjectType,
+  isProjectSiteType,
+  normalizeProjectSiteType,
+} from '../projectTypes';

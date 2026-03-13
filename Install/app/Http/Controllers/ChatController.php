@@ -112,7 +112,7 @@ class ChatController extends Controller
         }
         // live_design=1: use latest app.css and no payload cache so component-library design changes react immediately
         $cmsPreviewUrl = sprintf(
-            '/template-demos/%s/index.html?site=%s&slug=home&locale=%s&draft=1&live_design=1',
+            '/themes/%s?site=%s&slug=home&locale=%s&draft=1&live_design=1',
             rawurlencode($templateSlug),
             rawurlencode((string) $site->id),
             rawurlencode((string) ($site->locale ?: 'ka'))

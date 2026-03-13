@@ -42,6 +42,11 @@ export function buildOptimisticInsertedStructureItems(
     },
 ): BuilderStructureItem[] {
     const nextItems = [...items];
+    const existingIndex = nextItems.findIndex((item) => item.localId === nextItem.localId);
+    if (existingIndex >= 0) {
+        nextItems.splice(existingIndex, 1);
+    }
+
     const placement = options?.placement ?? null;
     const anchorLocalId = options?.afterSectionLocalId?.trim() ?? '';
     if (placement === 'inside') {
