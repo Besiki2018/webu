@@ -25,7 +25,6 @@ import { useUserChannel } from '@/hooks/useUserChannel';
 import { usePageTransition } from '@/hooks/usePageTransition';
 import { useTranslation } from '@/contexts/LanguageContext';
 import { filterCreatePromptExamples } from '@/lib/createPromptCatalog';
-import { submitBrowserPost } from '@/lib/browserPostRedirect';
 import { CreateProps, PageProps } from '@/types';
 import type { UserCredits, UserNotification } from '@/types/notifications';
 import type { BroadcastConfig } from '@/hooks/useBuilderPusher';
@@ -188,9 +187,7 @@ export default function Create({
             : undefined;
         window.sessionStorage.setItem(CREATE_PENDING_REDIRECT_STORAGE_KEY, '1');
 
-        // Use a browser-level POST redirect for the primary create flow.
-        // This avoids Inertia redirect/history edge cases when generation opens a heavy CMS page.
-        submitBrowserPost(route('projects.generate-website'), {
+        router.post(route('projects.generate-website'), {
             prompt: value,
             style,
         });

@@ -46,23 +46,7 @@
 }
 */
 
-@font-face {
-  font-family: "TBC Contractica";
-  src: url("/fonts/TBCContractica-Regular.woff2") format("woff2"),
-       url("/fonts/TBCContractica-Regular.woff") format("woff");
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "TBC Contractica";
-  src: url("/fonts/TBCContractica-Medium.woff2") format("woff2"),
-       url("/fonts/TBCContractica-Medium.woff") format("woff");
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-}
+/* Font assets are not bundled in this repo yet; fall back to app sans until they are added. */
 
 :root {
   --font-app-sans: "Noto Sans Georgian", "DejaVu Sans", "Segoe UI", system-ui, sans-serif;

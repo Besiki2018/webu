@@ -6,27 +6,17 @@ import {
     type CollisionDetection,
     closestCenter,
     pointerWithin,
-    DndContext,
-    DragOverlay,
     DragEndEvent,
     DragStartEvent,
     KeyboardSensor,
     PointerSensor,
-    useDraggable,
-    useDndMonitor,
-    useDroppable,
     useSensor,
     useSensors,
 } from '@dnd-kit/core';
 import {
     arrayMove,
-    SortableContext,
     sortableKeyboardCoordinates,
-    useSortable,
-    verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import {
     ArrowDown,
     ArrowLeft,
@@ -115,9 +105,6 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import { cn } from '@/lib/utils';
 import { resolveBuilderWidgetIcon as resolveBuilderWidgetIconKey } from '@/lib/resolveBuilderWidgetIcon';
 import type { PageProps } from '@/types';
-import { BuilderCanvas } from '@/builder/visual/BuilderCanvas';
-import { StructurePanel } from '@/builder/visual/StructurePanel';
-import { parseVisualDropId, VISUAL_DROP_PREFIX } from '@/builder/visual/types';
 import { updateSectionProps } from '@/builder/visual/treeUtils';
 import { useBuilderCanvasState, type SectionDraft } from '@/builder/state/useBuilderCanvasState';
 import {
@@ -152,7 +139,6 @@ import { resolveCmsPageHydrationContent } from '@/builder/cms/pageHydration';
 import { useCmsCanvasInteractionHandlers } from '@/builder/cms/useCmsCanvasInteractionHandlers';
 import { useCmsEmbeddedBuilderSync } from '@/builder/cms/useCmsEmbeddedBuilderSync';
 import { useCmsFixedSectionVariantController } from '@/builder/cms/useCmsFixedSectionVariantController';
-import { CmsInspectorPanel } from '@/builder/cms/CmsInspectorPanel';
 import { CmsMediaFieldControl } from '@/builder/cms/CmsMediaFieldControl';
 import { buildCmsInspectorMutationDispatcher } from '@/builder/cms/CmsMutationDispatcher';
 import { useCmsPageSelectionLifecycle } from '@/builder/cms/useCmsPageSelectionLifecycle';
@@ -184,12 +170,9 @@ import {
 } from '@/builder/inspector/InspectorRenderer';
 import { resolveSchemaPreferredStringProp } from '@/builder/schema/schemaBindingResolver';
 import {
-    DesignSystemPanel,
     designSystemVarsToStyleContent,
-    generatedSystemToOverrides,
     type DesignSystemOverrides,
 } from '@/builder/designSystem/DesignSystemPanel';
-import { generateDesignSystemFromPrompt } from '@/builder/ai/aiBrandGenerator';
 import {
     getAvailableComponents,
     getAllowedComponents,
@@ -209,18 +192,19 @@ import {
     buildEditableTargetFromMessagePayload,
     type BuilderEditableTarget,
 } from '@/builder/editingState';
-import { applyLayoutRefinement, inferWebsiteTypeFromPrompt, saveDesignMemory } from '@/ai';
 import { applyAiSitePlan } from '@/builder/ai/builderRenderAdapter';
-import { generateSiteFromPrompt } from '@/builder/ai/generateSiteFromPrompt';
-import { generateLayoutFromDesign } from '@/builder/ai/generateLayoutFromDesign';
 
 const CmsBookingPanel = lazy(async () => ({ default: (await import('@/components/Project/CmsBookingPanel')).CmsBookingPanel }));
 const CmsEcommercePanel = lazy(async () => ({ default: (await import('@/components/Project/CmsEcommercePanel')).CmsEcommercePanel }));
-const AIWebsitePromptPanel = lazy(async () => ({ default: (await import('@/components/Project/AIWebsitePromptPanel')).AIWebsitePromptPanel }));
-const DesignImportPanel = lazy(async () => ({ default: (await import('@/components/Project/DesignImportPanel')).DesignImportPanel }));
-const RefineLayoutPanel = lazy(async () => ({ default: (await import('@/components/Project/RefineLayoutPanel')).RefineLayoutPanel }));
-const AIImproveSitePanel = lazy(async () => ({ default: (await import('@/components/Project/AIImproveSitePanel')).AIImproveSitePanel }));
-const HeaderFooterLayoutForm = lazy(async () => ({ default: (await import('@/builder/layout/HeaderFooterLayoutForm')).HeaderFooterLayoutForm }));
+const CmsInspectorPanel = lazy(async () => ({ default: (await import('@/builder/cms/CmsInspectorPanel')).CmsInspectorPanel }));
+const CmsProjectSettingsSection = lazy(async () => ({ default: (await import('@/Pages/Project/cms/CmsProjectSettingsSection')).CmsProjectSettingsSection }));
+const CmsMenusTab = lazy(async () => ({ default: (await import('@/Pages/Project/cms/CmsMenusTab')).CmsMenusTab }));
+const CmsDashboardTab = lazy(async () => ({ default: (await import('@/Pages/Project/cms/CmsDashboardTab')).CmsDashboardTab }));
+const CmsPagesTab = lazy(async () => ({ default: (await import('@/Pages/Project/cms/CmsPagesTab')).CmsPagesTab }));
+const CmsBlogTab = lazy(async () => ({ default: (await import('@/Pages/Project/cms/CmsBlogTab')).CmsBlogTab }));
+const CmsVisualBuilderSettingsSidebar = lazy(async () => ({ default: (await import('@/Pages/Project/cms/CmsVisualBuilderSettingsSidebar')).CmsVisualBuilderSettingsSidebar }));
+const CmsVisualBuilderDesignSystemSidebar = lazy(async () => ({ default: (await import('@/Pages/Project/cms/CmsVisualBuilderDesignSystemSidebar')).CmsVisualBuilderDesignSystemSidebar }));
+const CmsVisualBuilderShell = lazy(async () => ({ default: (await import('@/Pages/Project/cms/CmsVisualBuilderShell')).CmsVisualBuilderShell }));
 
 /** Short label for sidebar component tiles: one word when possible, no overflow. */
 function getShortLibraryLabel(sectionKey: string, displayLabel: string): string {
@@ -6728,355 +6712,6 @@ function resolveSectionDisplayLabel(
     return t(normalizedKey || item.key);
 }
 
-interface DraggableLibraryIconTileProps {
-    item: SectionLibraryItem;
-    displayLabel: string;
-    onAdd: (sectionKey: string) => void;
-    draggable?: boolean;
-}
-
-function DraggableLibraryIconTile({ item, displayLabel, onAdd, draggable = true }: DraggableLibraryIconTileProps) {
-    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-        id: getLibraryDragId(item.key),
-        disabled: !draggable,
-    });
-    const suppressClickAfterDragRef = useRef(false);
-
-    useEffect(() => {
-        if (isDragging) {
-            suppressClickAfterDragRef.current = true;
-        }
-    }, [isDragging]);
-
-    const Icon = resolveBuilderWidgetIcon(item);
-    const shortLabel = getShortLibraryLabel(item.key, displayLabel);
-    const style = {
-        transform: CSS.Translate.toString(transform),
-        opacity: isDragging ? 0.6 : 1,
-    };
-
-    return (
-        <button
-            ref={setNodeRef}
-            type="button"
-            style={style}
-            className={cn(
-                'rounded-md border bg-background p-2 transition hover:border-primary/50 hover:bg-primary/5',
-                'flex flex-col items-center justify-center gap-2 min-h-[72px] w-full min-w-0',
-                draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-            )}
-            onClick={() => {
-                if (suppressClickAfterDragRef.current) {
-                    suppressClickAfterDragRef.current = false;
-                    return;
-                }
-                onAdd(item.key);
-            }}
-            {...attributes}
-            {...listeners}
-            title={displayLabel}
-        >
-            <div className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                <Icon className="h-4 w-4" />
-            </div>
-            <span className="text-[11px] leading-tight line-clamp-1 w-full text-center min-w-0 break-words">{shortLabel}</span>
-        </button>
-    );
-}
-
-interface NestedSectionDisplayItem {
-    type: string;
-    label: string;
-    path: number[];
-    children?: NestedSectionDisplayItem[];
-}
-
-interface SortableCanvasSectionCardProps {
-    section: SectionDraft;
-    index: number;
-    isSelected: boolean;
-    label: string;
-    previewText: string;
-    canMoveUp: boolean;
-    canMoveDown: boolean;
-    onSelect: () => void;
-    onMoveUp: () => void;
-    onMoveDown: () => void;
-    onDuplicate: () => void;
-    onRemove: () => void;
-    onAddSectionInside?: (localId: string, sectionKey: string) => void;
-    onAddSectionInsideAtPath?: (parentLocalId: string, path: number[], sectionKey: string) => void;
-    addInsideSectionOptions?: { key: string; label: string }[];
-    layoutPrimitiveKeys?: string[];
-    showAddInside?: boolean;
-    nestedSections?: NestedSectionDisplayItem[];
-    onRemoveNestedSection?: (parentLocalId: string, path: number[]) => void;
-    onMoveNestedSection?: (parentLocalId: string, path: number[], direction: 'up' | 'down') => void;
-    onSelectNestedSection?: (parentLocalId: string, path: number[]) => void;
-    selectedNestedPath?: number[] | null;
-    selectedNestedParentLocalId?: string | null;
-    t: (key: string, params?: Record<string, string>) => string;
-}
-
-function SortableCanvasSectionCard({
-    section,
-    index,
-    isSelected,
-    label,
-    previewText,
-    canMoveUp,
-    canMoveDown,
-    onSelect,
-    onMoveUp,
-    onMoveDown,
-    onDuplicate,
-    onRemove,
-    onAddSectionInside,
-    onAddSectionInsideAtPath,
-    addInsideSectionOptions,
-    layoutPrimitiveKeys,
-    showAddInside,
-    nestedSections,
-    onRemoveNestedSection,
-    onMoveNestedSection,
-    onSelectNestedSection,
-    selectedNestedPath,
-    selectedNestedParentLocalId,
-    t,
-}: SortableCanvasSectionCardProps) {
-    const isNestedPathEqual = (a: number[] | null | undefined, b: number[]) =>
-        a != null && a.length === b.length && a.every((v, i) => v === b[i]);
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-        id: section.localId,
-    });
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.5 : 1,
-    };
-
-    return (
-        <div
-            ref={setNodeRef}
-            style={style}
-            role="button"
-            tabIndex={0}
-            onClick={onSelect}
-            onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onSelect();
-                }
-            }}
-            className={`w-full text-start rounded-lg border p-3 transition-colors ${
-                isSelected ? 'border-primary bg-primary/5' : 'hover:bg-muted/30'
-            }`}
-        >
-            <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">{t('Section')} #{index + 1}</p>
-                    <p className="text-sm font-medium truncate">{label}</p>
-                    <p className="text-xs text-muted-foreground truncate">{previewText}</p>
-                </div>
-                <div className="flex items-center gap-1">
-                    <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 cursor-grab active:cursor-grabbing"
-                        {...attributes}
-                        {...listeners}
-                    >
-                        <GripVertical className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7" disabled={!canMoveUp} onClick={(event) => {
-                        event.stopPropagation();
-                        onMoveUp();
-                    }}>
-                        <ArrowUp className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7" disabled={!canMoveDown} onClick={(event) => {
-                        event.stopPropagation();
-                        onMoveDown();
-                    }}>
-                        <ArrowDown className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={(event) => {
-                        event.stopPropagation();
-                        onDuplicate();
-                    }}>
-                        <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={(event) => {
-                        event.stopPropagation();
-                        onRemove();
-                    }}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                    {showAddInside && onAddSectionInside ? (
-                        addInsideSectionOptions && addInsideSectionOptions.length > 0 ? (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button
-                                        type="button"
-                                        size="icon"
-                                        variant="ghost"
-                                        className="h-7 w-7"
-                                        title={t('Add section inside')}
-                                        aria-label={t('Add section inside')}
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        <Plus className="h-3.5 w-3.5" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="max-h-[280px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                                    {addInsideSectionOptions.map((opt) => (
-                                        <DropdownMenuItem
-                                            key={opt.key}
-                                            onSelect={() => onAddSectionInside(section.localId, opt.key)}
-                                        >
-                                            {opt.label}
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        ) : (
-                            <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                title={t('Add section inside')}
-                                aria-label={t('Add section inside')}
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    onAddSectionInside(section.localId, 'webu_general_text_01');
-                                }}
-                            >
-                                <Plus className="h-3.5 w-3.5" />
-                            </Button>
-                        )
-                    ) : null}
-                </div>
-            </div>
-            {showAddInside && Array.isArray(nestedSections) && nestedSections.length > 0 ? (
-                <div className="mt-2 pl-3 border-l-2 border-muted space-y-1">
-                    {(function renderNestedItems(items: NestedSectionDisplayItem[]): ReactNode {
-                        return items.map((nested, index) => {
-                            const canMoveUp = index > 0;
-                            const canMoveDown = index < items.length - 1;
-                            const isSelected = selectedNestedParentLocalId === section.localId && isNestedPathEqual(selectedNestedPath, nested.path);
-                            return (
-                                <div key={nested.path.join('-')}>
-                                    <div
-                                        role={onSelectNestedSection ? 'button' : undefined}
-                                        tabIndex={onSelectNestedSection ? 0 : undefined}
-                                        className={`flex items-center justify-between gap-1 py-1.5 pr-1 rounded text-xs ${onSelectNestedSection ? 'cursor-pointer hover:bg-muted/50' : ''} ${isSelected ? 'bg-primary/10' : ''}`}
-                                        onClick={onSelectNestedSection ? (e) => {
-                                            e.stopPropagation();
-                                            onSelectNestedSection(section.localId, nested.path);
-                                        } : undefined}
-                                        onKeyDown={onSelectNestedSection ? (e) => {
-                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                onSelectNestedSection(section.localId, nested.path);
-                                            }
-                                        } : undefined}
-                                    >
-                                        <span className="text-muted-foreground truncate min-w-0">{nested.label}</span>
-                                        <div className="flex items-center gap-0 shrink-0">
-                                            {onAddSectionInsideAtPath && addInsideSectionOptions && addInsideSectionOptions.length > 0 && layoutPrimitiveKeys?.includes((nested.type || '').toLowerCase()) ? (
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button
-                                                            type="button"
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            className="h-6 w-6 text-muted-foreground"
-                                                            title={t('Add section inside')}
-                                                            aria-label={t('Add section inside')}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            <Plus className="h-3 w-3" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="max-h-[280px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                                                        {addInsideSectionOptions.map((opt) => (
-                                                            <DropdownMenuItem
-                                                                key={opt.key}
-                                                                onSelect={() => onAddSectionInsideAtPath(section.localId, nested.path, opt.key)}
-                                                            >
-                                                                {opt.label}
-                                                            </DropdownMenuItem>
-                                                        ))}
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            ) : null}
-                                            {onMoveNestedSection ? (
-                                                <>
-                                                    <Button
-                                                        type="button"
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        className="h-6 w-6 text-muted-foreground"
-                                                        disabled={!canMoveUp}
-                                                        aria-label={t('Move up')}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onMoveNestedSection(section.localId, nested.path, 'up');
-                                                        }}
-                                                    >
-                                                        <ArrowUp className="h-3 w-3" />
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        className="h-6 w-6 text-muted-foreground"
-                                                        disabled={!canMoveDown}
-                                                        aria-label={t('Move down')}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onMoveNestedSection(section.localId, nested.path, 'down');
-                                                        }}
-                                                    >
-                                                        <ArrowDown className="h-3 w-3" />
-                                                    </Button>
-                                                </>
-                                            ) : null}
-                                            {onRemoveNestedSection ? (
-                                                <Button
-                                                    type="button"
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                                                    aria-label={t('Remove nested section')}
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        onRemoveNestedSection(section.localId, nested.path);
-                                                    }}
-                                                >
-                                                    <Trash2 className="h-3 w-3" />
-                                                </Button>
-                                            ) : null}
-                                        </div>
-                                    </div>
-                                    {nested.children && nested.children.length > 0 ? (
-                                        <div className="mt-1 pl-3 border-l-2 border-muted/70 space-y-1">
-                                            {renderNestedItems(nested.children)}
-                                        </div>
-                                    ) : null}
-                                </div>
-                            );
-                        });
-                    })(nestedSections)}
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
 function SpacingControlRow({
     itemKeyPrefix,
     pathKey,
@@ -7136,317 +6771,6 @@ function SpacingControlRow({
             </div>
         </div>
     );
-}
-
-interface SortableMenuItemRowProps {
-    item: MenuItem;
-    depth: number;
-    onChange: (itemId: string, field: 'label' | 'url' | 'slug', value: string) => void;
-    onIndent: (itemId: string) => void;
-    onOutdent: (itemId: string) => void;
-    onRemove: (itemId: string) => void;
-    t: (key: string, params?: Record<string, string>) => string;
-    variant?: 'default' | 'wordpress';
-}
-
-function SortableMenuItemRow({
-    item,
-    depth,
-    onChange,
-    onIndent,
-    onOutdent,
-    onRemove,
-    t,
-    variant = 'default',
-}: SortableMenuItemRowProps) {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-        id: item.id,
-    });
-    const [isExpanded, setIsExpanded] = useState(item.label.trim() === '' || item.url.trim() === '');
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.55 : 1,
-        marginInlineStart: `${Math.max(0, Math.min(3, depth)) * 24}px`,
-    };
-
-    if (variant === 'wordpress') {
-        const itemLabel = item.label.trim() !== '' ? item.label : t('Untitled item');
-        const itemUrl = item.url.trim() !== '' ? item.url : t('No URL set');
-
-        return (
-            <div
-                ref={setNodeRef}
-                style={style}
-                className={`rounded-md border bg-background shadow-sm overflow-hidden ${isDragging ? 'ring-2 ring-primary/20' : ''}`}
-            >
-                <div className="flex items-stretch">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-auto w-10 rounded-none border-e cursor-grab active:cursor-grabbing text-muted-foreground"
-                        aria-label={t('Drag menu item')}
-                        {...attributes}
-                        {...listeners}
-                    >
-                        <GripVertical className="h-4 w-4" />
-                    </Button>
-                    <button
-                        type="button"
-                        className="flex-1 min-w-0 px-3 py-2.5 text-left hover:bg-muted/30 transition-colors"
-                        onClick={() => setIsExpanded((prev) => !prev)}
-                    >
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-sm font-medium truncate max-w-full">{itemLabel}</span>
-                            <Badge variant="outline" className="text-[10px]">
-                                {item.source === 'page' ? t('Page') : t('Custom')}
-                            </Badge>
-                            {depth > 0 ? (
-                                <Badge variant="secondary" className="text-[10px]">
-                                    {t('Sub item')}
-                                </Badge>
-                            ) : null}
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                            {itemUrl}
-                        </p>
-                    </button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-auto w-10 rounded-none border-s"
-                        onClick={() => setIsExpanded((prev) => !prev)}
-                        aria-label={isExpanded ? t('Collapse') : t('Expand')}
-                    >
-                        {isExpanded ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-                    </Button>
-                </div>
-
-                {isExpanded ? (
-                    <div className="border-t bg-muted/20 p-3 space-y-3">
-                        <div className="grid gap-3 md:grid-cols-2">
-                            <div className="space-y-1.5">
-                                <Label className="text-xs">{t('Navigation Label')}</Label>
-                                <Input
-                                    value={item.label}
-                                    onChange={(event) => onChange(item.id, 'label', event.target.value)}
-                                    placeholder={t('Home')}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-xs">{t('URL')}</Label>
-                                <Input
-                                    value={item.url}
-                                    onChange={(event) => onChange(item.id, 'url', event.target.value)}
-                                    placeholder="/contact"
-                                />
-                            </div>
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-xs">{t('Slug (optional)')}</Label>
-                            <Input
-                                value={item.slug}
-                                onChange={(event) => onChange(item.id, 'slug', event.target.value)}
-                                placeholder="contact"
-                            />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8"
-                                onClick={() => onOutdent(item.id)}
-                            >
-                                {t('Move left')}
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8"
-                                onClick={() => onIndent(item.id)}
-                            >
-                                {t('Move right')}
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-destructive ms-auto"
-                                onClick={() => onRemove(item.id)}
-                            >
-                                {t('Remove')}
-                            </Button>
-                        </div>
-                    </div>
-                ) : null}
-            </div>
-        );
-    }
-
-    return (
-        <div
-            ref={setNodeRef}
-            style={style}
-            className="rounded-lg border bg-background p-3 grid gap-2 md:grid-cols-[auto_1fr_1fr_1fr_auto]"
-        >
-            <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 cursor-grab active:cursor-grabbing mt-0.5"
-                {...attributes}
-                {...listeners}
-            >
-                <GripVertical className="h-4 w-4" />
-            </Button>
-            <div className="space-y-1">
-                <Input
-                    value={item.label}
-                    onChange={(event) => onChange(item.id, 'label', event.target.value)}
-                    placeholder={t('Label')}
-                />
-                <div className="flex items-center gap-1">
-                    <Badge variant="outline" className="text-[10px]">
-                        {item.source === 'page' ? t('Page') : t('Custom')}
-                    </Badge>
-                    {item.source === 'page' && item.slug.trim() !== '' ? (
-                        <span className="text-[10px] text-muted-foreground truncate">
-                            /{item.slug}
-                        </span>
-                    ) : null}
-                </div>
-            </div>
-            <Input
-                value={item.url}
-                onChange={(event) => onChange(item.id, 'url', event.target.value)}
-                placeholder="/contact"
-            />
-            <Input
-                value={item.slug}
-                onChange={(event) => onChange(item.id, 'slug', event.target.value)}
-                placeholder="contact"
-            />
-            <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 text-destructive"
-                onClick={() => onRemove(item.id)}
-            >
-                <Trash2 className="h-4 w-4" />
-            </Button>
-            <div className="md:col-span-5 -mt-1 flex items-center justify-end gap-2">
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => onOutdent(item.id)}
-                >
-                    {t('Outdent')}
-                </Button>
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => onIndent(item.id)}
-                >
-                    {t('Indent')}
-                </Button>
-            </div>
-        </div>
-    );
-}
-
-interface BuilderCanvasDropZoneProps {
-    children: ReactNode;
-}
-
-function BuilderCanvasDropZone({ children }: BuilderCanvasDropZoneProps) {
-    const { setNodeRef, isOver } = useDroppable({
-        id: CMS_BUILDER_CANVAS_DROP_ID,
-    });
-
-    return (
-        <div
-            ref={setNodeRef}
-            className={`rounded-lg border ${isOver ? 'border-primary bg-primary/5' : 'border-dashed'}`}
-        >
-            {children}
-        </div>
-    );
-}
-
-interface BuilderVisualDropZoneProps {
-    children: ReactNode;
-    isLibraryDragActive: boolean;
-    t: (key: string, params?: Record<string, string>) => string;
-}
-
-function BuilderVisualDropZone({ children, isLibraryDragActive, t }: BuilderVisualDropZoneProps) {
-    const { setNodeRef, isOver } = useDroppable({
-        id: CMS_BUILDER_VISUAL_DROP_ID,
-    });
-
-    return (
-        <div
-            ref={setNodeRef}
-            className={`relative rounded-lg border bg-white overflow-hidden shadow-sm h-[calc(100vh-92px)] ${isOver ? 'border-primary ring-2 ring-primary/30' : ''}`}
-        >
-            {children}
-            {isLibraryDragActive ? (
-                <div
-                    className={`absolute inset-0 z-10 flex items-center justify-center transition-colors ${
-                        isOver
-                            ? 'border-2 border-primary bg-primary/10 cursor-copy'
-                            : 'border-2 border-dashed border-primary/40 bg-primary/5 cursor-copy'
-                    }`}
-                >
-                    <div className="rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm">
-                        {isOver ? t('Drop to add section') : t('Drag here to add section')}
-                    </div>
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
-function BuilderVisualDropMonitor({
-    sectionsDraft,
-    setBuilderCurrentDropTarget,
-}: {
-    sectionsDraft: SectionDraft[];
-    setBuilderCurrentDropTarget: React.Dispatch<React.SetStateAction<{ sectionLocalId: string | null; sectionIndex: number; position: 'before' | 'after' | 'inside' } | null>>;
-}) {
-    useDndMonitor({
-        onDragOver(event) {
-            const activeId = String(event.active?.id ?? '');
-            const overId = event.over?.id != null ? String(event.over.id) : null;
-            if (!extractLibrarySectionKey(activeId) || !overId || !overId.startsWith(VISUAL_DROP_PREFIX)) {
-                setBuilderCurrentDropTarget(null);
-                return;
-            }
-            const parsed = parseVisualDropId(overId);
-            if (!parsed) {
-                setBuilderCurrentDropTarget(null);
-                return;
-            }
-            const sectionIndex = parsed.sectionLocalId === null
-                ? (parsed.position === 'before' ? 0 : sectionsDraft.length)
-                : sectionsDraft.findIndex((s) => s.localId === parsed.sectionLocalId);
-            setBuilderCurrentDropTarget({
-                sectionLocalId: parsed.sectionLocalId,
-                sectionIndex: sectionIndex >= 0 ? sectionIndex : 0,
-                position: parsed.position,
-            });
-        },
-    });
-    return null;
 }
 
 export default function Cms({
@@ -7761,14 +7085,6 @@ export default function Cms({
     const sectionEditUndoRedoInProgressRef = useRef<boolean>(false);
     const SECTION_EDIT_HISTORY_MAX = 50;
     const BUILDER_PREVIEW_SYNC_DEBOUNCE_MS = 120;
-    const BUILDER_LAYERS_VIRTUALIZE_THRESHOLD = 20;
-    const builderLayersScrollRef = useRef<HTMLDivElement>(null);
-    const layersVirtualizer = useVirtualizer({
-        count: sectionsDraft.length,
-        getScrollElement: () => builderLayersScrollRef.current,
-        estimateSize: () => 52,
-        overscan: 5,
-    });
     const builderViewportRef = useRef<HTMLElement | null>(null);
     const builderPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
     const builderPreviewDocumentRef = useRef<Document | null>(null);
@@ -9191,71 +8507,6 @@ export default function Cms({
 
         return rows.sort((a, b) => a.sectionIndex - b.sectionIndex);
     }, [bindingValidationWarnings, bindingWarningCountBySectionIndex, sectionDisplayLabelByKey, sectionsDraft]);
-    const builderCanvasViewportClass = useMemo(() => {
-        if (builderPreviewMode === 'tablet') {
-            return 'mx-auto w-full max-w-[840px]';
-        }
-
-        if (builderPreviewMode === 'mobile') {
-            return 'mx-auto w-full max-w-[430px]';
-        }
-
-        return 'w-full';
-    }, [builderPreviewMode]);
-    const activeDragLabel = useMemo(() => {
-        if (!activeDragId) {
-            return null;
-        }
-
-        const draggedFromLibrary = extractLibrarySectionKey(activeDragId);
-        if (draggedFromLibrary) {
-            const libraryItem = builderSectionLibrary.find((item) => item.key === draggedFromLibrary);
-            return libraryItem?.label || draggedFromLibrary;
-        }
-
-        const draggedSection = sectionsDraft.find((section) => section.localId === activeDragId);
-        if (!draggedSection) {
-            return null;
-        }
-
-        const libraryItem = builderSectionLibrary.find((item) => item.key === draggedSection.type);
-        return libraryItem?.label || draggedSection.type;
-    }, [activeDragId, builderSectionLibrary, sectionsDraft]);
-    const activeDragSectionKey = useMemo(() => {
-        if (!activeDragId) {
-            return null;
-        }
-
-        const draggedFromLibrary = extractLibrarySectionKey(activeDragId);
-        if (draggedFromLibrary) {
-            return draggedFromLibrary;
-        }
-
-        const draggedSection = sectionsDraft.find((section) => section.localId === activeDragId);
-        return draggedSection?.type ?? null;
-    }, [activeDragId, sectionsDraft]);
-    const activeDragLibraryItem = useMemo(() => {
-        if (!activeDragSectionKey) {
-            return null;
-        }
-
-        return builderSectionLibrary.find((item) => item.key === activeDragSectionKey) ?? null;
-    }, [activeDragSectionKey, builderSectionLibrary]);
-    const activeDragIcon = useMemo<LucideIcon>(() => {
-        if (!activeDragLibraryItem) {
-            return Layers;
-        }
-
-        return resolveBuilderWidgetIcon(activeDragLibraryItem);
-    }, [activeDragLibraryItem]);
-    const ActiveDragIcon = activeDragIcon;
-    const isLibraryDragActive = useMemo(() => {
-        if (!activeDragId) {
-            return false;
-        }
-
-        return extractLibrarySectionKey(activeDragId) !== null;
-    }, [activeDragId]);
     const clampStructurePanelPosition = useCallback((x: number, y: number) => {
         const host = builderViewportRef.current;
         if (!host) {
@@ -22474,409 +21725,54 @@ ${showRules}
     const isDesignComponentsSection = activeSection === 'design-components';
     const isDesignPresetsSection = activeSection === 'design-presets';
     const isDesignMenusSection = activeSection === 'design-menus';
-    const renderProjectSettingsSection = () => {
-        if (activeSection === 'settings-general') {
-            return (
-                <div className="space-y-4">
-                    {isSettingsLoading ? (
-                        <Card>
-                            <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                {t('Loading settings...')}
-                            </CardContent>
-                        </Card>
-                    ) : null}
-
-                    <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-                        <div className="space-y-4 min-w-0">
-                            <Card className="min-w-0">
-                                <CardHeader className="pb-3">
-                                    <CardTitle>{t('Site profile')}</CardTitle>
-                                    <CardDescription>{t('Name, locale, and publishing defaults.')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="grid gap-3 md:grid-cols-2">
-                                        <div className="space-y-2">
-                                            <Label>{t('Site Name')}</Label>
-                                            <Input
-                                                value={settingsForm.name}
-                                                onChange={(event) => setSettingsForm((prev) => ({ ...prev, name: event.target.value }))}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>{t('Default Locale')}</Label>
-                                            <select
-                                                value={settingsForm.locale}
-                                                onChange={(event) => {
-                                                    const nextLocale = normalizeLocaleCode(event.target.value);
-                                                    setSettingsForm((prev) => ({ ...prev, locale: nextLocale }));
-                                                    if (!siteLocales.includes(nextLocale)) {
-                                                        setSiteLocales((prev) => normalizeLocaleList([...prev, nextLocale], nextLocale));
-                                                    }
-                                                }}
-                                                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                                            >
-                                                {siteLocales.map((localeCode) => (
-                                                    <option key={localeCode} value={localeCode}>{localeCode}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="min-w-0">
-                                <CardHeader className="pb-3">
-                                    <CardTitle>{t('Languages')}</CardTitle>
-                                    <CardDescription>{t('Manage editing and site languages.')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
-                                        <div className="space-y-2">
-                                            <Label>{t('Available Site Languages')}</Label>
-                                            <div className="flex flex-wrap gap-2">
-                                                {siteLocales.map((localeCode) => (
-                                                    <Badge key={`site-locale-${localeCode}`} variant={localeCode === activeContentLocale ? 'default' : 'secondary'}>
-                                                        {localeCode}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>{t('Current Language')}</Label>
-                                            <div className="w-full rounded-md border bg-muted/20 px-3 py-2 text-sm text-foreground/90">
-                                                {activeContentLocale.toUpperCase()}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                                        <Input
-                                            value={localeDraftInput}
-                                            onChange={(event) => setLocaleDraftInput(event.target.value)}
-                                            placeholder={t('Add locale code (e.g. de, fr)')}
-                                        />
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={() => {
-                                                const code = normalizeLocaleCode(localeDraftInput);
-                                                if (!isLocaleCode(code)) {
-                                                    toast.error(t('Invalid locale code'));
-                                                    return;
-                                                }
-                                                setSiteLocales((prev) => normalizeLocaleList([...prev, code], settingsForm.locale || 'ka'));
-                                                setLocaleDraftInput('');
-                                            }}
-                                        >
-                                            <Plus className="h-4 w-4 mr-2" />
-                                            {t('Add Language')}
-                                        </Button>
-                                    </div>
-
-                                    <p className="text-xs text-muted-foreground">
-                                        {t('Contact, menu, page content, and UI dictionary save for selected editing language.')}
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="min-w-0">
-                                <CardHeader className="pb-3">
-                                    <CardTitle>{t('Contact Details')}</CardTitle>
-                                    <CardDescription>{t('Public business contact information.')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="grid gap-3 md:grid-cols-3">
-                                        <div className="space-y-2">
-                                            <Label>{t('Contact Email')}</Label>
-                                            <Input
-                                                value={settingsForm.contactEmail}
-                                                onChange={(event) => setSettingsForm((prev) => ({ ...prev, contactEmail: event.target.value }))}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>{t('Contact Phone')}</Label>
-                                            <Input
-                                                value={settingsForm.contactPhone}
-                                                onChange={(event) => setSettingsForm((prev) => ({ ...prev, contactPhone: event.target.value }))}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>{t('Contact Address')}</Label>
-                                            <Input
-                                                value={settingsForm.contactAddress}
-                                                onChange={(event) => setSettingsForm((prev) => ({ ...prev, contactAddress: event.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="min-w-0">
-                                <CardHeader className="pb-3">
-                                    <CardTitle>{t('Public Links')}</CardTitle>
-                                    <CardDescription>{t('Social profiles and public link destinations.')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="grid gap-3 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <Label>{t('Facebook URL')}</Label>
-                                        <Input
-                                            value={settingsForm.socialFacebook}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, socialFacebook: event.target.value }))}
-                                            placeholder="https://facebook.com/your-page"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>{t('Instagram URL')}</Label>
-                                        <Input
-                                            value={settingsForm.socialInstagram}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, socialInstagram: event.target.value }))}
-                                            placeholder="https://instagram.com/your-page"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>{t('TikTok URL')}</Label>
-                                        <Input
-                                            value={settingsForm.socialTiktok}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, socialTiktok: event.target.value }))}
-                                            placeholder="https://tiktok.com/@your-page"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>{t('LinkedIn URL')}</Label>
-                                        <Input
-                                            value={settingsForm.socialLinkedin}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, socialLinkedin: event.target.value }))}
-                                            placeholder="https://linkedin.com/company/your-page"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>{t('YouTube URL')}</Label>
-                                        <Input
-                                            value={settingsForm.socialYoutube}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, socialYoutube: event.target.value }))}
-                                            placeholder="https://youtube.com/@your-channel"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>{t('X (Twitter) URL')}</Label>
-                                        <Input
-                                            value={settingsForm.socialX}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, socialX: event.target.value }))}
-                                            placeholder="https://x.com/your-page"
-                                        />
-                                    </div>
-                                    <div className="space-y-2 md:col-span-2">
-                                        <Label>{t('WhatsApp Link')}</Label>
-                                        <Input
-                                            value={settingsForm.socialWhatsapp}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, socialWhatsapp: event.target.value }))}
-                                            placeholder="https://wa.me/995..."
-                                        />
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        <div className="space-y-4 min-w-0">
-                            <Card className="min-w-0">
-                                <CardHeader className="pb-3">
-                                    <CardTitle>{t('Interface Labels')}</CardTitle>
-                                    <CardDescription>{t('Theme UI text for the current editing language.')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="grid gap-3">
-                                    {UI_TRANSLATION_FIELDS.map((field) => (
-                                        <div key={`ui-translation-${field.key}`} className="space-y-2">
-                                            <Label>{t(field.label)}</Label>
-                                            <Input
-                                                value={uiTranslationDraft[field.key] ?? ''}
-                                                onChange={(event) => setUiTranslationDraft((prev) => ({
-                                                    ...prev,
-                                                    [field.key]: event.target.value,
-                                                }))}
-                                                placeholder={t(field.hint)}
-                                            />
-                                        </div>
-                                    ))}
-                                </CardContent>
-                            </Card>
-
-                            <Card className="min-w-0">
-                                <CardHeader className="pb-3">
-                                    <CardTitle>{t('Design Shortcuts')}</CardTitle>
-                                    <CardDescription>{t('Visual and typography controls live in the design section.')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <Button asChild variant="outline" size="sm" className="w-full justify-start">
-                                        <Link href={`/project/${project.id}/cms?tab=design-branding`}>{t('Branding')}</Link>
-                                    </Button>
-                                    <Button asChild variant="outline" size="sm" className="w-full justify-start">
-                                        <Link href={`/project/${project.id}/cms?tab=design-layout`}>{t('Layout')}</Link>
-                                    </Button>
-                                    <Button asChild variant="outline" size="sm" className="w-full justify-start">
-                                        <Link href={`/project/${project.id}/cms?tab=design-presets`}>{t('Presets')}</Link>
-                                    </Button>
-                                </CardContent>
-                            </Card>
-
-                            <Card>
-                                <CardContent className="flex flex-wrap items-center gap-2 py-4">
-                                    <Button onClick={handleSiteSettingsSave} disabled={isSavingSettings}>
-                                        {isSavingSettings ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                                        {t('Save Settings')}
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
-        if (activeSection === 'settings-integrations') {
-            return (
-                <div className="space-y-4">
-                    {isSettingsLoading ? (
-                        <Card>
-                            <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                {t('Loading settings...')}
-                            </CardContent>
-                        </Card>
-                    ) : null}
-
-                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                        <Card className="min-w-0">
-                            <CardHeader className="pb-3">
-                                <CardTitle>{t('Analytics IDs')}</CardTitle>
-                                <CardDescription>{t('Connect your analytics and tracking tools.')}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="grid gap-3 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <Label>{t('Google Analytics (GA4)')}</Label>
-                                        <Input
-                                            value={settingsForm.analyticsGa4}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, analyticsGa4: event.target.value }))}
-                                            placeholder="G-XXXXXXXXXX"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>{t('Google Tag Manager')}</Label>
-                                        <Input
-                                            value={settingsForm.analyticsGtm}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, analyticsGtm: event.target.value }))}
-                                            placeholder="GTM-XXXXXXX"
-                                        />
-                                    </div>
-                                    <div className="space-y-2 md:col-span-2">
-                                        <Label>{t('Meta Pixel')}</Label>
-                                        <Input
-                                            value={settingsForm.analyticsMetaPixel}
-                                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, analyticsMetaPixel: event.target.value }))}
-                                            placeholder="123456789012345"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-wrap gap-2">
-                                    <Button onClick={handleSiteSettingsSave} disabled={isSavingSettings}>
-                                        {isSavingSettings ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                                        {t('Save Settings')}
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <div className="space-y-4">
-                            <Card>
-                                <CardHeader className="pb-3">
-                                    <CardTitle>{t('Related Settings')}</CardTitle>
-                                    <CardDescription>{t('Other project-level configuration lives in neighboring sections.')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-2">
-                                    <Button asChild variant="outline" size="sm" className="w-full justify-start">
-                                        <Link href={`/project/${project.id}/cms?tab=domain`}>{t('Domain')}</Link>
-                                    </Button>
-                                    <Button asChild variant="outline" size="sm" className="w-full justify-start">
-                                        <Link href={`/project/${project.id}/cms?tab=design-layout`}>{t('Layout')}</Link>
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
-        if (activeSection === 'settings-team') {
-            return (
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                    <Card className="min-w-0">
-                        <CardHeader className="pb-3">
-                            <CardTitle>{t('Team & Roles')}</CardTitle>
-                            <CardDescription>{t('This subsection is prepared for project member access and permission controls.')}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3 text-sm text-muted-foreground">
-                            <p>{t('Project-level role management is not exposed in this workspace yet.')}</p>
-                            <p>{t('When member permissions are enabled, invite, role, and access controls will appear here.')}</p>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader className="pb-3">
-                            <CardTitle>{t('Current Scope')}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2 text-sm">
-                            <div className="flex items-center justify-between gap-2">
-                                <span className="text-muted-foreground">{t('Site Name')}</span>
-                                <span className="font-medium">{settingsForm.name || t('Untitled Site')}</span>
-                            </div>
-                            <div className="flex items-center justify-between gap-2">
-                                <span className="text-muted-foreground">{t('Default Locale')}</span>
-                                <span className="font-medium">{settingsForm.locale || '—'}</span>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            );
-        }
-
-        if (activeSection === 'settings-webhooks') {
-            return (
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                    <Card className="min-w-0">
-                        <CardHeader className="pb-3">
-                            <CardTitle>{t('Webhooks')}</CardTitle>
-                            <CardDescription>{t('Send CMS events to external systems when this module is enabled.')}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                                {t('No webhook endpoints are configured for this project yet.')}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {['site.updated', 'page.published', 'product.updated'].map((eventKey) => (
-                                    <Badge key={`webhook-event-${eventKey}`} variant="outline">{eventKey}</Badge>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader className="pb-3">
-                            <CardTitle>{t('Status')}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2 text-sm text-muted-foreground">
-                            <p>{t('Outbound delivery is currently inactive for this project.')}</p>
-                            <p>{t('When webhooks are enabled, endpoint URLs, signing secrets, and retry settings will appear here.')}</p>
-                        </CardContent>
-                    </Card>
-                </div>
-            );
-        }
-
-        return null;
-    };
+    const renderProjectSettingsSection = () => (
+        <Suspense
+            fallback={(
+                <Card>
+                    <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t('Loading settings...')}
+                    </CardContent>
+                </Card>
+            )}
+        >
+            <CmsProjectSettingsSection
+                activeSection={activeSection}
+                activeContentLocale={activeContentLocale}
+                isSavingSettings={isSavingSettings}
+                isSettingsLoading={isSettingsLoading}
+                localeDraftInput={localeDraftInput}
+                onAddLocale={() => {
+                    const code = normalizeLocaleCode(localeDraftInput);
+                    if (!isLocaleCode(code)) {
+                        toast.error(t('Invalid locale code'));
+                        return;
+                    }
+                    setSiteLocales((prev) => normalizeLocaleList([...prev, code], settingsForm.locale || 'ka'));
+                    setLocaleDraftInput('');
+                }}
+                onDefaultLocaleChange={(value) => {
+                    const nextLocale = normalizeLocaleCode(value);
+                    setSettingsForm((prev) => ({ ...prev, locale: nextLocale }));
+                    if (!siteLocales.includes(nextLocale)) {
+                        setSiteLocales((prev) => normalizeLocaleList([...prev, nextLocale], nextLocale));
+                    }
+                }}
+                onLocaleDraftInputChange={setLocaleDraftInput}
+                onSave={handleSiteSettingsSave}
+                onSettingsFormChange={(field, value) => setSettingsForm((prev) => ({ ...prev, [field]: value }))}
+                onUiTranslationChange={(key, value) => setUiTranslationDraft((prev) => ({
+                    ...prev,
+                    [key]: value,
+                }))}
+                projectId={project.id}
+                settingsForm={settingsForm}
+                siteLocales={siteLocales}
+                uiTranslationDraft={uiTranslationDraft}
+                uiTranslationFields={UI_TRANSLATION_FIELDS}
+            />
+        </Suspense>
+    );
     const themeTokenLayerOrder = useMemo(
         () => Array.isArray(themeTokenLayers?.layer_order)
             ? themeTokenLayers.layer_order.filter((item): item is string => typeof item === 'string')
@@ -24877,12 +23773,13 @@ ${showRules}
         return parseBuilderSectionProps(raw);
     }, []);
 
-    const handleOptimizeLayout = useCallback(() => {
+    const handleOptimizeLayout = useCallback(async () => {
         if (sectionsDraft.length === 0) {
             toast.info(t('Add at least one section to optimize layout'));
             return;
         }
         try {
+            const { applyLayoutRefinement } = await import('@/ai');
             const sectionItems = sectionsDraft.map((d) => ({
                 id: d.localId,
                 type: d.type,
@@ -24908,11 +23805,12 @@ ${showRules}
         } catch {
             toast.error(t('Failed to optimize layout'));
         }
-    }, [sectionsDraft, parseSectionProps, setSectionsDraft, t]);
+    }, [sectionsDraft, setSectionsDraft, t]);
 
     const handleAIWebsitePromptSubmit = useCallback(async (payload: AIWebsitePromptPayload) => {
         setIsAIWebsiteGenerating(true);
         try {
+            const { generateSiteFromPrompt } = await import('@/builder/ai/generateSiteFromPrompt');
             const result = await generateSiteFromPrompt(payload.prompt, {
                 language: payload.language,
                 brandName: payload.brandName ?? undefined,
@@ -24990,6 +23888,7 @@ ${showRules}
             if (!imageSource) return;
             setIsDesignImportGenerating(true);
             try {
+                const { generateLayoutFromDesign } = await import('@/builder/ai/generateLayoutFromDesign');
                 const result = await generateLayoutFromDesign(imageSource, {
                     projectType: payload.projectType,
                     preferredStyle: payload.preferredStyle?.trim() || undefined,
@@ -25009,8 +23908,9 @@ ${showRules}
     );
 
     const handleRefineLayoutSubmit = useCallback(
-        (command: string) => {
+        async (command: string) => {
             try {
+                const { refineSectionsFromCommand } = await import('@/builder/ai/layoutRefine');
                 const result = refineSectionsFromCommand(sectionsDraft, command);
                 setSectionsDraft(result.sectionsDraft);
                 scheduleStructuralDraftPersistRef.current?.();
@@ -25865,6 +24765,29 @@ ${showRules}
         t,
     });
 
+    const persistDesignMemory = useCallback(async (confidenceScore: number) => {
+        const pageList = pagesForMemoryRef.current
+            .map((page) => (page.slug ?? page.title ?? '').trim() || String(page.id))
+            .filter(Boolean);
+        if (pageList.length === 0) {
+            return;
+        }
+
+        const { inferWebsiteTypeFromPrompt, saveDesignMemory } = await import('@/ai');
+        const normalizedSlug = (selectedPageSummary?.slug ?? '').trim().toLowerCase();
+        const websiteType = inferWebsiteTypeFromPrompt(site.name ?? '');
+        const isHome = normalizedSlug === 'home' || normalizedSlug === '';
+        const homeSections = isHome ? sectionsDraftRef.current.map((section) => section.type).filter(Boolean) : undefined;
+
+        saveDesignMemory(site.id, {
+            websiteType,
+            pages: pageList,
+            homeSections,
+            confidenceScore,
+            reuseCount: 0,
+        });
+    }, [selectedPageSummary?.slug, site.id, site.name]);
+
     const performDraftRevisionSave = useCallback(async (options: DraftSaveOptions): Promise<number | null> => {
         const { silent, refreshAfterSave, notifyParentPreviewRefresh } = options;
 
@@ -25964,17 +24887,7 @@ ${showRules}
             const revisionId = response.data?.revision?.id ?? null;
             if (revisionId !== null) {
                 try {
-                    const pageList = pagesForMemoryRef.current.map((p) => (p.slug ?? p.title ?? '').trim() || String(p.id)).filter(Boolean);
-                    const websiteType = inferWebsiteTypeFromPrompt(site.name ?? '');
-                    const isHome = (selectedPageSummary?.slug ?? '').trim().toLowerCase() === 'home' || (selectedPageSummary?.slug ?? '').trim() === '';
-                    const homeSections = isHome ? sectionsDraftRef.current.map((s) => s.type).filter(Boolean) : undefined;
-                    saveDesignMemory(site.id, {
-                        websiteType,
-                        pages: pageList,
-                        homeSections,
-                        confidenceScore: 0.5,
-                        reuseCount: 0,
-                    });
+                    void persistDesignMemory(0.5);
                 } catch {
                     // ignore memory save failures
                 }
@@ -25984,7 +24897,7 @@ ${showRules}
             toast.error(getApiErrorMessage(error, t('Failed to save draft revision')));
             return null;
         }
-    }, [activeContentLocale, buildContentJsonPayload, effectivePageEditorMode, emitCmsBuilderTelemetry, handleSaveBuilderGlobalLayout, isEmbeddedMode, loadPageDetail, loadPages, selectedPageId, selectedPageSummary?.slug, site.id, site.name, t]);
+    }, [activeContentLocale, buildContentJsonPayload, effectivePageEditorMode, emitCmsBuilderTelemetry, handleSaveBuilderGlobalLayout, isEmbeddedMode, loadPageDetail, loadPages, persistDesignMemory, selectedPageId, selectedPageSummary?.slug, t]);
 
     const saveDraftRevisionInternal = useCallback(async (
         options?: {
@@ -26176,17 +25089,7 @@ ${showRules}
             });
             toast.success(t('Page published'));
             try {
-                const pageList = pagesForMemoryRef.current.map((p) => (p.slug ?? p.title ?? '').trim() || String(p.id)).filter(Boolean);
-                const websiteType = inferWebsiteTypeFromPrompt(site.name ?? '');
-                const isHome = (selectedPageSummary?.slug ?? '').trim().toLowerCase() === 'home' || (selectedPageSummary?.slug ?? '').trim() === '';
-                const homeSections = isHome ? sectionsDraftRef.current.map((s) => s.type).filter(Boolean) : undefined;
-                saveDesignMemory(site.id, {
-                    websiteType,
-                    pages: pageList,
-                    homeSections,
-                    confidenceScore: 0.6,
-                    reuseCount: 0,
-                });
+                void persistDesignMemory(0.6);
             } catch {
                 // ignore memory save failures
             }
@@ -26209,7 +25112,7 @@ ${showRules}
         } finally {
             setIsPublishingPage(false);
         }
-    }, [effectivePageEditorMode, emitCmsBuilderTelemetry, loadPageDetail, loadPages, saveDraftRevisionInternal, selectedPageId, selectedPageSummary?.slug, site.id, t]);
+    }, [effectivePageEditorMode, emitCmsBuilderTelemetry, loadPageDetail, loadPages, persistDesignMemory, saveDraftRevisionInternal, selectedPageId, selectedPageSummary?.slug, t]);
 
     const handleSiteSettingsSave = async () => {
         const nextThemeSettings: Record<string, unknown> = {
@@ -28416,7 +27319,7 @@ ${showRules}
         );
     };
 
-    const renderSelectedSectionEditableFields = (compact: boolean): ReactNode => {
+    const renderSelectedSectionEditableFields = (): ReactNode => {
         if (!selectedSectionDraft) {
             return null;
         }
@@ -28440,50 +27343,52 @@ ${showRules}
         const resolvedEffectiveProps = effectiveProps ?? {};
 
         return (
-            <CmsInspectorPanel
-                compact={compact}
-                t={t}
-                selectedSectionDraft={selectedSectionDraft}
-                effectiveProps={effectiveProps}
-                editableFieldCount={selectedSectionEditableSchemaFields.length}
-                displayFieldCount={selectedSectionEditableSchemaFieldsForDisplay.length}
-                usesSafeFallbackInspector={selectedSectionUsesSafeFallbackInspector}
-                selectedSectionUsesEcommerceProductsBinding={selectedSectionUsesEcommerceProductsBinding}
-                selectedSectionUsesEcommerceProductDetailBinding={selectedSectionUsesEcommerceProductDetailBinding}
-                selectedNestedSection={isNested && selectedNestedSection ? selectedNestedSection : null}
-                onBackToParent={handleBackToParentNestedSection}
-                inspectorTargetSummary={renderInspectorTargetSummary(
-                    selectedSectionInspectorTarget,
-                    compact,
-                    sectionDisplayLabelByKey.get(normalizeSectionTypeKey(selectedSectionDraft.type)) ?? selectedSectionDraft.type,
-                )}
-                bindingWarningsContent={renderSectionBindingWarnings(isNested ? [] : selectedSectionBindingWarnings, compact)}
-                controlGroupAuditSummaryContent={renderControlGroupAuditSummary(selectedSectionControlGroupAuditRows, compact)}
-                fieldSetsContent={renderCanonicalControlGroupFieldSets(selectedSectionEditableSchemaFieldsForDisplay, {
-                    compact,
-                    panelKey: `selected-section-${selectedSectionDraft.localId}${isNested && selectedNestedSection ? `-nested-${nestedPath.join('-')}` : ''}`,
-                    renderField: (field) => renderSchemaFieldEditorControl({
-                        field,
-                        parsedProps: resolvedEffectiveProps,
-                        compact,
-                        itemKeyPrefix: selectedSectionDraft.localId,
-                        bindingMeta: selectedSectionDraft.bindingMeta ?? null,
-                        bindingWarnings: isNested ? [] : selectedSectionBindingWarnings,
-                        onChangePath,
-                        onChangeTextTypography,
-                        onClearTextTypography,
-                    }),
-                    styleTabExtraContent: renderBuilderStyleContextControls(
-                        compact,
-                        selectedSectionEditableSchemaFields,
+            <Suspense fallback={lazyPanelFallback}>
+                <CmsInspectorPanel
+                    compact
+                    t={t}
+                    selectedSectionDraft={selectedSectionDraft}
+                    effectiveProps={effectiveProps}
+                    editableFieldCount={selectedSectionEditableSchemaFields.length}
+                    displayFieldCount={selectedSectionEditableSchemaFieldsForDisplay.length}
+                    usesSafeFallbackInspector={selectedSectionUsesSafeFallbackInspector}
+                    selectedSectionUsesEcommerceProductsBinding={selectedSectionUsesEcommerceProductsBinding}
+                    selectedSectionUsesEcommerceProductDetailBinding={selectedSectionUsesEcommerceProductDetailBinding}
+                    selectedNestedSection={isNested && selectedNestedSection ? selectedNestedSection : null}
+                    onBackToParent={handleBackToParentNestedSection}
+                    inspectorTargetSummary={renderInspectorTargetSummary(
                         selectedSectionInspectorTarget,
-                    ),
-                    expandedFieldsets: expandedFieldsetGroups,
-                    onFieldsetOpenChange: (key, open) => setExpandedFieldsetGroups((prev) => ({ ...prev, [key]: open })),
-                    activePrimaryTab: selectedSidebarTab,
-                    onPrimaryTabChange: setSelectedSidebarTab,
-                })}
-            />
+                        true,
+                        sectionDisplayLabelByKey.get(normalizeSectionTypeKey(selectedSectionDraft.type)) ?? selectedSectionDraft.type,
+                    )}
+                    bindingWarningsContent={renderSectionBindingWarnings(isNested ? [] : selectedSectionBindingWarnings, true)}
+                    controlGroupAuditSummaryContent={renderControlGroupAuditSummary(selectedSectionControlGroupAuditRows, true)}
+                    fieldSetsContent={renderCanonicalControlGroupFieldSets(selectedSectionEditableSchemaFieldsForDisplay, {
+                        compact: true,
+                        panelKey: `selected-section-${selectedSectionDraft.localId}${isNested && selectedNestedSection ? `-nested-${nestedPath.join('-')}` : ''}`,
+                        renderField: (field) => renderSchemaFieldEditorControl({
+                            field,
+                            parsedProps: resolvedEffectiveProps,
+                            compact: true,
+                            itemKeyPrefix: selectedSectionDraft.localId,
+                            bindingMeta: selectedSectionDraft.bindingMeta ?? null,
+                            bindingWarnings: isNested ? [] : selectedSectionBindingWarnings,
+                            onChangePath,
+                            onChangeTextTypography,
+                            onClearTextTypography,
+                        }),
+                        styleTabExtraContent: renderBuilderStyleContextControls(
+                            true,
+                            selectedSectionEditableSchemaFields,
+                            selectedSectionInspectorTarget,
+                        ),
+                        expandedFieldsets: expandedFieldsetGroups,
+                        onFieldsetOpenChange: (key, open) => setExpandedFieldsetGroups((prev) => ({ ...prev, [key]: open })),
+                        activePrimaryTab: selectedSidebarTab,
+                        onPrimaryTabChange: setSelectedSidebarTab,
+                    })}
+                />
+            </Suspense>
         );
     };
 
@@ -28505,6 +27410,7 @@ ${showRules}
             setPageEditorMode,
             setSectionsDraft,
             sectionsDraftRef,
+            scheduleStructuralDraftPersistRef,
             setSelectedSectionLocalId,
             setSelectedFixedSectionKey,
             setSelectedNestedSection,
@@ -28517,6 +27423,8 @@ ${showRules}
             normalizeSectionTypeKey,
             formatPropsText: (props) => toPrettyJson(props, '{}'),
             builderFieldGroupToSidebarTab,
+            createBuilderSectionDraft,
+            applyMutationState,
         },
         mutation: {
             isEmbeddedMode,
@@ -28577,973 +27485,334 @@ ${showRules}
         },
     });
 
-    const renderEmbeddedSidebarStructurePanel = () => null;
+    const selectedSectionDisplayLabel = selectedSectionDraft
+        ? sectionDisplayLabelByKey.get(normalizeSectionTypeKey(selectedSectionDraft.type)) ?? sectionDisplayLabelByKey.get(selectedSectionDraft.type) ?? selectedSectionDraft.type
+        : null;
+    const selectedSectionEditableFieldsContent = renderSelectedSectionEditableFields();
+    const handleCopySelectedSectionJson = () => {
+        if (!selectedSectionDraft) {
+            return;
+        }
+
+        try {
+            const props = parseSectionProps(selectedSectionDraft.propsText) ?? {};
+            const payload = {
+                type: selectedSectionDraft.type,
+                props,
+                ...(isRecord(selectedSectionDraft.bindingMeta) && Object.keys(selectedSectionDraft.bindingMeta).length > 0 ? { binding: selectedSectionDraft.bindingMeta } : {}),
+            };
+            void navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+            toast.success(t('Section JSON copied to clipboard'));
+        } catch {
+            toast.error(t('Failed to copy'));
+        }
+    };
+    const selectedFixedSectionVariantOptions = selectedFixedSectionMeta?.kind === 'header'
+        ? headerLayoutVariantOptions
+        : footerLayoutVariantOptions;
+    const selectedFixedSectionInspectorSummaryContent = renderInspectorTargetSummary(
+        selectedFixedSectionInspectorTarget,
+        true,
+        selectedFixedSectionVariantLabel || selectedFixedSectionKey || t('Section'),
+    );
+    const selectedFixedSectionAuditSummaryContent = selectedFixedSectionParsedProps && selectedFixedSectionEditableFieldsForDisplay.length > 0
+        ? renderControlGroupAuditSummary(selectedFixedSectionControlGroupAuditRows, true)
+        : null;
+    const standaloneFixedSectionFieldSetsContent = selectedFixedSectionParsedProps && selectedFixedSectionEditableFieldsForDisplay.length > 0
+        ? renderCanonicalControlGroupFieldSets(selectedFixedSectionEditableFieldsForDisplay, {
+            compact: true,
+            panelKey: `fixed-section-${selectedFixedSectionKey ?? 'none'}`,
+            renderField: (field) => renderSchemaFieldEditorControl({
+                field,
+                parsedProps: selectedFixedSectionParsedProps,
+                compact: true,
+                itemKeyPrefix: selectedFixedSectionKey ?? 'fixed-section',
+                showTypographyControls: false,
+                bindingMeta: null,
+                bindingWarnings: [],
+                onChangePath: (path, value) => selectedFixedSectionKey ? updateFixedSectionPathProp(selectedFixedSectionKey, path, value) : undefined,
+                onChangeTextTypography: (fieldKey, updater) => selectedFixedSectionKey ? updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, updater) : undefined,
+                onClearTextTypography: (fieldKey) => selectedFixedSectionKey ? updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, () => null) : undefined,
+            }),
+            expandedFieldsets: expandedFieldsetGroups,
+            onFieldsetOpenChange: (key, open) => setExpandedFieldsetGroups((prev) => ({ ...prev, [key]: open })),
+        })
+        : (
+            <p className="text-xs text-muted-foreground">
+                {selectedFixedSectionInspectorTarget?.path
+                    ? t('No controls available for the selected element.')
+                    : t('No editable options')}
+            </p>
+        );
+    const embeddedFixedSectionFieldSetsContent = selectedFixedSectionParsedProps && selectedFixedSectionEditableFieldsForDisplay.length > 0
+        ? renderCanonicalControlGroupFieldSets(selectedFixedSectionEditableFieldsForDisplay, {
+            compact: true,
+            panelKey: `fixed-section-${selectedFixedSectionKey ?? 'none'}`,
+            renderField: (field) => renderSchemaFieldEditorControl({
+                field,
+                parsedProps: selectedFixedSectionParsedProps,
+                compact: true,
+                itemKeyPrefix: selectedFixedSectionKey ?? 'fixed-section',
+                showTypographyControls: false,
+                bindingMeta: null,
+                bindingWarnings: [],
+                onChangePath: (path, value) => selectedFixedSectionKey ? updateFixedSectionPathProp(selectedFixedSectionKey, path, value) : undefined,
+                onChangeTextTypography: (fieldKey, updater) => selectedFixedSectionKey ? updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, updater) : undefined,
+                onClearTextTypography: (fieldKey) => selectedFixedSectionKey ? updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, () => null) : undefined,
+            }),
+            styleTabExtraContent: renderBuilderStyleContextControls(
+                true,
+                selectedFixedSectionEditableFields,
+                selectedFixedSectionInspectorTarget,
+            ),
+            expandedFieldsets: expandedFieldsetGroups,
+            onFieldsetOpenChange: (key, open) => setExpandedFieldsetGroups((prev) => ({ ...prev, [key]: open })),
+        })
+        : (
+            <p className="text-xs text-muted-foreground">
+                {selectedFixedSectionInspectorTarget?.path
+                    ? t('No controls available for the selected element.')
+                    : t('No editable options')}
+            </p>
+        );
+    const standaloneSettingsContent = (
+        <Suspense fallback={lazyPanelFallback}>
+            <CmsVisualBuilderSettingsSidebar
+                mode="standalone"
+                t={t}
+                builderLayoutForm={builderLayoutForm}
+                fixedSectionFieldSetsContent={standaloneFixedSectionFieldSetsContent}
+                fixedSectionInspectorSummaryContent={selectedFixedSectionInspectorSummaryContent}
+                fixedSectionAuditSummaryContent={selectedFixedSectionAuditSummaryContent}
+                fixedSectionVariantOptions={selectedFixedSectionVariantOptions}
+                footerVariantOptions={footerLayoutVariantOptions}
+                hasSelectedFixedSection={selectedFixedSectionKey !== null}
+                hasSelectedSection={selectedSectionDraft !== null}
+                headerMenuSourceValue={builderLayoutForm.headerMenuKey}
+                headerVariantOptions={headerLayoutVariantOptions}
+                isSavingBuilderLayout={isSavingBuilderLayout}
+                menuSourceOptions={menuSourceOptions}
+                normalizeMenuKey={normalizeMenuKey}
+                onBuilderLayoutFormChange={(patch) => setBuilderLayoutForm((prev) => ({ ...prev, ...patch }))}
+                onCloseFixedSection={handleCloseFixedSection}
+                onCopySelectedSectionJson={handleCopySelectedSectionJson}
+                onDuplicateSelectedSection={() => selectedSectionDraft ? handleDuplicateSection(selectedSectionDraft.localId) : undefined}
+                onEditFooter={() => {
+                    const footerKey = (builderLayoutForm.footerVariant || 'webu_footer_01').trim() || 'webu_footer_01';
+                    const footerLabel = footerVariantOptions.find((option) => option.key === footerKey)?.label ?? t('Footer');
+                    handleOpenFixedSection(footerKey, footerLabel);
+                }}
+                onEditHeader={() => {
+                    const headerKey = (builderLayoutForm.headerVariant || 'webu_header_01').trim() || 'webu_header_01';
+                    const headerLabel = headerVariantOptions.find((option) => option.key === headerKey)?.label ?? t('Header');
+                    handleOpenFixedSection(headerKey, headerLabel);
+                }}
+                onHeaderMenuSourceChange={(value) => setBuilderLayoutForm((prev) => ({ ...prev, headerMenuKey: normalizeMenuKey(value, 'header') }))}
+                onOpenElementsSidebar={handleOpenElementsSidebar}
+                onOpenMenus={() => {
+                    setActiveSection('design-menus');
+                    setActiveTab('menus');
+                }}
+                onOpenSiteSettings={handleOpenSiteSettings}
+                onRemoveSelectedSection={() => {
+                    if (!selectedSectionDraft) {
+                        return;
+                    }
+                    handleRemoveSection(selectedSectionDraft.localId);
+                    clearActiveSectionSelection();
+                }}
+                onSelectedFixedSectionLayoutVariantChange={(value) => {
+                    if (selectedFixedSectionMeta) {
+                        handleFixedSectionVariantChange(selectedFixedSectionMeta.kind, value);
+                    }
+                }}
+                selectedFixedSectionKind={selectedFixedSectionMeta?.kind ?? null}
+                selectedFixedSectionLayoutVariantKey={selectedFixedSectionLayoutVariantKey}
+                selectedFixedSectionVariantLabel={selectedFixedSectionVariantLabel}
+                selectedSectionEditableFieldsContent={selectedSectionEditableFieldsContent}
+                selectedSectionIndex={selectedSectionIndex}
+                selectedSectionLabel={selectedSectionDisplayLabel}
+                showHeaderMenuSourceHint={!CMS_BUILDER_MINIMAL_SIDEBAR_COPY}
+                showHeaderMenuSourceSelector={selectedFixedSectionMeta?.kind === 'header'}
+            />
+        </Suspense>
+    );
+    const embeddedSidebarContent = builderSidebarMode === 'settings' ? (
+        <Suspense fallback={lazyPanelFallback}>
+            <CmsVisualBuilderSettingsSidebar
+                mode="embedded"
+                t={t}
+                builderLayoutForm={builderLayoutForm}
+                fixedSectionFieldSetsContent={embeddedFixedSectionFieldSetsContent}
+                fixedSectionInspectorSummaryContent={selectedFixedSectionInspectorSummaryContent}
+                fixedSectionAuditSummaryContent={selectedFixedSectionAuditSummaryContent}
+                fixedSectionVariantOptions={selectedFixedSectionVariantOptions}
+                footerVariantOptions={footerLayoutVariantOptions}
+                hasSelectedFixedSection={selectedFixedSectionKey !== null}
+                hasSelectedSection={selectedSectionDraft !== null}
+                headerMenuSourceValue={builderLayoutForm.headerMenuKey}
+                headerVariantOptions={headerLayoutVariantOptions}
+                isSavingBuilderLayout={isSavingBuilderLayout}
+                menuSourceOptions={menuSourceOptions}
+                normalizeMenuKey={normalizeMenuKey}
+                onBuilderLayoutFormChange={(patch) => setBuilderLayoutForm((prev) => ({ ...prev, ...patch }))}
+                onCloseFixedSection={handleCloseFixedSection}
+                onCopySelectedSectionJson={handleCopySelectedSectionJson}
+                onDuplicateSelectedSection={() => selectedSectionDraft ? handleDuplicateSection(selectedSectionDraft.localId) : undefined}
+                onEditFooter={() => undefined}
+                onEditHeader={() => undefined}
+                onHeaderMenuSourceChange={(value) => setBuilderLayoutForm((prev) => ({ ...prev, headerMenuKey: normalizeMenuKey(value, 'header') }))}
+                onOpenElementsSidebar={handleOpenElementsSidebar}
+                onOpenMenus={() => undefined}
+                onOpenSiteSettings={handleOpenSiteSettings}
+                onRemoveSelectedSection={() => {
+                    if (!selectedSectionDraft) {
+                        return;
+                    }
+                    handleRemoveSection(selectedSectionDraft.localId);
+                    clearActiveSectionSelection();
+                }}
+                onSelectedFixedSectionLayoutVariantChange={(value) => {
+                    if (selectedFixedSectionMeta) {
+                        handleFixedSectionVariantChange(selectedFixedSectionMeta.kind, value);
+                    }
+                }}
+                selectedFixedSectionKind={selectedFixedSectionMeta?.kind ?? null}
+                selectedFixedSectionLayoutVariantKey={selectedFixedSectionLayoutVariantKey}
+                selectedFixedSectionVariantLabel={selectedFixedSectionVariantLabel}
+                selectedSectionEditableFieldsContent={selectedSectionEditableFieldsContent}
+                selectedSectionIndex={selectedSectionIndex}
+                selectedSectionLabel={selectedSectionDisplayLabel}
+                showHeaderMenuSourceHint={!CMS_BUILDER_MINIMAL_SIDEBAR_COPY}
+                showHeaderMenuSourceSelector={false}
+            />
+        </Suspense>
+    ) : null;
+    const standaloneDesignSystemContent = (
+        <Suspense fallback={lazyPanelFallback}>
+            <CmsVisualBuilderDesignSystemSidebar
+                overrides={designSystemOverrides}
+                onChange={setDesignSystemOverrides}
+                onOpenElementsSidebar={handleOpenElementsSidebar}
+                t={t}
+            />
+        </Suspense>
+    );
+    const visualBuilderShell = isVisualBuilderOpen ? (
+        <Suspense fallback={lazyPanelFallback}>
+            <CmsVisualBuilderShell
+                activeContentLocale={activeContentLocale}
+                activeDragId={activeDragId}
+                addInsideSectionOptions={addInsideSectionOptions}
+                aiImproveApplyingIndex={aiImproveApplyingIndex}
+                aiImproveItems={aiImproveItems}
+                aiImproveScoring={aiImproveScoring}
+                autoImproveEnabled={autoImproveEnabled}
+                bindingValidationWarningsCount={bindingValidationWarnings.length}
+                bindingWarningsSummaryContent={renderBuilderBindingWarningsSummary(true)}
+                builderCurrentDropTarget={builderCurrentDropTarget}
+                builderHoveredElementId={builderHoveredElementId}
+                builderPreviewMode={builderPreviewMode}
+                builderSectionLibrary={builderSectionLibrary}
+                builderSidebarMode={builderSidebarMode as 'elements' | 'settings' | 'design-system'}
+                builderViewportRef={builderViewportRef}
+                builderVisualPreviewUrl={builderVisualPreviewUrl}
+                canRedo={sectionEditHistoryUI.canRedo}
+                canUndo={sectionEditHistoryUI.canUndo}
+                collisionDetection={builderCollisionDetection}
+                designImportOpen={isDesignImportOpen}
+                embeddedSidebarContent={embeddedSidebarContent}
+                expandedComponentCategories={expandedComponentCategories}
+                getLibraryItemDisplayLabel={(item) => sectionDisplayLabelByKey.get(normalizeSectionTypeKey(item.key)) ?? sectionDisplayLabelByKey.get(item.key) ?? item.label ?? item.key}
+                groupedSectionLibrary={groupedSectionLibrary}
+                hoveredBuilderTarget={hoveredBuilderTarget}
+                isAIImproveSiteOpen={isAIImproveSiteOpen}
+                isAIWebsiteGenerating={isAIWebsiteGenerating}
+                isAIWebsitePromptOpen={isAIWebsitePromptOpen}
+                isApplyingAllAIImprovements={isApplyingAllAIImprovements}
+                isDesignImportGenerating={isDesignImportGenerating}
+                isEmbeddedMode={isEmbeddedMode}
+                isEmbeddedPreviewMode={isEmbeddedPreviewMode}
+                isEmbeddedSidebarMode={isEmbeddedSidebarMode}
+                isHomePageSelected={isHomePageSelected}
+                isPublishingPage={isPublishingPage}
+                isRefineLayoutOpen={isRefineLayoutOpen}
+                isSavingRevision={isSavingRevision}
+                isStructurePanelCollapsed={isStructurePanelCollapsed}
+                layoutPrimitiveSectionKeys={layoutPrimitiveSectionKeys}
+                onAddSectionByKey={(sectionKey) => addSectionByKey(sectionKey, 'library')}
+                onAddSectionInside={handleAddSectionInside}
+                onAddSectionInsideAtPath={handleAddSectionInsideAtPath}
+                onAiImproveSiteOpenChange={setIsAIImproveSiteOpen}
+                onAiWebsitePromptOpenChange={setIsAIWebsitePromptOpen}
+                onAiWebsitePromptSubmit={handleAIWebsitePromptSubmit}
+                onApplyAIImprovement={handleApplyAIImprovement}
+                onApplyAllAIImprovements={handleApplyAllAIImprovements}
+                onBuilderCurrentDropTargetChange={setBuilderCurrentDropTarget}
+                onBuilderPreviewModeChange={setBuilderPreviewMode}
+                onCanvasDeselect={handleCanvasDeselect}
+                onCanvasEditSection={handleCanvasEditSection}
+                onCanvasHover={handleCanvasHover}
+                onCanvasHoverTarget={handleCanvasHoverTarget}
+                onCanvasSelect={handleCanvasSelect}
+                onCanvasSelectTarget={handleCanvasSelectTarget}
+                onDesignImportOpenChange={setIsDesignImportOpen}
+                onDesignImportSubmit={handleDesignImportSubmit}
+                onDragCancel={() => { setActiveDragId(null); setBuilderCurrentDropTarget(null); }}
+                onDragEnd={handleBuilderDragEnd}
+                onDragStart={handleBuilderDragStart}
+                onDuplicateSection={handleDuplicateSection}
+                onExitBuilder={() => {
+                    setActiveSection('pages');
+                    setActiveTab('pages');
+                }}
+                onExpandedComponentCategoryChange={(category, open) => setExpandedComponentCategories((prev) => ({ ...prev, [category]: open }))}
+                onFocusSection={handleFocusSection}
+                onMoveNestedSection={handleMoveNestedSection}
+                onMoveSection={handleMoveSection}
+                onOpenDesignSystemSidebar={handleOpenDesignSystemSidebar}
+                onOpenDraftSyncedPreview={handleOpenDraftSyncedPreview}
+                onOpenElementsSidebar={handleOpenElementsSidebar}
+                onOpenRefineLayoutChange={setIsRefineLayoutOpen}
+                onOpenSettingsSidebar={handleOpenSettingsSidebar}
+                onOptimizeLayout={handleOptimizeLayout}
+                onPasteSection={handlePasteSection}
+                onPublishPage={handlePublishPage}
+                onRedo={handleSectionEditRedo}
+                onRefreshPreview={() => setBuilderPreviewRefreshToken(Date.now())}
+                onRefineLayoutSubmit={handleRefineLayoutSubmit}
+                onRemoveNestedSection={handleRemoveNestedSection}
+                onRemoveSection={handleRemoveSection}
+                onSaveDraftRevision={handleSaveDraftRevision}
+                onSectionSearchChange={setSectionSearch}
+                onSelectNestedSection={handleSelectNestedSection}
+                onSetAutoImproveEnabled={setAutoImproveEnabled}
+                onSetStructurePanelCollapsed={setIsStructurePanelCollapsed}
+                onSetStructurePanelPosition={setStructurePanelPosition}
+                onUndo={handleSectionEditUndo}
+                sectionDisplayLabelByKey={sectionDisplayLabelByKey}
+                sectionSearch={sectionSearch}
+                sectionsDraft={sectionsDraft}
+                selectedBuilderTarget={selectedBuilderTarget}
+                selectedPageSlug={selectedPageSummary?.slug ?? null}
+                selectedPageTitle={selectedPageSummary?.title ?? null}
+                selectedSectionLocalId={selectedSectionLocalId}
+                selectedNestedParentLocalId={selectedNestedSection?.parentLocalId ?? null}
+                selectedNestedPath={selectedNestedPath}
+                sensors={builderSensors}
+                standaloneDesignSystemContent={standaloneDesignSystemContent}
+                standaloneSettingsContent={standaloneSettingsContent}
+                structurePanelPosition={structurePanelPosition}
+                t={t}
+            />
+        </Suspense>
+    ) : null;
 
     return (
         <AdminLayout user={auth.user!} title={`CMS - ${project.name}`} fullWidth variant="cms" hideChrome={isEmbeddedMode}>
             <Head title={`CMS - ${project.name}`} />
 
-            {isVisualBuilderOpen ? (
-                <div
-                    className={cn(
-                        'cms-visual-builder',
-                        isEmbeddedMode ? 'cms-visual-builder--embedded' : 'cms-visual-builder--standalone'
-                    )}
-                >
-                    <Suspense fallback={null}>
-                        <AIWebsitePromptPanel
-                            open={isAIWebsitePromptOpen}
-                            onOpenChange={setIsAIWebsitePromptOpen}
-                            onSubmit={handleAIWebsitePromptSubmit}
-                            isGenerating={isAIWebsiteGenerating}
-                            t={t}
-                        />
-                        <DesignImportPanel
-                            open={isDesignImportOpen}
-                            onOpenChange={setIsDesignImportOpen}
-                            onSubmit={handleDesignImportSubmit}
-                            isProcessing={isDesignImportGenerating}
-                            t={t}
-                        />
-                        <RefineLayoutPanel
-                            open={isRefineLayoutOpen}
-                            onOpenChange={setIsRefineLayoutOpen}
-                            onSubmit={handleRefineLayoutSubmit}
-                            hasSections={sectionsDraft.length > 0}
-                            t={t}
-                        />
-                        <AIImproveSitePanel
-                            open={isAIImproveSiteOpen}
-                            onOpenChange={setIsAIImproveSiteOpen}
-                            improvements={aiImproveItems}
-                            onApplyImprovement={handleApplyAIImprovement}
-                            onApplyAllImprovements={handleApplyAllAIImprovements}
-                            applyingIndex={aiImproveApplyingIndex}
-                            isApplyingAll={isApplyingAllAIImprovements}
-                            hasSections={sectionsDraft.length > 0}
-                            scoring={aiImproveScoring}
-                            isAutoImproveMode={autoImproveEnabled}
-                            t={t}
-                        />
-                    </Suspense>
-                    <DndContext
-                        sensors={builderSensors}
-                        collisionDetection={builderCollisionDetection}
-                        onDragStart={handleBuilderDragStart}
-                        onDragEnd={handleBuilderDragEnd}
-                        onDragCancel={() => { setActiveDragId(null); setBuilderCurrentDropTarget(null); }}
-                    >
-                        <BuilderVisualDropMonitor
-                            sectionsDraft={sectionsDraft}
-                            setBuilderCurrentDropTarget={setBuilderCurrentDropTarget}
-                        />
-                        <div className="h-full flex">
-                            {!isEmbeddedPreviewMode ? (
-                            <aside className={isEmbeddedSidebarMode ? 'w-full min-h-full overflow-y-auto bg-card' : 'w-[320px] border-e bg-card flex flex-col'}>
-                                {!isEmbeddedMode ? (
-                                    <div className="h-14 px-3 border-b flex items-center justify-between gap-2">
-                                        <div className="min-w-0">
-                                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('Visual Builder')}</p>
-                                            <p className="text-sm font-semibold truncate">
-                                                {selectedPageSummary?.title ?? t('Page')}
-                                            </p>
-                                        </div>
-                                        <Button
-                                            type="button"
-                                            size="icon"
-                                            variant="ghost"
-                                            className="h-8 w-8 shrink-0"
-                                            onClick={() => {
-                                                setActiveSection('pages');
-                                                setActiveTab('pages');
-                                            }}
-                                        >
-                                            <ArrowLeft className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                ) : null}
-
-                                <div className={isEmbeddedSidebarMode ? 'min-h-full p-3 space-y-3' : 'flex-1 overflow-y-auto p-3 space-y-3'}>
-                                    {isEmbeddedSidebarMode ? (
-                                        builderSidebarMode === 'settings' ? (
-                                            selectedSectionDraft ? (
-                                                <div className="space-y-3">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <Badge variant="secondary" className="text-[11px]">
-                                                            #{selectedSectionIndex + 1}
-                                                        </Badge>
-                                                        <div className="min-w-0 rounded-md border bg-muted/20 px-2 py-1.5 text-xs text-foreground/90 truncate">
-                                                            {sectionDisplayLabelByKey.get(normalizeSectionTypeKey(selectedSectionDraft.type)) ?? sectionDisplayLabelByKey.get(selectedSectionDraft.type) ?? selectedSectionDraft.type}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className="text-xs"
-                                                            onClick={() => handleDuplicateSection(selectedSectionDraft.localId)}
-                                                        >
-                                                            <Copy className="h-3.5 w-3.5 mr-1" />
-                                                            {t('Duplicate')}
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className="text-xs text-destructive hover:text-destructive"
-                                                            onClick={() => {
-                                                                handleRemoveSection(selectedSectionDraft.localId);
-                                                                clearActiveSectionSelection();
-                                                            }}
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5 mr-1" />
-                                                            {t('Remove')}
-                                                        </Button>
-                                                    </div>
-                                                    {renderSelectedSectionEditableFields(true)}
-                                                </div>
-                                            ) : selectedFixedSectionKey ? (
-                                                    <div className="space-y-3">
-                                                        <div className="min-w-0 rounded-md border bg-muted/20 px-2 py-1.5 text-xs text-foreground/90 truncate">
-                                                        {selectedFixedSectionVariantLabel}
-                                                        </div>
-                                                        {selectedFixedSectionMeta ? (
-                                                            <div className="space-y-1 rounded-md border bg-muted/20 p-2">
-                                                                <Label className="text-xs">
-                                                                    {selectedFixedSectionMeta.kind === 'header' ? t('Header Version') : t('Footer Version')}
-                                                                </Label>
-                                                                <select
-                                                                    value={selectedFixedSectionLayoutVariantKey}
-                                                                    onChange={(event) => handleFixedSectionVariantChange(selectedFixedSectionMeta.kind, event.target.value)}
-                                                                    disabled={isSavingBuilderLayout}
-                                                                    className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-                                                                >
-                                                                    {(selectedFixedSectionMeta.kind === 'header' ? headerLayoutVariantOptions : footerLayoutVariantOptions).map((option) => (
-                                                                        <option key={`fixed-inline-variant-${option.key}`} value={option.key}>
-                                                                            {option.label}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                                {isSavingBuilderLayout ? (
-                                                                    <p className="text-[11px] text-muted-foreground">{t('Updating preview...')}</p>
-                                                                ) : null}
-                                                            </div>
-                                                        ) : null}
-
-                                                    {selectedFixedSectionParsedProps && selectedFixedSectionEditableFieldsForDisplay.length > 0 ? (
-                                                        <div className="grid gap-2">
-                                                            {renderInspectorTargetSummary(
-                                                                selectedFixedSectionInspectorTarget,
-                                                                true,
-                                                                selectedFixedSectionVariantLabel || selectedFixedSectionKey,
-                                                            )}
-                                                            {renderControlGroupAuditSummary(selectedFixedSectionControlGroupAuditRows, true)}
-                                                            {renderCanonicalControlGroupFieldSets(selectedFixedSectionEditableFieldsForDisplay, {
-                                                                compact: true,
-                                                                panelKey: `fixed-section-${selectedFixedSectionKey}`,
-                                                                renderField: (field) => renderSchemaFieldEditorControl({
-                                                                    field,
-                                                                    parsedProps: selectedFixedSectionParsedProps,
-                                                                    compact: true,
-                                                                    itemKeyPrefix: selectedFixedSectionKey,
-                                                                    showTypographyControls: false,
-                                                                    bindingMeta: null,
-                                                                    bindingWarnings: [],
-                                                                    onChangePath: (path, value) => updateFixedSectionPathProp(selectedFixedSectionKey, path, value),
-                                                                    onChangeTextTypography: (fieldKey, updater) => updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, updater),
-                                                                    onClearTextTypography: (fieldKey) => updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, () => null),
-                                                                }),
-                                                                styleTabExtraContent: renderBuilderStyleContextControls(
-                                                                    true,
-                                                                    selectedFixedSectionEditableFields,
-                                                                    selectedFixedSectionInspectorTarget,
-                                                                ),
-                                                                expandedFieldsets: expandedFieldsetGroups,
-                                                                onFieldsetOpenChange: (key, open) => setExpandedFieldsetGroups((prev) => ({ ...prev, [key]: open })),
-                                                            })}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="grid gap-2">
-                                                            {renderInspectorTargetSummary(
-                                                                selectedFixedSectionInspectorTarget,
-                                                                true,
-                                                                selectedFixedSectionVariantLabel || selectedFixedSectionKey,
-                                                            )}
-                                                            <p className="text-xs text-muted-foreground">
-                                                                {selectedFixedSectionInspectorTarget?.path
-                                                                    ? t('No controls available for the selected element.')
-                                                                    : t('No editable options')}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <div className="rounded-lg border border-dashed bg-background/80 p-4 text-center text-xs text-muted-foreground">
-                                                    {t('Select a component on the right to edit its settings')}
-                                                </div>
-                                            )
-                                        ) : (
-                                            <div className="space-y-4">
-                                                {builderSectionLibrary.length === 0 ? (
-                                                    <p className="text-xs text-muted-foreground">{t('Nothing found')}</p>
-                                                ) : (
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        {builderSectionLibrary.map((item) => (
-                                                            <DraggableLibraryIconTile
-                                                                key={item.id}
-                                                                item={item}
-                                                                displayLabel={sectionDisplayLabelByKey.get(normalizeSectionTypeKey(item.key)) ?? sectionDisplayLabelByKey.get(item.key) ?? item.label ?? item.key}
-                                                                onAdd={(sectionKey) => addSectionByKey(sectionKey, 'library')}
-                                                                draggable={true}
-                                                            />
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )
-                                    ) : (
-                                    <>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="sm"
-                                        className="w-full gap-2"
-                                        onClick={() => setIsAIWebsitePromptOpen(true)}
-                                    >
-                                        <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                                        {t('Generate Website With AI')}
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="sm"
-                                        className="w-full gap-2"
-                                        onClick={() => setIsDesignImportOpen(true)}
-                                    >
-                                        <ImagePlus className="h-3.5 w-3.5 shrink-0" />
-                                        {t('Import Design')}
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="sm"
-                                        className="w-full gap-2"
-                                        onClick={() => setIsRefineLayoutOpen(true)}
-                                        disabled={sectionsDraft.length === 0}
-                                    >
-                                        <Wand2 className="h-3.5 w-3.5 shrink-0" />
-                                        {t('Refine layout')}
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="sm"
-                                        className="w-full gap-2"
-                                        onClick={() => setIsAIImproveSiteOpen(true)}
-                                        disabled={sectionsDraft.length === 0}
-                                    >
-                                        <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                                        {t('AI Improve Site')}
-                                    </Button>
-                                    <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
-                                        <Label htmlFor="auto-improve-website" className="cursor-pointer text-xs font-medium">
-                                            {t('Auto Improve Website')}
-                                        </Label>
-                                        <Switch
-                                            id="auto-improve-website"
-                                            checked={autoImproveEnabled}
-                                            onCheckedChange={setAutoImproveEnabled}
-                                        />
-                                    </div>
-                                    <p className="text-[11px] text-muted-foreground">
-                                        {t('Continuously analyzes layout and suggests improvements.')}
-                                    </p>
-                                    <div className="grid grid-cols-3 gap-1.5">
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant={builderSidebarMode === 'elements' ? 'default' : 'outline'}
-                                            onClick={handleOpenElementsSidebar}
-                                            title={t('Elements')}
-                                        >
-                                            {t('Elements')}
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant={builderSidebarMode === 'settings' ? 'default' : 'outline'}
-                                            onClick={handleOpenSettingsSidebar}
-                                            title={t('Settings')}
-                                        >
-                                            {t('Settings')}
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant={builderSidebarMode === 'design-system' ? 'default' : 'outline'}
-                                            onClick={handleOpenDesignSystemSidebar}
-                                            title={t('Design System')}
-                                        >
-                                            {t('Design')}
-                                        </Button>
-                                    </div>
-
-                                    {renderBuilderBindingWarningsSummary(true)}
-
-                                    {builderSidebarMode === 'elements' ? (
-                                        <div className="h-full min-h-0 flex flex-col gap-3">
-                                            <div className="space-y-2">
-                                                <Input
-                                                    value={sectionSearch}
-                                                    onChange={(event) => setSectionSearch(event.target.value)}
-                                                    placeholder={t('Search Widget...')}
-                                                    className="text-xs"
-                                                />
-                                            </div>
-
-                                            <div className="rounded-lg border p-2 min-h-0 flex-1 flex flex-col gap-1">
-                                                <div className="min-h-0 flex-1 overflow-auto space-y-1 pr-1">
-                                                    {groupedSectionLibrary.length === 0 ? (
-                                                        <p className="text-xs text-muted-foreground">{t('Nothing found')}</p>
-                                                    ) : (
-                                                        groupedSectionLibrary.map((group, groupIndex) => (
-                                                            <Collapsible
-                                                                key={group.category}
-                                                                open={expandedComponentCategories[group.category] ?? groupIndex === 0}
-                                                                onOpenChange={(open) => setExpandedComponentCategories((prev) => ({ ...prev, [group.category]: open }))}
-                                                                className="rounded border border-transparent"
-                                                            >
-                                                                <CollapsibleTrigger className="flex w-full items-center gap-1.5 py-1.5 text-left hover:opacity-80">
-                                                                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground data-[state=open]:rotate-90 transition-transform" />
-                                                                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</span>
-                                                                </CollapsibleTrigger>
-                                                                <CollapsibleContent>
-                                                                    <div className="grid grid-cols-2 gap-2 pt-1 pb-2 pl-4">
-                                                                        {group.items.map((item) => (
-                                                                            <DraggableLibraryIconTile
-                                                                                key={item.id}
-                                                                                item={item}
-                                                                                displayLabel={sectionDisplayLabelByKey.get(normalizeSectionTypeKey(item.key)) ?? sectionDisplayLabelByKey.get(item.key) ?? item.label ?? item.key}
-                                                                                onAdd={(sectionKey) => addSectionByKey(sectionKey, 'library')}
-                                                                            />
-                                                                        ))}
-                                                                    </div>
-                                                                </CollapsibleContent>
-                                                            </Collapsible>
-                                                        ))
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                        </div>
-                                    ) : null
-                                    }
-
-                                    {builderSidebarMode === 'settings' ? (
-                                    <div className="rounded-lg border p-2 space-y-2">
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="w-full"
-                                            onClick={handleOpenElementsSidebar}
-                                        >
-                                            <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
-                                            {t('Elements')}
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="w-full"
-                                            onClick={handleOpenSiteSettings}
-                                        >
-                                            <Settings2 className="h-3.5 w-3.5 mr-1.5" />
-                                            {t('Site Settings')}
-                                        </Button>
-                                        <p className="text-xs font-medium text-muted-foreground">{t('Settings')}</p>
-                                        {!selectedSectionDraft ? (
-                                            <div className="space-y-2">
-                                                {!selectedFixedSectionKey ? (
-                                                    <Suspense fallback={lazyPanelFallback}>
-                                                        <HeaderFooterLayoutForm
-                                                            form={builderLayoutForm}
-                                                            onFormChange={(patch) => setBuilderLayoutForm((prev) => ({ ...prev, ...patch }))}
-                                                            headerVariantOptions={headerVariantOptions}
-                                                            footerVariantOptions={footerVariantOptions}
-                                                            menuSourceOptions={menuSourceOptions}
-                                                            onEditHeader={() => {
-                                                                const headerKey = (builderLayoutForm.headerVariant || 'webu_header_01').trim() || 'webu_header_01';
-                                                                const headerLabel = headerVariantOptions.find((option) => option.key === headerKey)?.label ?? t('Header');
-                                                                handleOpenFixedSection(headerKey, headerLabel);
-                                                            }}
-                                                            onEditFooter={() => {
-                                                                const footerKey = (builderLayoutForm.footerVariant || 'webu_footer_01').trim() || 'webu_footer_01';
-                                                                const footerLabel = footerVariantOptions.find((option) => option.key === footerKey)?.label ?? t('Footer');
-                                                                handleOpenFixedSection(footerKey, footerLabel);
-                                                            }}
-                                                            onOpenMenus={() => {
-                                                                setActiveSection('design-menus');
-                                                                setActiveTab('menus');
-                                                            }}
-                                                            normalizeMenuKey={normalizeMenuKey}
-                                                            t={t}
-                                                        />
-                                                    </Suspense>
-                                                ) : (
-                                                    <>
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            <Badge variant="secondary" className="text-[11px]">
-                                                                {(selectedFixedSectionMeta?.kind === 'header' ? t('Header') : t('Footer'))}
-                                                                {selectedFixedSectionVariantLabel ? ` · ${selectedFixedSectionVariantLabel}` : ''}
-                                                            </Badge>
-                                                            <Button
-                                                                type="button"
-                                                                size="sm"
-                                                                variant="outline"
-                                                                onClick={handleCloseFixedSection}
-                                                            >
-                                                                {t('Back')}
-                                                            </Button>
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground">{t('გლობალური სექციის რედაქტირება')}</p>
-                                                        <div className="space-y-1 rounded-md border bg-muted/20 p-2">
-                                                            <Label className="text-xs">
-                                                                {selectedFixedSectionMeta?.kind === 'header' ? t('Header Version') : t('Footer Version')}
-                                                            </Label>
-                                                            <select
-                                                                value={selectedFixedSectionLayoutVariantKey}
-                                                                onChange={(event) => selectedFixedSectionMeta ? handleFixedSectionVariantChange(selectedFixedSectionMeta.kind, event.target.value) : undefined}
-                                                                disabled={isSavingBuilderLayout}
-                                                                className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-                                                            >
-                                                                {(selectedFixedSectionMeta?.kind === 'header' ? headerLayoutVariantOptions : footerLayoutVariantOptions).map((option) => (
-                                                                    <option key={`fixed-panel-variant-${option.key}`} value={option.key}>
-                                                                        {option.label}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                            {isSavingBuilderLayout ? (
-                                                                <p className="text-[11px] text-muted-foreground">{t('Updating preview...')}</p>
-                                                            ) : null}
-                                                        </div>
-
-                                                        {selectedFixedSectionMeta?.kind === 'header' ? (
-                                                            <div className="space-y-1 rounded-md border bg-muted/20 p-2">
-                                                                <Label className="text-xs">{t('Header Menu Source')}</Label>
-                                                                <select
-                                                                    value={builderLayoutForm.headerMenuKey}
-                                                                    onChange={(event) => setBuilderLayoutForm((prev) => ({ ...prev, headerMenuKey: normalizeMenuKey(event.target.value, 'header') }))}
-                                                                    className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-                                                                >
-                                                                    {menuSourceOptions.map((option) => (
-                                                                        <option key={`header-source-fixed-${option.key}`} value={option.key}>
-                                                                            {option.isSystem ? `${option.label} (${t('System')})` : option.label}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                                {!CMS_BUILDER_MINIMAL_SIDEBAR_COPY ? (
-                                                                    <p className="text-[11px] text-muted-foreground">
-                                                                        {t('Menu links are loaded automatically from Menu Builder.')}
-                                                                    </p>
-                                                                ) : null}
-                                                            </div>
-                                                        ) : null}
-
-                                                        {selectedFixedSectionParsedProps && selectedFixedSectionEditableFieldsForDisplay.length > 0 ? (
-                                                            <div className="grid gap-2">
-                                                                {renderInspectorTargetSummary(
-                                                                    selectedFixedSectionInspectorTarget,
-                                                                    true,
-                                                                    selectedFixedSectionVariantLabel || selectedFixedSectionKey,
-                                                                )}
-                                                                {renderControlGroupAuditSummary(selectedFixedSectionControlGroupAuditRows, true)}
-                                                                {renderCanonicalControlGroupFieldSets(selectedFixedSectionEditableFieldsForDisplay, {
-                                                                    compact: true,
-                                                                    panelKey: `fixed-section-${selectedFixedSectionKey}`,
-                                                                    renderField: (field) => renderSchemaFieldEditorControl({
-                                                                        field,
-                                                                        parsedProps: selectedFixedSectionParsedProps,
-                                                                        compact: true,
-                                                                        itemKeyPrefix: selectedFixedSectionKey,
-                                                                        showTypographyControls: false,
-                                                                        bindingMeta: null,
-                                                                        bindingWarnings: [],
-                                                                        onChangePath: (path, value) => updateFixedSectionPathProp(selectedFixedSectionKey, path, value),
-                                                                        onChangeTextTypography: (fieldKey, updater) => updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, updater),
-                                                                        onClearTextTypography: (fieldKey) => updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, () => null),
-                                                                    }),
-                                                                    expandedFieldsets: expandedFieldsetGroups,
-                                                                    onFieldsetOpenChange: (key, open) => setExpandedFieldsetGroups((prev) => ({ ...prev, [key]: open })),
-                                                                })}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="grid gap-2">
-                                                                {renderInspectorTargetSummary(
-                                                                    selectedFixedSectionInspectorTarget,
-                                                                    true,
-                                                                    selectedFixedSectionVariantLabel || selectedFixedSectionKey,
-                                                                )}
-                                                                <p className="text-xs text-muted-foreground">
-                                                                    {selectedFixedSectionInspectorTarget?.path
-                                                                        ? t('No controls available for the selected element.')
-                                                                        : t('No editable options')}
-                                                                </p>
-                                                            </div>
-                                                        )}
-
-                                                    </>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <Badge variant="secondary" className="text-[11px]">
-                                                        #{selectedSectionIndex + 1}
-                                                    </Badge>
-                                                    <div className="min-w-0 rounded-md border bg-muted/20 px-2 py-1.5 text-xs text-foreground/90 truncate">
-                                                        {sectionDisplayLabelByKey.get(normalizeSectionTypeKey(selectedSectionDraft.type)) ?? sectionDisplayLabelByKey.get(selectedSectionDraft.type) ?? selectedSectionDraft.type}
-                                                    </div>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-7 text-xs shrink-0"
-                                                        onClick={() => {
-                                                            try {
-                                                                const props = parseSectionProps(selectedSectionDraft.propsText) ?? {};
-                                                                const payload = {
-                                                                    type: selectedSectionDraft.type,
-                                                                    props,
-                                                                    ...(isRecord(selectedSectionDraft.bindingMeta) && Object.keys(selectedSectionDraft.bindingMeta).length > 0 ? { binding: selectedSectionDraft.bindingMeta } : {}),
-                                                                };
-                                                                void navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-                                                                toast.success(t('Section JSON copied to clipboard'));
-                                                            } catch {
-                                                                toast.error(t('Failed to copy'));
-                                                            }
-                                                        }}
-                                                    >
-                                                        <Copy className="h-3.5 w-3.5 mr-1" />
-                                                        {t('Copy JSON')}
-                                                    </Button>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-7 text-xs"
-                                                        onClick={() => handleDuplicateSection(selectedSectionDraft.localId)}
-                                                    >
-                                                        <Copy className="h-3.5 w-3.5 mr-1" />
-                                                        {t('Duplicate')}
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-7 text-xs text-destructive hover:text-destructive"
-                                                        onClick={() => {
-                                                            handleRemoveSection(selectedSectionDraft.localId);
-                                                            clearActiveSectionSelection();
-                                                        }}
-                                                    >
-                                                        <Trash2 className="h-3.5 w-3.5 mr-1" />
-                                                        {t('Remove')}
-                                                    </Button>
-                                                </div>
-
-                                                {renderSelectedSectionEditableFields(true)}
-                                            </>
-                                        )}
-                                    </div>
-                                    ) : null}
-
-                                    {builderSidebarMode === 'design-system' ? (
-                                    <div className="rounded-lg border p-2 space-y-2">
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="w-full"
-                                            onClick={handleOpenElementsSidebar}
-                                        >
-                                            <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
-                                            {t('Elements')}
-                                        </Button>
-                                        <p className="text-xs font-medium text-muted-foreground">{t('Design System')}</p>
-                                        <DesignSystemPanel
-                                            overrides={designSystemOverrides}
-                                            onChange={setDesignSystemOverrides}
-                                            t={t}
-                                            onRegenerate={() => {
-                                                const system = generateDesignSystemFromPrompt('');
-                                                setDesignSystemOverrides(generatedSystemToOverrides(system));
-                                            }}
-                                        />
-                                    </div>
-                                    ) : null}
-
-                                    {renderEmbeddedSidebarStructurePanel()}
-                                    </>
-                                    )}
-                                </div>
-                            </aside>
-                            ) : null}
-
-                            {!isEmbeddedSidebarMode ? (
-                            <section ref={builderViewportRef} className="relative flex-1 min-w-0 flex flex-col">
-                                {!isEmbeddedVisualBuilder ? (
-                                    <div className="h-14 border-b bg-background px-3 flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <Badge variant={isHomePageSelected ? 'default' : 'secondary'}>
-                                                {isHomePageSelected ? t('Main Page') : t('Page')}
-                                            </Badge>
-                                            <p className="text-sm text-muted-foreground truncate">
-                                                /{selectedPageSummary?.slug ?? 'home'}
-                                            </p>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <Button
-                                                type="button"
-                                                size="icon"
-                                                variant={builderPreviewMode === 'desktop' ? 'default' : 'outline'}
-                                                className="h-8 w-8"
-                                                onClick={() => setBuilderPreviewMode('desktop')}
-                                                aria-label={t('Desktop')}
-                                            >
-                                                <Monitor className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                size="icon"
-                                                variant={builderPreviewMode === 'tablet' ? 'default' : 'outline'}
-                                                className="h-8 w-8"
-                                                onClick={() => setBuilderPreviewMode('tablet')}
-                                                aria-label={t('Tablet')}
-                                            >
-                                                <Tablet className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                size="icon"
-                                                variant={builderPreviewMode === 'mobile' ? 'default' : 'outline'}
-                                                className="h-8 w-8"
-                                                onClick={() => setBuilderPreviewMode('mobile')}
-                                                aria-label={t('Mobile')}
-                                            >
-                                                <Smartphone className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                size="icon"
-                                                variant="outline"
-                                                className="h-8 w-8"
-                                                onClick={() => setBuilderPreviewRefreshToken(Date.now())}
-                                                aria-label={t('Refresh Preview')}
-                                            >
-                                                <RefreshCw className="h-4 w-4" />
-                                            </Button>
-                                            {isStructurePanelCollapsed ? (
-                                                <Button
-                                                    type="button"
-                                                    size="icon"
-                                                    variant="outline"
-                                                    className="h-8 w-8"
-                                                    onClick={() => setIsStructurePanelCollapsed(false)}
-                                                    aria-label={t('Open Structure')}
-                                                >
-                                                    <Layers className="h-4 w-4" />
-                                                </Button>
-                                            ) : null}
-                                            <Badge variant="outline">
-                                                {t('Language')}: {activeContentLocale.toUpperCase()}
-                                            </Badge>
-                                            {bindingValidationWarnings.length > 0 ? (
-                                                <Badge variant="outline" className="border-amber-500 text-amber-700">
-                                                    {t('Binding Warnings')}: {bindingValidationWarnings.length}
-                                                </Badge>
-                                            ) : null}
-                                            {builderVisualPreviewUrl ? (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    type="button"
-                                                    onClick={() => void handleOpenDraftSyncedPreview(builderVisualPreviewUrl)}
-                                                    disabled={isSavingRevision}
-                                                >
-                                                    <ExternalLink className="h-4 w-4 mr-1.5" />
-                                                    {t('Open')}
-                                                </Button>
-                                            ) : null}
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={handleSectionEditUndo}
-                                                disabled={!sectionEditHistoryUI.canUndo}
-                                                aria-label={t('Undo')}
-                                                title={t('Undo')}
-                                            >
-                                                <Undo2 className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={handleSectionEditRedo}
-                                                disabled={!sectionEditHistoryUI.canRedo}
-                                                aria-label={t('Redo')}
-                                                title={t('Redo')}
-                                            >
-                                                <Redo2 className="h-4 w-4" />
-                                            </Button>
-                                            <Button variant="outline" onClick={handleSaveDraftRevision} disabled={isSavingRevision}>
-                                                {isSavingRevision ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                                                {t('Save')}
-                                            </Button>
-                                            <Button onClick={handlePublishPage} disabled={isPublishingPage}>
-                                                {isPublishingPage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                                                {t('Publish')}
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ) : null}
-
-                                {!isEmbeddedMode ? (
-                                    <StructurePanel
-                                        collapsed={isStructurePanelCollapsed}
-                                        onCollapse={() => setIsStructurePanelCollapsed(true)}
-                                        position={structurePanelPosition}
-                                        onPositionChange={setStructurePanelPosition}
-                                        viewportRef={builderViewportRef}
-                                        scrollRef={builderLayersScrollRef}
-                                        sectionCount={sectionsDraft.length}
-                                        onPaste={handlePasteSection}
-                                        onOptimizeLayout={handleOptimizeLayout}
-                                        t={t}
-                                    >
-                                                <BuilderCanvasDropZone>
-                                                    {sectionsDraft.length === 0 ? (
-                                                        <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-                                                            {t('Drop widgets here')}
-                                                        </div>
-                                                    ) : sectionsDraft.length > BUILDER_LAYERS_VIRTUALIZE_THRESHOLD ? (
-                                                        <SortableContext
-                                                            items={sectionsDraft.map((section) => section.localId)}
-                                                            strategy={verticalListSortingStrategy}
-                                                        >
-                                                            <div
-                                                                className="relative w-full"
-                                                                style={{ height: `${layersVirtualizer.getTotalSize()}px` }}
-                                                            >
-                                                                {layersVirtualizer.getVirtualItems().map((virtualRow) => {
-                                                                const section = sectionsDraft[virtualRow.index];
-                                                                const index = virtualRow.index;
-                                                                const parsedProps = parseSectionProps(section.propsText);
-                                                                const label = sectionDisplayLabelByKey.get(normalizeSectionTypeKey(section.type)) ?? sectionDisplayLabelByKey.get(section.type) ?? section.type;
-                                                                const previewTextCandidates = [
-                                                                    parsedProps ? getValueAtPath(parsedProps, ['headline']) : null,
-                                                                    parsedProps ? getValueAtPath(parsedProps, ['title']) : null,
-                                                                    parsedProps ? getValueAtPath(parsedProps, ['subtitle']) : null,
-                                                                    parsedProps ? getValueAtPath(parsedProps, ['label']) : null,
-                                                                ];
-                                                                const previewTextRaw = previewTextCandidates.find((value) => typeof value === 'string' && String(value).trim() !== '');
-                                                                const previewText = typeof previewTextRaw === 'string'
-                                                                    ? previewTextRaw
-                                                                    : t('No preview text');
-
-                                                                const isLayoutPrimitive = layoutPrimitiveSectionKeys.includes(normalizeSectionTypeKey(section.type));
-                                                                const rawNested = isLayoutPrimitive && parsedProps && Array.isArray(parsedProps.sections) ? parsedProps.sections : [];
-                                                                function buildNestedTree(sections: unknown[], parentPath: number[]): NestedSectionDisplayItem[] {
-                                                                    return sections.map((item: unknown, idx: number) => {
-                                                                        const rec = isRecord(item) ? item : {};
-                                                                        const nestedType = typeof rec.type === 'string' ? rec.type : (typeof rec.key === 'string' ? rec.key : '');
-                                                                        const path = [...parentPath, idx];
-                                                                        const typeNorm = nestedType?.toLowerCase() ?? '';
-                                                                        const subSections = isRecord(rec.props) && Array.isArray((rec.props as Record<string, unknown>).sections) ? (rec.props as Record<string, unknown>).sections : null;
-                                                                        const children = layoutPrimitiveSectionKeys.includes(typeNorm) && Array.isArray(subSections) && subSections.length > 0
-                                                                            ? buildNestedTree(subSections as unknown[], path)
-                                                                            : undefined;
-                                                                        return {
-                                                                            type: nestedType || 'section',
-                                                                            label: (sectionDisplayLabelByKey.get(normalizeSectionTypeKey(nestedType)) ?? sectionDisplayLabelByKey.get(nestedType) ?? nestedType) || t('Section'),
-                                                                            path,
-                                                                            children: children && children.length > 0 ? children : undefined,
-                                                                        };
-                                                                    });
-                                                                }
-                                                                const nestedSectionsList: NestedSectionDisplayItem[] = buildNestedTree(rawNested, []);
-                                                                return (
-                                                                    <div
-                                                                        key={virtualRow.key}
-                                                                        className="absolute left-0 top-0 w-full px-0.5"
-                                                                        style={{
-                                                                            height: `${virtualRow.size}px`,
-                                                                            transform: `translateY(${virtualRow.start}px)`,
-                                                                        }}
-                                                                    >
-                                                                        <SortableCanvasSectionCard
-                                                                            section={section}
-                                                                            index={index}
-                                                                            isSelected={selectedSectionLocalId === section.localId}
-                                                                            label={label}
-                                                                            previewText={previewText}
-                                                                            canMoveUp={index > 0}
-                                                                            canMoveDown={index < sectionsDraft.length - 1}
-                                                                            onSelect={() => handleFocusSection(section.localId)}
-                                                                            onMoveUp={() => handleMoveSection(section.localId, 'up')}
-                                                                            onMoveDown={() => handleMoveSection(section.localId, 'down')}
-                                                                            onDuplicate={() => handleDuplicateSection(section.localId)}
-                                                                            onRemove={() => handleRemoveSection(section.localId)}
-                                                                            onAddSectionInside={handleAddSectionInside}
-                                                                            onAddSectionInsideAtPath={handleAddSectionInsideAtPath}
-                                                                            addInsideSectionOptions={addInsideSectionOptions}
-                                                                            layoutPrimitiveKeys={layoutPrimitiveSectionKeys}
-                                                                            showAddInside={isLayoutPrimitive}
-                                                                            nestedSections={nestedSectionsList}
-                                                                            onRemoveNestedSection={handleRemoveNestedSection}
-                                                                            onMoveNestedSection={handleMoveNestedSection}
-                                                                            onSelectNestedSection={handleSelectNestedSection}
-                                                                            selectedNestedPath={selectedNestedPath}
-                                                                            selectedNestedParentLocalId={selectedNestedSection?.parentLocalId ?? null}
-                                                                            t={t}
-                                                                        />
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                            </div>
-                                                        </SortableContext>
-                                                    ) : (
-                                                        <SortableContext
-                                                            items={sectionsDraft.map((section) => section.localId)}
-                                                            strategy={verticalListSortingStrategy}
-                                                        >
-                                                            <div className="space-y-2">
-                                                                {sectionsDraft.map((section, index) => {
-                                                                const parsedProps = parseSectionProps(section.propsText);
-                                                                const label = sectionDisplayLabelByKey.get(normalizeSectionTypeKey(section.type)) ?? sectionDisplayLabelByKey.get(section.type) ?? section.type;
-                                                                const previewTextCandidates = [
-                                                                    parsedProps ? getValueAtPath(parsedProps, ['headline']) : null,
-                                                                    parsedProps ? getValueAtPath(parsedProps, ['title']) : null,
-                                                                    parsedProps ? getValueAtPath(parsedProps, ['subtitle']) : null,
-                                                                    parsedProps ? getValueAtPath(parsedProps, ['label']) : null,
-                                                                ];
-                                                                const previewTextRaw = previewTextCandidates.find((value) => typeof value === 'string' && String(value).trim() !== '');
-                                                                const previewText = typeof previewTextRaw === 'string'
-                                                                    ? previewTextRaw
-                                                                    : t('No preview text');
-
-                                                                const isLayoutPrimitive = layoutPrimitiveSectionKeys.includes(normalizeSectionTypeKey(section.type));
-                                                                const rawNested = isLayoutPrimitive && parsedProps && Array.isArray(parsedProps.sections) ? parsedProps.sections : [];
-                                                                function buildNestedTree(sections: unknown[], parentPath: number[]): NestedSectionDisplayItem[] {
-                                                                    return sections.map((item: unknown, idx: number) => {
-                                                                        const rec = isRecord(item) ? item : {};
-                                                                        const nestedType = typeof rec.type === 'string' ? rec.type : (typeof rec.key === 'string' ? rec.key : '');
-                                                                        const path = [...parentPath, idx];
-                                                                        const typeNorm = nestedType?.toLowerCase() ?? '';
-                                                                        const subSections = isRecord(rec.props) && Array.isArray((rec.props as Record<string, unknown>).sections) ? (rec.props as Record<string, unknown>).sections : null;
-                                                                        const children = layoutPrimitiveSectionKeys.includes(typeNorm) && Array.isArray(subSections) && subSections.length > 0
-                                                                            ? buildNestedTree(subSections as unknown[], path)
-                                                                            : undefined;
-                                                                        return {
-                                                                            type: nestedType || 'section',
-                                                                            label: (sectionDisplayLabelByKey.get(normalizeSectionTypeKey(nestedType)) ?? sectionDisplayLabelByKey.get(nestedType) ?? nestedType) || t('Section'),
-                                                                            path,
-                                                                            children: children && children.length > 0 ? children : undefined,
-                                                                        };
-                                                                    });
-                                                                }
-                                                                const nestedSectionsList: NestedSectionDisplayItem[] = buildNestedTree(rawNested, []);
-                                                                return (
-                                                                    <SortableCanvasSectionCard
-                                                                        key={section.localId}
-                                                                        section={section}
-                                                                        index={index}
-                                                                        isSelected={selectedSectionLocalId === section.localId}
-                                                                        label={label}
-                                                                        previewText={previewText}
-                                                                        canMoveUp={index > 0}
-                                                                        canMoveDown={index < sectionsDraft.length - 1}
-                                                                        onSelect={() => handleFocusSection(section.localId)}
-                                                                        onMoveUp={() => handleMoveSection(section.localId, 'up')}
-                                                                        onMoveDown={() => handleMoveSection(section.localId, 'down')}
-                                                                        onDuplicate={() => handleDuplicateSection(section.localId)}
-                                                                        onRemove={() => handleRemoveSection(section.localId)}
-                                                                        onAddSectionInside={handleAddSectionInside}
-                                                                        onAddSectionInsideAtPath={handleAddSectionInsideAtPath}
-                                                                        addInsideSectionOptions={addInsideSectionOptions}
-                                                                        layoutPrimitiveKeys={layoutPrimitiveSectionKeys}
-                                                                        showAddInside={isLayoutPrimitive}
-                                                                        nestedSections={nestedSectionsList}
-                                                                        onRemoveNestedSection={handleRemoveNestedSection}
-                                                                        onMoveNestedSection={handleMoveNestedSection}
-                                                                        onSelectNestedSection={handleSelectNestedSection}
-                                                                        selectedNestedPath={selectedNestedPath}
-                                                                        selectedNestedParentLocalId={selectedNestedSection?.parentLocalId ?? null}
-                                                                        t={t}
-                                                                    />
-                                                                );
-                                                            })}
-                                                            </div>
-                                                        </SortableContext>
-                                                    )}
-                                                </BuilderCanvasDropZone>
-                                    </StructurePanel>
-                                ) : null}
-
-                                <div className="flex-1 overflow-auto bg-muted/30 p-3">
-                                    <div className={cn(builderCanvasViewportClass, 'min-h-[calc(100vh-92px)] rounded-lg border bg-white overflow-hidden shadow-sm')}>
-                                        <BuilderCanvas
-                                            sections={sectionsDraft}
-                                            selectedElementId={selectedSectionLocalId}
-                                            hoveredElementId={hoveredBuilderTarget?.sectionLocalId ?? builderHoveredElementId}
-                                            selectedTarget={selectedBuilderTarget}
-                                            hoveredTarget={hoveredBuilderTarget}
-                                            draggingComponentType={extractLibrarySectionKey(activeDragId ?? '')}
-                                            currentDropTarget={builderCurrentDropTarget}
-                                            sectionDisplayLabelByKey={sectionDisplayLabelByKey}
-                                            onSelect={handleCanvasSelect}
-                                            onHover={handleCanvasHover}
-                                            onSelectTarget={handleCanvasSelectTarget}
-                                            onHoverTarget={handleCanvasHoverTarget}
-                                            onDeselect={handleCanvasDeselect}
-                                            onEditSection={handleCanvasEditSection}
-                                            onDeleteSection={handleRemoveSection}
-                                            t={t}
-                                        />
-                                    </div>
-                                </div>
-                            </section>
-                            ) : null}
-                        </div>
-                        <DragOverlay dropAnimation={null}>
-                            {activeDragLabel ? (
-                                <div className="w-[240px] rounded-xl border bg-background/95 px-3 py-2 shadow-xl backdrop-blur pointer-events-none">
-                                    <div className="flex items-center gap-2">
-                                        <div className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-muted/20">
-                                            <ActiveDragIcon className="h-4 w-4" />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('Dragging')}</p>
-                                            <p className="text-sm font-medium truncate">{activeDragLabel}</p>
-                                        </div>
-                                    </div>
-                                    {activeDragLibraryItem?.description ? (
-                                        <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
-                                            {activeDragLibraryItem.description}
-                                        </p>
-                                    ) : null}
-                                </div>
-                            ) : null}
-                        </DragOverlay>
-                    </DndContext>
-                </div>
-            ) : null}
+            {visualBuilderShell}
 
             <div className={isVisualBuilderOpen ? 'cms-workspace hidden min-w-0 max-w-full overflow-x-hidden' : 'cms-workspace w-full min-w-0 max-w-full space-y-4 overflow-x-hidden'}>
                 <div className="rounded-lg border bg-background px-4 py-3 flex flex-wrap items-center justify-between gap-3">
@@ -29586,1847 +27855,167 @@ ${showRules}
 
                 <Tabs value={activeTab} className="space-y-3 min-w-0 max-w-full overflow-x-hidden">
                     <TabsContent value="dashboard" className="pt-2 min-w-0 max-w-full overflow-x-hidden">
-                        <div className="space-y-4 min-w-0">
-                            {dashboardViewOptions.length > 1 ? (
-                                <Card className="border-dashed">
-                                    <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                                        <div>
-                                            <p className="text-sm font-semibold">{t('Dashboard View')}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {t('Choose dashboard layout by project module')}
-                                            </p>
-                                        </div>
-                                        <div className="w-full sm:w-auto">
-                                            <select
-                                                value={dashboardViewMode}
-                                                onChange={(event) => setDashboardViewMode(event.target.value as 'ecommerce' | 'crm' | 'general')}
-                                                className="h-10 w-full min-w-[220px] rounded-md border bg-background px-3 text-sm sm:w-auto"
-                                            >
-                                                {dashboardViewOptions.map((option) => (
-                                                    <option key={`dashboard-view-${option}`} value={option}>
-                                                        {option === 'ecommerce'
-                                                            ? t('Ecommerce Dashboard')
-                                                            : option === 'crm'
-                                                                ? t('CRM Dashboard')
-                                                                : t('General Dashboard')}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ) : null}
-
-                            {isEcommerceDashboardMode ? (
-                                <>
-                                    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-                                        <Card className="min-w-0 overflow-hidden border-slate-200/80 bg-gradient-to-br from-slate-50 via-background to-background">
-                                            <CardContent className="p-0">
-                                                <div className="grid min-w-0 gap-0 2xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-                                                    <div className="min-w-0 space-y-4 p-4 md:p-5 2xl:border-r">
-                                                        <div className="flex flex-wrap items-start justify-between gap-3">
-                                                            <div className="space-y-2 min-w-0">
-                                                                <div className="flex flex-wrap items-center gap-2">
-                                                                    <Badge variant={site.status === 'published' ? 'default' : 'secondary'}>
-                                                                        {site.status}
-                                                                    </Badge>
-                                                                    <Badge variant="outline">{t('Plan')}: {moduleMatrix.plan?.name ?? '—'}</Badge>
-                                                                    <Badge variant="outline">{t('Language')}: {activeContentLocale.toUpperCase()}</Badge>
-                                                                </div>
-                                                                <div className="min-w-0">
-                                                                    <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t('Ecommerce Dashboard')}</p>
-                                                                    <h2 className="truncate text-xl font-semibold tracking-tight md:text-2xl">{project.name}</h2>
-                                                                    <p className="truncate text-sm text-muted-foreground">
-                                                                        {publicDomain ?? t('Not connected')}
-                                                                        <span className="mx-2">·</span>
-                                                                        {templateBlueprint.template_slug ?? t('Not selected')}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="rounded-2xl border bg-background/90 px-3 py-2 text-right shadow-sm">
-                                                                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('Latest sync')}</p>
-                                                                <p className="mt-1 text-sm font-semibold">{dashboardSummaryUpdatedAt ? formatDate(dashboardSummaryUpdatedAt) : '—'}</p>
-                                                                <p className="text-xs text-muted-foreground">
-                                                                    {dashboardLatestContentUpdate ? `${t('Updated')}: ${formatDate(dashboardLatestContentUpdate)}` : t('No recent updates')}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-                                                            <div className="min-w-0 rounded-2xl border bg-background p-4 shadow-sm">
-                                                                <div className="flex items-start justify-between gap-3">
-                                                                    <div className="min-w-0">
-                                                                        <p className="text-xs text-muted-foreground">{t('Revenue')}</p>
-                                                                        <p className="mt-1 text-lg font-semibold">{dashboardEcommerceFinanceMetrics.grossRevenueFormatted}</p>
-                                                                        <p className="text-xs text-emerald-600">{t('Paid')}: {dashboardEcommerceFinanceMetrics.paidRevenueFormatted}</p>
-                                                                    </div>
-                                                                    <div className="rounded-xl border bg-emerald-50 p-2 text-emerald-600">
-                                                                        <Banknote className="h-4 w-4" />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div className="min-w-0 rounded-2xl border bg-background p-4 shadow-sm">
-                                                                <div className="flex items-start justify-between gap-3">
-                                                                    <div className="min-w-0">
-                                                                        <p className="text-xs text-muted-foreground">{t('Orders')}</p>
-                                                                        <p className="mt-1 text-lg font-semibold">{dashboardEcommerceOrderCounts.total.toLocaleString(locale)}</p>
-                                                                        <p className="text-xs text-muted-foreground">{t('Pending')}: {(dashboardEcommerceOrderCounts.byStatus.pending ?? 0).toLocaleString(locale)}</p>
-                                                                    </div>
-                                                                    <div className="rounded-xl border bg-sky-50 p-2 text-sky-600">
-                                                                        <ShoppingCart className="h-4 w-4" />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div className="min-w-0 rounded-2xl border bg-background p-4 shadow-sm">
-                                                                <div className="flex items-start justify-between gap-3">
-                                                                    <div className="min-w-0">
-                                                                        <p className="text-xs text-muted-foreground">{t('Customers')}</p>
-                                                                        <p className="mt-1 text-lg font-semibold">{dashboardEcommerceCustomerStats.total.toLocaleString(locale)}</p>
-                                                                        <p className="text-xs text-muted-foreground">{t('Repeat')}: {dashboardEcommerceCustomerStats.repeat.toLocaleString(locale)}</p>
-                                                                    </div>
-                                                                    <div className="rounded-xl border bg-violet-50 p-2 text-violet-600">
-                                                                        <Users className="h-4 w-4" />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div className="min-w-0 rounded-2xl border bg-background p-4 shadow-sm">
-                                                                <div className="flex items-start justify-between gap-3">
-                                                                    <div className="min-w-0">
-                                                                        <p className="text-xs text-muted-foreground">{t('Avg Order')}</p>
-                                                                        <p className="mt-1 text-lg font-semibold">{dashboardEcommerceFinanceMetrics.averageOrderValueFormatted}</p>
-                                                                        <p className="text-xs text-amber-600">{t('Outstanding')}: {dashboardEcommerceFinanceMetrics.outstandingRevenueFormatted}</p>
-                                                                    </div>
-                                                                    <div className="rounded-xl border bg-amber-50 p-2 text-amber-600">
-                                                                        <TrendingUp className="h-4 w-4" />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-                                                            <div className="min-w-0 rounded-2xl border bg-background/90 p-3">
-                                                                <p className="text-xs text-muted-foreground">{t('Products')}</p>
-                                                                <p className="mt-1 text-lg font-semibold">{builderCmsProducts.length.toLocaleString(locale)}</p>
-                                                                <p className="text-xs text-muted-foreground">{t('Categories')}: {(dashboardEcommerceCategoriesCount ?? 0).toLocaleString(locale)}</p>
-                                                            </div>
-                                                            <div className="min-w-0 rounded-2xl border bg-background/90 p-3">
-                                                                <p className="text-xs text-muted-foreground">{t('Publishing Coverage')}</p>
-                                                                <p className="mt-1 text-lg font-semibold">{dashboardPublishedCoverage.pages}%</p>
-                                                                <div className="mt-2 h-1.5 rounded-full bg-muted">
-                                                                    <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${dashboardPublishedCoverage.pages}%` }} />
-                                                                </div>
-                                                            </div>
-                                                            <div className="min-w-0 rounded-2xl border bg-background/90 p-3 sm:col-span-2">
-                                                                <p className="text-xs text-muted-foreground">{t('Blog Coverage')}</p>
-                                                                <p className="mt-1 text-lg font-semibold">{dashboardPublishedCoverage.blog}%</p>
-                                                                <div className="mt-2 h-1.5 rounded-full bg-muted">
-                                                                    <div className="h-1.5 rounded-full bg-sky-500" style={{ width: `${dashboardPublishedCoverage.blog}%` }} />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="min-w-0 space-y-4 border-t bg-muted/20 p-4 md:p-5 2xl:border-t-0">
-                                                        <div>
-                                                            <p className="text-xs uppercase tracking-wide text-muted-foreground">{t('Quick Access')}</p>
-                                                            <p className="text-sm font-semibold">{t('Ecommerce workflow shortcuts')}</p>
-                                                        </div>
-                                                        <div className="grid gap-2">
-                                                            <Button
-                                                                type="button"
-                                                                variant="outline"
-                                                                size="sm"
-                                                                className="justify-start bg-background"
-                                                                onClick={() => void loadDashboardSummary()}
-                                                                disabled={isDashboardSummaryLoading}
-                                                            >
-                                                                {isDashboardSummaryLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                                                                {t('Refresh Dashboard Summary')}
-                                                            </Button>
-                                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background">
-                                                                <Link href={`/project/${project.id}/cms?tab=ecommerce-orders`}>
-                                                                    <PackageCheck className="mr-2 h-4 w-4" />
-                                                                    {t('Open Orders')}
-                                                                </Link>
-                                                            </Button>
-                                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background">
-                                                                <Link href={`/project/${project.id}/cms?tab=ecommerce-products`}>
-                                                                    <ShoppingCart className="mr-2 h-4 w-4" />
-                                                                    {t('Open Products')}
-                                                                </Link>
-                                                            </Button>
-                                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background">
-                                                                <Link href={`/project/${project.id}/cms?tab=customers`}>
-                                                                    <Users className="mr-2 h-4 w-4" />
-                                                                    {t('Open Customers')}
-                                                                </Link>
-                                                            </Button>
-                                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background">
-                                                                <Link href={`/project/${project.id}/cms?tab=discounts`}>
-                                                                    <Wallet className="mr-2 h-4 w-4" />
-                                                                    {t('Discounts')}
-                                                                </Link>
-                                                            </Button>
-                                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background">
-                                                                <Link href={`/project/${project.id}/cms?tab=ecommerce-payments`}>
-                                                                    <Banknote className="mr-2 h-4 w-4" />
-                                                                    {t('Payments')}
-                                                                </Link>
-                                                            </Button>
-                                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background">
-                                                                <Link href={`/project/${project.id}/cms?tab=ecommerce-shipping`}>
-                                                                    <MapPin className="mr-2 h-4 w-4" />
-                                                                    {t('Shipping')}
-                                                                </Link>
-                                                            </Button>
-                                                            {previewWebsiteUrl ? (
-                                                                <Button asChild variant="outline" size="sm" className="justify-start bg-background">
-                                                                    <a href={previewWebsiteUrl} target="_blank" rel="noreferrer">
-                                                                        <Globe className="mr-2 h-4 w-4" />
-                                                                        {t('Preview Website')}
-                                                                    </a>
-                                                                </Button>
-                                                            ) : null}
-                                                        </div>
-
-                                                        <div className="rounded-2xl border bg-background p-3 shadow-sm">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <div>
-                                                                    <p className="text-xs text-muted-foreground">{t('Customers')}</p>
-                                                                    <p className="text-lg font-semibold">{dashboardEcommerceCustomerStats.total.toLocaleString(locale)}</p>
-                                                                </div>
-                                                                <Users className="h-4 w-4 text-muted-foreground" />
-                                                            </div>
-                                                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                                                                <div className="rounded-lg border bg-muted/20 px-2 py-2">
-                                                                    <p className="text-muted-foreground">{t('Repeat')}</p>
-                                                                    <p className="mt-1 font-semibold">{dashboardEcommerceCustomerStats.repeat.toLocaleString(locale)}</p>
-                                                                </div>
-                                                                <div className="rounded-lg border bg-muted/20 px-2 py-2">
-                                                                    <p className="text-muted-foreground">{t('VIP')}</p>
-                                                                    <p className="mt-1 font-semibold">{dashboardEcommerceCustomerStats.vip.toLocaleString(locale)}</p>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-
-                                        <div className="grid gap-4">
-                                            <Card className="border-slate-200/80">
-                                                <CardHeader className="pb-3">
-                                                    <CardTitle className="text-sm">{t('Revenue')}</CardTitle>
-                                                    <CardDescription>{t('Paid vs outstanding ecommerce revenue')}</CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="space-y-4">
-                                                    {(() => {
-                                                        const gross = dashboardEcommerceOrderCounts.grossRevenue;
-                                                        const paid = dashboardEcommerceOrderCounts.paidRevenue;
-                                                        const outstanding = dashboardEcommerceOrderCounts.outstandingRevenue;
-                                                        const paidPercent = gross > 0 ? Math.round((paid / gross) * 100) : 0;
-                                                        const outstandingPercent = gross > 0 ? Math.round((outstanding / gross) * 100) : 0;
-
-                                                        return (
-                                                            <>
-                                                                <div className="space-y-3">
-                                                                    <div className="rounded-xl border p-3">
-                                                                        <div className="flex items-center justify-between gap-2">
-                                                                            <span className="text-xs text-muted-foreground">{t('Gross')}</span>
-                                                                            <span className="text-sm font-semibold">{dashboardEcommerceFinanceMetrics.grossRevenueFormatted}</span>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="rounded-xl border p-3">
-                                                                        <div className="flex items-center justify-between gap-2">
-                                                                            <span className="text-xs text-muted-foreground">{t('Paid')}</span>
-                                                                            <span className="text-sm font-semibold">{dashboardEcommerceFinanceMetrics.paidRevenueFormatted}</span>
-                                                                        </div>
-                                                                        <div className="mt-2 h-1.5 rounded-full bg-muted">
-                                                                            <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${paidPercent > 0 ? Math.max(4, Math.min(100, paidPercent)) : 0}%` }} />
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="rounded-xl border p-3">
-                                                                        <div className="flex items-center justify-between gap-2">
-                                                                            <span className="text-xs text-muted-foreground">{t('Outstanding')}</span>
-                                                                            <span className="text-sm font-semibold">{dashboardEcommerceFinanceMetrics.outstandingRevenueFormatted}</span>
-                                                                        </div>
-                                                                        <div className="mt-2 h-1.5 rounded-full bg-muted">
-                                                                            <div className="h-1.5 rounded-full bg-amber-500" style={{ width: `${outstandingPercent > 0 ? Math.max(4, Math.min(100, outstandingPercent)) : 0}%` }} />
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="grid grid-cols-2 gap-2">
-                                                                    <div className="rounded-xl border p-3">
-                                                                        <p className="text-xs text-muted-foreground">{t('Avg Order')}</p>
-                                                                        <p className="mt-1 font-semibold">{dashboardEcommerceFinanceMetrics.averageOrderValueFormatted}</p>
-                                                                    </div>
-                                                                    <div className="rounded-xl border p-3">
-                                                                        <p className="text-xs text-muted-foreground">{t('Orders')}</p>
-                                                                        <p className="mt-1 font-semibold">{dashboardEcommerceOrderCounts.total.toLocaleString(locale)}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card className="border-slate-200/80">
-                                                <CardHeader className="pb-3">
-                                                    <CardTitle className="text-sm">{t('Order Status')}</CardTitle>
-                                                    <CardDescription>{t('Current ecommerce order breakdown')}</CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="space-y-3">
-                                                    <div className="grid grid-cols-2 gap-2 text-sm">
-                                                        <div className="rounded-xl border p-3">
-                                                            <p className="text-xs text-muted-foreground">{t('Pending')}</p>
-                                                            <p className="mt-1 font-semibold">{(dashboardEcommerceOrderCounts.byStatus.pending ?? 0).toLocaleString(locale)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-3">
-                                                            <p className="text-xs text-muted-foreground">{t('Processing')}</p>
-                                                            <p className="mt-1 font-semibold">{(dashboardEcommerceOrderCounts.byStatus.processing ?? 0).toLocaleString(locale)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-3">
-                                                            <p className="text-xs text-muted-foreground">{t('Completed')}</p>
-                                                            <p className="mt-1 font-semibold">{(dashboardEcommerceOrderCounts.byStatus.completed ?? 0).toLocaleString(locale)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-3">
-                                                            <p className="text-xs text-muted-foreground">{t('Cancelled')}</p>
-                                                            <p className="mt-1 font-semibold">{(dashboardEcommerceOrderCounts.byStatus.cancelled ?? 0).toLocaleString(locale)}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <div className="flex h-2 overflow-hidden rounded-full bg-muted">
-                                                            {(() => {
-                                                                const totalOrders = Math.max(1, dashboardEcommerceOrderCounts.total);
-                                                                const segments = [
-                                                                    { key: 'completed', count: dashboardEcommerceOrderCounts.byStatus.completed ?? 0, color: 'bg-emerald-500' },
-                                                                    { key: 'processing', count: dashboardEcommerceOrderCounts.byStatus.processing ?? 0, color: 'bg-sky-500' },
-                                                                    { key: 'pending', count: dashboardEcommerceOrderCounts.byStatus.pending ?? 0, color: 'bg-amber-500' },
-                                                                    { key: 'cancelled', count: dashboardEcommerceOrderCounts.byStatus.cancelled ?? 0, color: 'bg-rose-500' },
-                                                                ].filter((segment) => segment.count > 0);
-
-                                                                if (segments.length === 0) {
-                                                                    return <div className="h-full w-full bg-muted-foreground/20" />;
-                                                                }
-
-                                                                return segments.map((segment) => (
-                                                                    <div
-                                                                        key={`ecom-order-segment-${segment.key}`}
-                                                                        className={segment.color}
-                                                                        style={{ width: `${Math.max(4, Math.round((segment.count / totalOrders) * 100))}%` }}
-                                                                    />
-                                                                ));
-                                                            })()}
-                                                        </div>
-                                                        <div className="flex flex-wrap gap-1.5 text-[11px]">
-                                                            <Badge variant="outline">{t('Paid')}: {(dashboardEcommerceOrderCounts.byPaymentStatus.paid ?? 0).toLocaleString(locale)}</Badge>
-                                                            <Badge variant="outline">{t('Pending')}: {(dashboardEcommerceOrderCounts.byPaymentStatus.pending ?? 0).toLocaleString(locale)}</Badge>
-                                                            <Badge variant="outline">{t('Failed')}: {(dashboardEcommerceOrderCounts.byPaymentStatus.failed ?? 0).toLocaleString(locale)}</Badge>
-                                                        </div>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid gap-4 xl:grid-cols-[1.75fr_1fr]">
-                                        <Card className="border-slate-200/80 min-w-0">
-                                            <CardHeader>
-                                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <div>
-                                                        <CardTitle>{t('Recent Orders')}</CardTitle>
-                                                        <CardDescription>{t('Latest ecommerce orders and statuses')}</CardDescription>
-                                                    </div>
-                                                    <Button asChild variant="outline" size="sm">
-                                                        <Link href={`/project/${project.id}/cms?tab=ecommerce-orders`}>{t('View All')}</Link>
-                                                    </Button>
-                                                </div>
-                                            </CardHeader>
-                                            <CardContent>
-                                                {dashboardEcommerceRecentOrders.length === 0 ? (
-                                                    <div className="py-8 text-center text-sm text-muted-foreground">
-                                                        {isDashboardSummaryLoading ? t('Loading orders...') : t('No orders yet')}
-                                                    </div>
-                                                ) : (
-                                                    <div className="overflow-x-auto rounded-xl border">
-                                                        <table className="min-w-[860px] w-full text-sm">
-                                                            <thead className="bg-muted/30">
-                                                                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                                                                    <th className="px-4 py-3 font-medium">{t('Order')}</th>
-                                                                    <th className="px-4 py-3 font-medium">{t('Customer')}</th>
-                                                                    <th className="px-4 py-3 font-medium">{t('Payment')}</th>
-                                                                    <th className="px-4 py-3 font-medium">{t('Order Status')}</th>
-                                                                    <th className="px-4 py-3 font-medium">{t('Updated')}</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {dashboardEcommerceRecentOrders.map((order) => {
-                                                                    const rowCurrency = (order.currency || dashboardEcommerceOrderCounts.currency || 'GEL').toUpperCase();
-                                                                    const rowAmount = Number.parseFloat(String(order.grand_total ?? '0')) || 0;
-                                                                    const safeAmount = (() => {
-                                                                        try {
-                                                                            return new Intl.NumberFormat(locale || 'ka', { style: 'currency', currency: rowCurrency }).format(rowAmount);
-                                                                        } catch {
-                                                                            return `${rowAmount.toFixed(2)} ${rowCurrency}`;
-                                                                        }
-                                                                    })();
-
-                                                                    return (
-                                                                        <tr key={`dashboard-order-${order.id}`} className="border-b last:border-b-0 hover:bg-muted/20">
-                                                                            <td className="px-4 py-3 align-top">
-                                                                                <div className="space-y-1">
-                                                                                    <p className="font-semibold">{order.order_number}</p>
-                                                                                    <p className="text-xs text-muted-foreground">{t('Items')}: {(order.items_count ?? 0).toLocaleString(locale)}</p>
-                                                                                </div>
-                                                                            </td>
-                                                                            <td className="px-4 py-3 align-top">
-                                                                                <div className="min-w-0">
-                                                                                    <p className="truncate font-medium">{order.customer_name || order.customer_email || t('Unknown customer')}</p>
-                                                                                    <p className="truncate text-xs text-muted-foreground">{order.customer_email || '—'}</p>
-                                                                                </div>
-                                                                            </td>
-                                                                            <td className="px-4 py-3 align-top">
-                                                                                <div className="space-y-1">
-                                                                                    <p className="font-semibold">{safeAmount}</p>
-                                                                                    <Badge variant={order.payment_status === 'paid' ? 'default' : order.payment_status === 'failed' ? 'secondary' : 'outline'}>
-                                                                                        {t(order.payment_status || 'unpaid')}
-                                                                                    </Badge>
-                                                                                </div>
-                                                                            </td>
-                                                                            <td className="px-4 py-3 align-top">
-                                                                                <Badge variant={order.status === 'completed' || order.status === 'paid' ? 'default' : order.status === 'cancelled' || order.status === 'failed' ? 'secondary' : 'outline'}>
-                                                                                    {t(order.status)}
-                                                                                </Badge>
-                                                                            </td>
-                                                                            <td className="px-4 py-3 align-top text-xs text-muted-foreground">
-                                                                                {formatDate(order.placed_at || order.updated_at || order.created_at)}
-                                                                            </td>
-                                                                        </tr>
-                                                                    );
-                                                                })}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                )}
-                                            </CardContent>
-                                        </Card>
-
-                                        <div className="space-y-4">
-                                            <Card className="border-slate-200/80">
-                                                <CardHeader>
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <div>
-                                                            <CardTitle>{t('Customers')}</CardTitle>
-                                                            <CardDescription>{t('Top recent buyers')}</CardDescription>
-                                                        </div>
-                                                        <Button asChild variant="outline" size="sm">
-                                                            <Link href={`/project/${project.id}/cms?tab=customers`}>{t('Open Customers')}</Link>
-                                                        </Button>
-                                                    </div>
-                                                </CardHeader>
-                                                <CardContent className="space-y-3">
-                                                    <div className="grid grid-cols-3 gap-2 text-center">
-                                                        <div className="rounded-xl border p-2">
-                                                            <p className="text-[11px] text-muted-foreground">{t('Total')}</p>
-                                                            <p className="mt-1 text-sm font-semibold">{dashboardEcommerceCustomerStats.total.toLocaleString(locale)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-2">
-                                                            <p className="text-[11px] text-muted-foreground">{t('Repeat')}</p>
-                                                            <p className="mt-1 text-sm font-semibold">{dashboardEcommerceCustomerStats.repeat.toLocaleString(locale)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-2">
-                                                            <p className="text-[11px] text-muted-foreground">{t('VIP')}</p>
-                                                            <p className="mt-1 text-sm font-semibold">{dashboardEcommerceCustomerStats.vip.toLocaleString(locale)}</p>
-                                                        </div>
-                                                    </div>
-                                                    {dashboardEcommerceCustomerStats.recent.length === 0 ? (
-                                                        <p className="text-sm text-muted-foreground">{t('No customers yet')}</p>
-                                                    ) : (
-                                                        <div className="space-y-2">
-                                                            {dashboardEcommerceCustomerStats.recent.map((customer) => {
-                                                                const initials = customer.name
-                                                                    .split(/\s+/)
-                                                                    .filter(Boolean)
-                                                                    .slice(0, 2)
-                                                                    .map((part) => part[0]?.toUpperCase() ?? '')
-                                                                    .join('') || 'CU';
-
-                                                                return (
-                                                                    <div key={`dashboard-customer-${customer.key}`} className="flex items-center justify-between gap-3 rounded-xl border p-3">
-                                                                        <div className="flex min-w-0 items-center gap-3">
-                                                                            <div className="flex h-9 w-9 items-center justify-center rounded-full border bg-muted text-xs font-semibold">
-                                                                                {initials}
-                                                                            </div>
-                                                                            <div className="min-w-0">
-                                                                                <p className="truncate text-sm font-medium">{customer.name}</p>
-                                                                                <p className="truncate text-xs text-muted-foreground">{customer.email || customer.phone || '—'}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <p className="text-sm font-semibold">{customer.orders} {t('orders')}</p>
-                                                                            <p className="text-xs text-muted-foreground">{formatDate(customer.lastOrderAt)}</p>
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    )}
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card className="border-slate-200/80">
-                                                <CardHeader className="pb-3">
-                                                    <CardTitle>{t('Catalog & Content')}</CardTitle>
-                                                    <CardDescription>{t('Store readiness and operational details')}</CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="space-y-3">
-                                                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                                                        <div className="rounded-xl border p-3">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <p className="text-xs text-muted-foreground">{t('Products')}</p>
-                                                                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                                                            </div>
-                                                            <p className="mt-1 text-lg font-semibold">{builderCmsProducts.length.toLocaleString(locale)}</p>
-                                                            <p className="text-xs text-muted-foreground">{t('Categories')}: {(dashboardEcommerceCategoriesCount ?? 0).toLocaleString(locale)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-3">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <p className="text-xs text-muted-foreground">{t('Pages')}</p>
-                                                                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                                                            </div>
-                                                            <p className="mt-1 text-lg font-semibold">{dashboardPageCounts.total.toLocaleString(locale)}</p>
-                                                            <p className="text-xs text-muted-foreground">{t('published')}: {dashboardPageCounts.published}</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-2 rounded-xl border p-3">
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            <p className="text-sm font-medium">{t('Publishing Coverage')}</p>
-                                                            <Badge variant="outline">{dashboardPublishedCoverage.pages}%</Badge>
-                                                        </div>
-                                                        <div className="h-1.5 rounded-full bg-muted">
-                                                            <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${dashboardPublishedCoverage.pages}%` }} />
-                                                        </div>
-                                                        <div className="flex items-center justify-between gap-2 text-xs">
-                                                            <span className="text-muted-foreground">{t('Blog Coverage')}</span>
-                                                            <span>{dashboardPublishedCoverage.blog}%</span>
-                                                        </div>
-                                                        <div className="h-1.5 rounded-full bg-muted">
-                                                            <div className="h-1.5 rounded-full bg-sky-500" style={{ width: `${dashboardPublishedCoverage.blog}%` }} />
-                                                        </div>
-                                                    </div>
-
-                                                    {hasBookingDashboardCapability ? (
-                                                        <div className="space-y-2 rounded-xl border p-3">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <p className="text-sm font-medium">{t('Booking Overview')}</p>
-                                                                <Badge variant="outline">{dashboardBookingCounts.upcoming.toLocaleString(locale)}</Badge>
-                                                            </div>
-                                                            <div className="grid grid-cols-2 gap-2 text-xs">
-                                                                <div className="rounded-lg border bg-muted/20 px-2 py-2">
-                                                                    <p className="text-muted-foreground">{t('Today')}</p>
-                                                                    <p className="mt-1 font-semibold">{dashboardBookingCounts.today.toLocaleString(locale)}</p>
-                                                                </div>
-                                                                <div className="rounded-lg border bg-muted/20 px-2 py-2">
-                                                                    <p className="text-muted-foreground">{t('Inbox')}</p>
-                                                                    <p className="mt-1 font-semibold">{dashboardBookingInboxTotal.toLocaleString(locale)}</p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex flex-wrap gap-2">
-                                                                <Button asChild size="sm" variant="outline">
-                                                                    <Link href={`/project/${project.id}/cms?tab=booking`}>{t('Open Booking Inbox')}</Link>
-                                                                </Button>
-                                                                <Button asChild size="sm" variant="outline">
-                                                                    <Link href={`/project/${project.id}/cms?tab=booking-calendar`}>{t('Open Calendar')}</Link>
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    ) : null}
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-                                    </div>
-                                </>
-                            ) : null}
-
-                            {isCrmDashboardMode ? (
-                                <>
-                                    <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
-                                        <Card className="overflow-hidden border-sky-200/70 bg-gradient-to-br from-sky-100/70 via-background to-background dark:from-sky-950/20">
-                                            <CardContent className="p-4 md:p-5">
-                                                <div className="flex flex-col gap-4">
-                                                    <div className="flex flex-wrap items-center justify-between gap-3">
-                                                        <div className="space-y-2">
-                                                            <div className="flex flex-wrap items-center gap-2">
-                                                                <Badge variant={site.status === 'published' ? 'default' : 'secondary'}>
-                                                                    {site.status}
-                                                                </Badge>
-                                                                <Badge variant="outline">
-                                                                    {t('Plan')}: {moduleMatrix.plan?.name ?? '—'}
-                                                                </Badge>
-                                                                <Badge variant="outline">
-                                                                    {t('Language')}: {activeContentLocale.toUpperCase()}
-                                                                </Badge>
-                                                            </div>
-                                                            <div>
-                                                                <p className="text-xs uppercase tracking-wide text-muted-foreground">{t('CRM Dashboard')}</p>
-                                                                <h2 className="text-xl font-semibold tracking-tight">{project.name}</h2>
-                                                                <p className="text-sm text-muted-foreground">
-                                                                    {publicDomain ?? t('Not connected')}
-                                                                    <span className="mx-2">·</span>
-                                                                    {templateBlueprint.template_slug ?? t('Not selected')}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex flex-col gap-2 sm:min-w-[220px]">
-                                                            <Button
-                                                                type="button"
-                                                                variant="outline"
-                                                                size="sm"
-                                                                className="justify-start bg-background/80"
-                                                                onClick={() => void loadDashboardSummary()}
-                                                                disabled={isDashboardSummaryLoading}
-                                                            >
-                                                                {isDashboardSummaryLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                                                                {t('Refresh Dashboard Summary')}
-                                                            </Button>
-                                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background/80">
-                                                                <Link href={`/project/${project.id}/cms?tab=booking`}>
-                                                                    <MessageSquare className="mr-2 h-4 w-4" />
-                                                                    {t('Open Booking Inbox')}
-                                                                </Link>
-                                                            </Button>
-                                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background/80">
-                                                                <Link href={`/project/${project.id}/cms?tab=booking-calendar`}>
-                                                                    <CalendarDays className="mr-2 h-4 w-4" />
-                                                                    {t('Open Calendar')}
-                                                                </Link>
-                                                            </Button>
-                                                            {previewWebsiteUrl ? (
-                                                                <Button asChild variant="outline" size="sm" className="justify-start bg-background/80">
-                                                                    <a href={previewWebsiteUrl} target="_blank" rel="noreferrer">
-                                                                        <Globe className="mr-2 h-4 w-4" />
-                                                                        {t('Preview Website')}
-                                                                    </a>
-                                                                </Button>
-                                                            ) : null}
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                                        <div className="rounded-2xl border bg-background/90 p-4">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-xs text-muted-foreground">{t('Bookings')}</p>
-                                                                    <p className="mt-1 text-lg font-semibold">{dashboardBookingCounts.total.toLocaleString(locale)}</p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {t('Upcoming')}: {dashboardBookingCounts.upcoming.toLocaleString(locale)}
-                                                                    </p>
-                                                                </div>
-                                                                <div className="rounded-xl border bg-sky-50 p-2 text-sky-600 dark:bg-sky-950/30">
-                                                                    <CalendarDays className="h-4 w-4" />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="rounded-2xl border bg-background/90 p-4">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-xs text-muted-foreground">{t('Today')}</p>
-                                                                    <p className="mt-1 text-lg font-semibold">{dashboardBookingCounts.today.toLocaleString(locale)}</p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {t('Next 7 Days')}: {dashboardBookingCounts.next7Days.toLocaleString(locale)}
-                                                                    </p>
-                                                                </div>
-                                                                <div className="rounded-xl border bg-amber-50 p-2 text-amber-600 dark:bg-amber-950/30">
-                                                                    <Clock3 className="h-4 w-4" />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="rounded-2xl border bg-background/90 p-4">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-xs text-muted-foreground">{t('Inbox')}</p>
-                                                                    <p className="mt-1 text-lg font-semibold">{dashboardBookingInboxTotal.toLocaleString(locale)}</p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {t('Pending')}: {(dashboardBookingInboxCounts.pending ?? 0).toLocaleString(locale)}
-                                                                    </p>
-                                                                </div>
-                                                                <div className="rounded-xl border bg-violet-50 p-2 text-violet-600 dark:bg-violet-950/30">
-                                                                    <MessageSquare className="h-4 w-4" />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="rounded-2xl border bg-background/90 p-4">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-xs text-muted-foreground">{t('Services')}</p>
-                                                                    <p className="mt-1 text-lg font-semibold">{(dashboardBookingServicesCount ?? 0).toLocaleString(locale)}</p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {t('Confirmed')}: {(dashboardBookingCounts.byStatus.confirmed ?? 0).toLocaleString(locale)}
-                                                                    </p>
-                                                                </div>
-                                                                <div className="rounded-xl border bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-950/30">
-                                                                    <MapPin className="h-4 w-4" />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-
-                                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-                                            <Card className="border-slate-200/70">
-                                                <CardHeader className="pb-3">
-                                                    <CardTitle className="text-sm">{t('Inbox Breakdown')}</CardTitle>
-                                                    <CardDescription>{t('Current booking inbox counters')}</CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="space-y-2">
-                                                    {Object.entries(dashboardBookingInboxCounts).length === 0 ? (
-                                                        <p className="text-sm text-muted-foreground">{t('No inbox items')}</p>
-                                                    ) : (
-                                                        Object.entries(dashboardBookingInboxCounts).map(([key, count]) => (
-                                                            <div key={`booking-inbox-${key}`} className="flex items-center justify-between rounded-xl border p-3">
-                                                                <span className="text-sm">{t(key)}</span>
-                                                                <Badge variant="outline">{count.toLocaleString(locale)}</Badge>
-                                                            </div>
-                                                        ))
-                                                    )}
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card className="border-slate-200/70">
-                                                <CardHeader className="pb-3">
-                                                    <CardTitle className="text-sm">{t('Booking Status')}</CardTitle>
-                                                    <CardDescription>{t('Live booking pipeline by status')}</CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="space-y-2">
-                                                    {(['pending', 'confirmed', 'completed', 'cancelled', 'no_show'] as const).map((statusKey) => {
-                                                        const count = dashboardBookingCounts.byStatus[statusKey] ?? 0;
-                                                        const width = dashboardBookingCounts.total > 0 ? Math.round((count / dashboardBookingCounts.total) * 100) : 0;
-                                                        return (
-                                                            <div key={`booking-status-${statusKey}`} className="rounded-xl border p-3">
-                                                                <div className="mb-2 flex items-center justify-between gap-2 text-sm">
-                                                                    <span>{t(statusKey)}</span>
-                                                                    <span className="font-medium">{count.toLocaleString(locale)}</span>
-                                                                </div>
-                                                                <div className="h-1.5 rounded-full bg-muted">
-                                                                    <div className="h-1.5 rounded-full bg-sky-500" style={{ width: `${Math.max(0, Math.min(100, width))}%` }} />
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
-                                        <Card className="border-slate-200/70">
-                                            <CardHeader>
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div>
-                                                        <CardTitle>{t('Recent Bookings')}</CardTitle>
-                                                        <CardDescription>{t('Latest appointments and booking statuses')}</CardDescription>
-                                                    </div>
-                                                    <Button asChild variant="outline" size="sm">
-                                                        <Link href={`/project/${project.id}/cms?tab=booking`}>
-                                                            {t('View All')}
-                                                        </Link>
-                                                    </Button>
-                                                </div>
-                                            </CardHeader>
-                                            <CardContent>
-                                                {dashboardBookingRecentItems.length === 0 ? (
-                                                    <div className="py-8 text-center text-sm text-muted-foreground">
-                                                        {isDashboardSummaryLoading ? t('Loading bookings...') : t('No bookings yet')}
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-2">
-                                                        {dashboardBookingRecentItems.map((booking) => {
-                                                            const statusVariant = booking.status === 'completed'
-                                                                ? 'default'
-                                                                : booking.status === 'cancelled' || booking.status === 'no_show'
-                                                                    ? 'secondary'
-                                                                    : 'outline';
-                                                            const bookingDate = booking.starts_at ? new Date(booking.starts_at) : null;
-                                                            const isUpcoming = bookingDate ? bookingDate.getTime() >= Date.now() : false;
-
-                                                            return (
-                                                                <div key={`dashboard-booking-${booking.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
-                                                                    <div className="min-w-0">
-                                                                        <p className="text-sm font-semibold">{t('Booking')} #{booking.id}</p>
-                                                                        <p className="text-xs text-muted-foreground">
-                                                                            {booking.starts_at ? formatDate(booking.starts_at) : '—'}
-                                                                        </p>
-                                                                    </div>
-                                                                    <div className="flex flex-wrap items-center gap-2">
-                                                                        <Badge variant={statusVariant as 'default' | 'secondary' | 'outline'}>
-                                                                            {t(booking.status)}
-                                                                        </Badge>
-                                                                        <Badge variant={isUpcoming ? 'outline' : 'secondary'}>
-                                                                            {isUpcoming ? t('Upcoming') : t('Past')}
-                                                                        </Badge>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
-                                            </CardContent>
-                                        </Card>
-
-                                        <div className="space-y-4">
-                                            <Card className="border-slate-200/70">
-                                                <CardHeader>
-                                                    <CardTitle>{t('CRM Snapshot')}</CardTitle>
-                                                    <CardDescription>{t('Booking-focused operational overview')}</CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="grid gap-2 text-sm">
-                                                    <div className="flex items-center justify-between rounded-xl border p-3">
-                                                        <div>
-                                                            <p className="text-xs text-muted-foreground">{t('Services')}</p>
-                                                            <p className="font-semibold">{(dashboardBookingServicesCount ?? 0).toLocaleString(locale)}</p>
-                                                        </div>
-                                                        <MapPin className="h-4 w-4 text-muted-foreground" />
-                                                    </div>
-                                                    <div className="flex items-center justify-between rounded-xl border p-3">
-                                                        <div>
-                                                            <p className="text-xs text-muted-foreground">{t('Confirmed')}</p>
-                                                            <p className="font-semibold">{(dashboardBookingCounts.byStatus.confirmed ?? 0).toLocaleString(locale)}</p>
-                                                        </div>
-                                                        <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                                                    </div>
-                                                    <div className="flex items-center justify-between rounded-xl border p-3">
-                                                        <div>
-                                                            <p className="text-xs text-muted-foreground">{t('Pending')}</p>
-                                                            <p className="font-semibold">{(dashboardBookingCounts.byStatus.pending ?? 0).toLocaleString(locale)}</p>
-                                                        </div>
-                                                        <Clock3 className="h-4 w-4 text-muted-foreground" />
-                                                    </div>
-                                                    <div className="flex items-center justify-between rounded-xl border p-3">
-                                                        <div>
-                                                            <p className="text-xs text-muted-foreground">{t('Latest sync')}</p>
-                                                            <p className="text-xs font-semibold">{dashboardSummaryUpdatedAt ? formatDate(dashboardSummaryUpdatedAt) : '—'}</p>
-                                                        </div>
-                                                        <RefreshCw className="h-4 w-4 text-muted-foreground" />
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card className="border-slate-200/70">
-                                                <CardHeader>
-                                                    <CardTitle>{t('Quick Access')}</CardTitle>
-                                                    <CardDescription>{t('Booking workflow shortcuts')}</CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="grid gap-2">
-                                                    <Button asChild variant="outline" className="justify-start">
-                                                        <Link href={`/project/${project.id}/cms?tab=booking`}>
-                                                            <MessageSquare className="mr-2 h-4 w-4" />
-                                                            {t('Booking Inbox')}
-                                                        </Link>
-                                                    </Button>
-                                                    <Button asChild variant="outline" className="justify-start">
-                                                        <Link href={`/project/${project.id}/cms?tab=booking-calendar`}>
-                                                            <CalendarDays className="mr-2 h-4 w-4" />
-                                                            {t('Calendar')}
-                                                        </Link>
-                                                    </Button>
-                                                    <Button asChild variant="outline" className="justify-start">
-                                                        <Link href={`/project/${project.id}/cms?tab=booking-services`}>
-                                                            <MapPin className="mr-2 h-4 w-4" />
-                                                            {t('Services')}
-                                                        </Link>
-                                                    </Button>
-                                                    <Button asChild variant="outline" className="justify-start">
-                                                        <Link href={`/project/${project.id}/cms?tab=booking-team`}>
-                                                            <Users className="mr-2 h-4 w-4" />
-                                                            {t('Team')}
-                                                        </Link>
-                                                    </Button>
-                                                    <Button asChild variant="outline" className="justify-start">
-                                                        <Link href={`/project/${project.id}/cms?tab=booking-finance`}>
-                                                            <Banknote className="mr-2 h-4 w-4" />
-                                                            {t('Finance')}
-                                                        </Link>
-                                                    </Button>
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-                                    </div>
-                                </>
-                            ) : null}
-
-                            {!isEcommerceDashboardMode && !isCrmDashboardMode ? (
-                                <>
-                            <Card className="min-w-0 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
-                                <CardContent className="p-4 md:p-5">
-                                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                        <div className="space-y-3">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <Badge variant={site.status === 'published' ? 'default' : 'secondary'}>
-                                                    {site.status}
-                                                </Badge>
-                                                <Badge variant="outline">
-                                                    {t('Modules')}: {moduleSummary.available}/{moduleSummary.total}
-                                                </Badge>
-                                                {moduleMatrix.plan ? (
-                                                    <Badge variant="outline">
-                                                        {t('Plan')}: {moduleMatrix.plan.name}
-                                                    </Badge>
-                                                ) : null}
-                                                <Badge variant="outline">
-                                                    {t('Language')}: {activeContentLocale.toUpperCase()}
-                                                </Badge>
-                                            </div>
-                                            <div>
-                                                <h2 className="text-lg font-semibold tracking-tight">{project.name}</h2>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {publicDomain ?? t('Not connected')}
-                                                    <span className="mx-2">·</span>
-                                                    {templateBlueprint.template_slug ?? t('Not selected')}
-                                                </p>
-                                            </div>
-                                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                                <div className="rounded-xl border bg-background/80 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Pages')}</p>
-                                                    <p className="mt-1 text-xl font-semibold">{dashboardPageCounts.total.toLocaleString(locale)}</p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {dashboardPageCounts.published} {t('published')} · {dashboardPageCounts.draft} {t('draft')}
-                                                    </p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/80 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Blog')}</p>
-                                                    <p className="mt-1 text-xl font-semibold">{dashboardBlogCounts.total.toLocaleString(locale)}</p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {dashboardBlogCounts.published} {t('published')} · {dashboardBlogCounts.draft} {t('draft')}
-                                                    </p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/80 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Media')}</p>
-                                                    <p className="mt-1 text-xl font-semibold">
-                                                        {canUseMediaModule ? mediaItems.length.toLocaleString(locale) : '—'}
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {canUseMediaModule ? t('Loaded items') : t('Module disabled')}
-                                                    </p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/80 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Latest Content Update')}</p>
-                                                    <p className="mt-1 text-sm font-semibold">
-                                                        {dashboardLatestContentUpdate ? formatDate(dashboardLatestContentUpdate) : '—'}
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {dashboardSummaryUpdatedAt ? `${t('Summary')}: ${formatDate(dashboardSummaryUpdatedAt)}` : t('Not refreshed yet')}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col gap-2 lg:min-w-[220px]">
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="justify-start bg-background/80"
-                                                onClick={() => void loadDashboardSummary()}
-                                                disabled={isDashboardSummaryLoading}
-                                            >
-                                                {isDashboardSummaryLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                                                {t('Refresh Dashboard Summary')}
-                                            </Button>
-                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background/80">
-                                                <Link href={`/project/${project.id}/cms?tab=pages`}>
-                                                    <LayoutGrid className="h-4 w-4 mr-2" />
-                                                    {t('Pages')}
-                                                </Link>
-                                            </Button>
-                                            <Button asChild variant="outline" size="sm" className="justify-start bg-background/80">
-                                                <Link href={`/project/${project.id}/cms?tab=blog-posts`}>
-                                                    <Type className="h-4 w-4 mr-2" />
-                                                    {t('Entries')}
-                                                </Link>
-                                            </Button>
-                                            {previewWebsiteUrl ? (
-                                                <Button asChild variant="outline" size="sm" className="justify-start bg-background/80">
-                                                    <a href={previewWebsiteUrl} target="_blank" rel="noreferrer">
-                                                        <ExternalLink className="h-4 w-4 mr-2" />
-                                                        {t('Preview Website')}
-                                                    </a>
-                                                </Button>
-                                            ) : null}
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-4">
-                                <Card className="border-emerald-200/70 bg-emerald-50/40 dark:bg-emerald-950/10">
-                                    <CardContent className="p-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p className="text-xs text-muted-foreground">{t('Publishing Coverage')}</p>
-                                                <p className="mt-1 text-2xl font-semibold">{dashboardPublishedCoverage.pages}%</p>
-                                                <p className="text-xs text-muted-foreground">{t('Pages published')}</p>
-                                            </div>
-                                            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                                        </div>
-                                        <div className="mt-3 h-1.5 rounded-full bg-emerald-100">
-                                            <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${dashboardPublishedCoverage.pages}%` }} />
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <Card className="border-sky-200/70 bg-sky-50/40 dark:bg-sky-950/10">
-                                    <CardContent className="p-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p className="text-xs text-muted-foreground">{t('Blog Coverage')}</p>
-                                                <p className="mt-1 text-2xl font-semibold">{dashboardPublishedCoverage.blog}%</p>
-                                                <p className="text-xs text-muted-foreground">{t('Posts published')}</p>
-                                            </div>
-                                            <Type className="h-5 w-5 text-sky-600" />
-                                        </div>
-                                        <div className="mt-3 h-1.5 rounded-full bg-sky-100">
-                                            <div className="h-1.5 rounded-full bg-sky-500" style={{ width: `${dashboardPublishedCoverage.blog}%` }} />
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                {hasEcommerceDashboardCapability ? (
-                                    <Card className="border-violet-200/70 bg-violet-50/40 dark:bg-violet-950/10">
-                                        <CardContent className="p-4">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <p className="text-xs text-muted-foreground">{t('Ecommerce Orders')}</p>
-                                                    <p className="mt-1 text-2xl font-semibold">{dashboardEcommerceOrderCounts.total.toLocaleString(locale)}</p>
-                                                    <p className="text-xs text-muted-foreground">{t('Paid')}: {(dashboardEcommerceOrderCounts.byPaymentStatus.paid ?? 0).toLocaleString(locale)}</p>
-                                                </div>
-                                                <ShoppingCart className="h-5 w-5 text-violet-600" />
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ) : null}
-
-                                {hasBookingDashboardCapability ? (
-                                    <Card className="border-amber-200/70 bg-amber-50/40 dark:bg-amber-950/10">
-                                        <CardContent className="p-4">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <p className="text-xs text-muted-foreground">{t('Booking Upcoming')}</p>
-                                                    <p className="mt-1 text-2xl font-semibold">{dashboardBookingCounts.upcoming.toLocaleString(locale)}</p>
-                                                    <p className="text-xs text-muted-foreground">{t('Inbox')}: {dashboardBookingInboxTotal.toLocaleString(locale)}</p>
-                                                </div>
-                                                <MapPin className="h-5 w-5 text-amber-600" />
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ) : null}
-                            </div>
-
-                            <details open className="group rounded-2xl border bg-card/40 p-3 sm:p-4">
-                                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-1 py-1">
-                                    <div>
-                                        <p className="text-sm font-semibold">{t('Module Widgets')}</p>
-                                        <p className="text-xs text-muted-foreground">{t('Content, ecommerce, and booking summaries in one place')}</p>
-                                    </div>
-                                    <Badge variant="outline">{t('Collapse / Expand')}</Badge>
-                                </summary>
-
-                                <div className="mt-3 grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
-                                <Card className="min-w-0 xl:col-span-1">
-                                    <CardHeader>
-                                        <CardTitle>{t('Content Overview')}</CardTitle>
-                                        <CardDescription>{t('Quick counts for pages, blog, and media')}</CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3 text-sm">
-                                        <div className="rounded-xl border p-3">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <span className="font-medium">{t('Pages')}</span>
-                                                <Badge variant="secondary">{dashboardPageCounts.total}</Badge>
-                                            </div>
-                                            <div className="mt-2 h-1.5 rounded-full bg-muted">
-                                                <div className="h-1.5 rounded-full bg-primary" style={{ width: `${dashboardPublishedCoverage.pages}%` }} />
-                                            </div>
-                                            <p className="mt-2 text-xs text-muted-foreground">
-                                                {dashboardPageCounts.published} {t('published')} · {dashboardPageCounts.draft} {t('draft')}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-xl border p-3">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <span className="font-medium">{t('Blog')}</span>
-                                                <Badge variant="secondary">{dashboardBlogCounts.total}</Badge>
-                                            </div>
-                                            <div className="mt-2 h-1.5 rounded-full bg-muted">
-                                                <div className="h-1.5 rounded-full bg-sky-500" style={{ width: `${dashboardPublishedCoverage.blog}%` }} />
-                                            </div>
-                                            <p className="mt-2 text-xs text-muted-foreground">
-                                                {dashboardBlogCounts.published} {t('published')} · {dashboardBlogCounts.draft} {t('draft')}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-xl border p-3">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <span className="font-medium">{t('Media')}</span>
-                                                <Badge variant="secondary">{canUseMediaModule ? mediaItems.length : 0}</Badge>
-                                            </div>
-                                            <p className="mt-2 text-xs text-muted-foreground">
-                                                {canUseMediaModule ? t('Media count reflects loaded library items') : t('Module disabled')}
-                                            </p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                {isModuleAvailable(MODULE_ECOMMERCE) ? (
-                                    <Card className="min-w-0 xl:col-span-1 border-violet-200/60 bg-gradient-to-b from-violet-50/50 to-background dark:from-violet-950/10">
-                                        <CardHeader>
-                                            <CardTitle>{t('Ecommerce Overview')}</CardTitle>
-                                            <CardDescription>{t('Products, revenue, and order flow')}</CardDescription>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3 text-sm">
-                                            <div className="grid gap-2 sm:grid-cols-2">
-                                                <div className="rounded-xl border bg-background/90 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Products')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{builderCmsProducts.length.toLocaleString(locale)}</p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/90 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Categories')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{(dashboardEcommerceCategoriesCount ?? 0).toLocaleString(locale)}</p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/90 p-3 sm:col-span-2">
-                                                    <p className="text-xs text-muted-foreground">{t('Revenue')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{dashboardEcommerceFinanceMetrics.grossRevenueFormatted}</p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {t('Paid')}: {dashboardEcommerceFinanceMetrics.paidRevenueFormatted} · {t('Outstanding')}: {dashboardEcommerceFinanceMetrics.outstandingRevenueFormatted}
-                                                    </p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/90 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Orders')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{dashboardEcommerceOrderCounts.total.toLocaleString(locale)}</p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/90 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Avg Order')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{dashboardEcommerceFinanceMetrics.averageOrderValueFormatted}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <Badge variant="outline">{t('Pending')}: {dashboardEcommerceOrderCounts.byStatus.pending ?? 0}</Badge>
-                                                <Badge variant="outline">{t('Processing')}: {dashboardEcommerceOrderCounts.byStatus.processing ?? 0}</Badge>
-                                                <Badge variant="outline">{t('Completed')}: {dashboardEcommerceOrderCounts.byStatus.completed ?? 0}</Badge>
-                                                <Badge variant="outline">{t('Cancelled')}: {dashboardEcommerceOrderCounts.byStatus.cancelled ?? 0}</Badge>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <Button asChild variant="outline" size="sm">
-                                                    <Link href={`/project/${project.id}/cms?tab=ecommerce-products`}>{t('Open Products')}</Link>
-                                                </Button>
-                                                <Button asChild variant="outline" size="sm">
-                                                    <Link href={`/project/${project.id}/cms?tab=ecommerce-orders`}>{t('Open Orders')}</Link>
-                                                </Button>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ) : null}
-
-                                {isModuleAvailable(MODULE_BOOKING) ? (
-                                    <Card className="min-w-0 xl:col-span-1 border-amber-200/60 bg-gradient-to-b from-amber-50/50 to-background dark:from-amber-950/10">
-                                        <CardHeader>
-                                            <CardTitle>{t('Booking Overview')}</CardTitle>
-                                            <CardDescription>{t('Services, upcoming bookings, and inbox')}</CardDescription>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3 text-sm">
-                                            <div className="grid gap-2 sm:grid-cols-2">
-                                                <div className="rounded-xl border bg-background/90 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Services')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{(dashboardBookingServicesCount ?? 0).toLocaleString(locale)}</p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/90 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Bookings')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{dashboardBookingCounts.total.toLocaleString(locale)}</p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/90 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Today')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{dashboardBookingCounts.today.toLocaleString(locale)}</p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/90 p-3">
-                                                    <p className="text-xs text-muted-foreground">{t('Next 7 Days')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{dashboardBookingCounts.next7Days.toLocaleString(locale)}</p>
-                                                </div>
-                                                <div className="rounded-xl border bg-background/90 p-3 sm:col-span-2">
-                                                    <p className="text-xs text-muted-foreground">{t('Inbox')}</p>
-                                                    <p className="mt-1 text-lg font-semibold">{dashboardBookingInboxTotal.toLocaleString(locale)}</p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {t('Pending')}: {dashboardBookingCounts.byStatus.pending ?? 0} · {t('Confirmed')}: {dashboardBookingCounts.byStatus.confirmed ?? 0}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <Badge variant="outline">{t('Completed')}: {dashboardBookingCounts.byStatus.completed ?? 0}</Badge>
-                                                <Badge variant="outline">{t('Cancelled')}: {dashboardBookingCounts.byStatus.cancelled ?? 0}</Badge>
-                                                <Badge variant="outline">{t('No Show')}: {dashboardBookingCounts.byStatus.no_show ?? 0}</Badge>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <Button asChild variant="outline" size="sm">
-                                                    <Link href={`/project/${project.id}/cms?tab=booking`}>{t('Open Booking Inbox')}</Link>
-                                                </Button>
-                                                <Button asChild variant="outline" size="sm">
-                                                    <Link href={`/project/${project.id}/cms?tab=booking-calendar`}>{t('Open Calendar')}</Link>
-                                                </Button>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ) : null}
-                                </div>
-                            </details>
-
-                            <details open className="group rounded-2xl border bg-card/40 p-3 sm:p-4">
-                                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-1 py-1">
-                                    <div>
-                                        <p className="text-sm font-semibold">{t('Quick Actions')}</p>
-                                        <p className="text-xs text-muted-foreground">{t('Shortcuts to common CMS operations')}</p>
-                                    </div>
-                                    <Badge variant="outline">{t('Collapse / Expand')}</Badge>
-                                </summary>
-
-                                <Card className="mt-3 min-w-0">
-                                <CardHeader>
-                                    <CardTitle>{t('Quick Actions')}</CardTitle>
-                                    <CardDescription>{t('Use sidebar for full management. These shortcuts open key sections.')}</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href={`/project/${project.id}/cms?tab=pages`}>
-                                                <LayoutGrid className="h-4 w-4 mr-2" />
-                                                {t('Create / Manage Pages')}
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href={`/project/${project.id}/cms?tab=blog-posts&action=create`}>
-                                                <Type className="h-4 w-4 mr-2" />
-                                                {t('Add New')}
-                                            </Link>
-                                        </Button>
-                                        {isModuleAvailable(MODULE_ECOMMERCE) ? (
-                                            <Button asChild variant="outline" className="justify-start">
-                                                <Link href={`/project/${project.id}/cms?tab=ecommerce-add-product`}>
-                                                    <ShoppingCart className="h-4 w-4 mr-2" />
-                                                    {t('Add Product')}
-                                                </Link>
-                                            </Button>
-                                        ) : null}
-                                        {isModuleAvailable(MODULE_BOOKING) ? (
-                                            <Button asChild variant="outline" className="justify-start">
-                                                <Link href={`/project/${project.id}/cms?tab=booking-services`}>
-                                                    <MapPin className="h-4 w-4 mr-2" />
-                                                    {t('Manage Booking Services')}
-                                                </Link>
-                                            </Button>
-                                        ) : null}
-                                        {canUseMediaModule ? (
-                                            <Button asChild variant="outline" className="justify-start">
-                                                <Link href={`/project/${project.id}/cms?tab=media`}>
-                                                    <ImageIcon className="h-4 w-4 mr-2" />
-                                                    {t('Open Media')}
-                                                </Link>
-                                            </Button>
-                                        ) : null}
-                                        {previewWebsiteUrl ? (
-                                            <Button asChild variant="outline" className="justify-start">
-                                                <a href={previewWebsiteUrl} target="_blank" rel="noreferrer">
-                                                    <Globe className="h-4 w-4 mr-2" />
-                                                    {t('Preview Website')}
-                                                </a>
-                                            </Button>
-                                        ) : null}
-                                    </div>
-                                </CardContent>
-                                </Card>
-
-                                <Card className="mt-3 min-w-0">
-                                    <CardHeader>
-                                        <CardTitle>{t('Completed Feature Map')}</CardTitle>
-                                        <CardDescription>{t('All major completed work areas in one place with direct section links')}</CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
-                                            {visibleDashboardFeatureShortcuts.map((shortcut) => {
-                                                const Icon = shortcut.icon;
-
-                                                return (
-                                                    <Button key={`dashboard-feature-shortcut-${shortcut.key}`} asChild variant="outline" className="justify-start">
-                                                        <Link href={`/project/${project.id}/cms?tab=${shortcut.tab}`}>
-                                                            <Icon className="h-4 w-4 mr-2" />
-                                                            {shortcut.label}
-                                                        </Link>
-                                                    </Button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {visibleVerticalFeatureBadges.length > 0 ? (
-                                            <>
-                                                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                                                    {t('Project-specific builder categories are available in Visual Builder. Open any page → Open Builder and use the matching widget groups.')}
-                                                </div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {visibleVerticalFeatureBadges.map((badge) => (
-                                                        <Badge key={`dashboard-vertical-badge-${badge}`} variant="outline">{badge}</Badge>
-                                                    ))}
-                                                    <Button asChild size="sm" variant="outline" className="ms-auto">
-                                                        <Link href={`/project/${project.id}`}>
-                                                            <Wand2 className="h-4 w-4 mr-2" />
-                                                            {t('Open Visual Builder')}
-                                                        </Link>
-                                                    </Button>
-                                                </div>
-                                            </>
-                                        ) : null}
-                                    </CardContent>
-                                </Card>
-                            </details>
-                                </>
-                            ) : null}
-                        </div>
-                    </TabsContent>
-
-                        <TabsContent value="pages" className="pt-2 min-w-0 max-w-full overflow-x-hidden">
-                            <Card>
-                                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                    <div>
-                                        <CardTitle>{t('Pages')}</CardTitle>
-                                        <CardDescription>{t('Manage pages like WordPress: add, edit, and delete from one list')}</CardDescription>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setIsCreatePageDialogOpen(true)}
-                                        >
-                                            <Plus className="h-4 w-4 mr-1.5" />
-                                            {t('Add New Page')}
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            onClick={() => void loadPages(selectedPageId)}
-                                            disabled={isPagesLoading}
-                                            aria-label={t('Refresh Pages')}
-                                        >
-                                            {isPagesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    {pages.length === 0 ? (
-                                        <div className="py-10 text-center text-sm text-muted-foreground">
-                                            {isPagesLoading ? t('Loading pages...') : t('No pages yet. Create your first page.')}
-                                        </div>
-                                    ) : (
-                                        <div className="overflow-x-auto rounded-lg border">
-                                            <table className="w-full min-w-[760px] text-sm">
-                                                <thead className="bg-muted/40 text-left">
-                                                    <tr>
-                                                        <th className="px-4 py-3 font-medium">{t('Title')}</th>
-                                                        <th className="px-4 py-3 font-medium">{t('Slug')}</th>
-                                                        <th className="px-4 py-3 font-medium">{t('Status')}</th>
-                                                        <th className="px-4 py-3 font-medium">{t('Updated')}</th>
-                                                        <th className="px-4 py-3 text-right font-medium">{t('Actions')}</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {pages.map((pageItem) => (
-                                                        <tr
-                                                            key={pageItem.id}
-                                                            className={`border-t ${selectedPageId === pageItem.id ? 'bg-primary/5' : ''}`}
-                                                        >
-                                                            <td className="px-4 py-3">
-                                                                <button
-                                                                    type="button"
-                                                                    className="text-left font-medium hover:underline"
-                                                                    onClick={() => openPageEditor(pageItem.id, 'text')}
-                                                                >
-                                                                    {pageItem.title}
-                                                                </button>
-                                                            </td>
-                                                            <td className="px-4 py-3 text-muted-foreground">/{pageItem.slug}</td>
-                                                            <td className="px-4 py-3">
-                                                                <Badge variant={pageItem.status === 'published' ? 'default' : 'secondary'}>
-                                                                    {pageItem.status}
-                                                                </Badge>
-                                                            </td>
-                                                            <td className="px-4 py-3 text-muted-foreground">{formatDate(pageItem.updated_at)}</td>
-                                                            <td className="px-4 py-3">
-                                                                <div className="flex items-center justify-end gap-1">
-                                                                    <Button
-                                                                        type="button"
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-8 w-8"
-                                                                        onClick={() => openPageEditor(pageItem.id, 'text')}
-                                                                        aria-label={t('Edit Page')}
-                                                                    >
-                                                                        <Pencil className="h-4 w-4" />
-                                                                    </Button>
-                                                                    <Button
-                                                                        type="button"
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-8 w-8"
-                                                                        onClick={() => openPageEditor(pageItem.id, 'builder')}
-                                                                        aria-label={t('Open Builder')}
-                                                                    >
-                                                                        <Wand2 className="h-4 w-4" />
-                                                                    </Button>
-                                                                    {(() => {
-                                                                        const slugNorm = (pageItem.slug ?? '').trim().toLowerCase();
-                                                                        const isRequired = requiredEcommercePageSlugs.some((s) => (s ?? '').trim().toLowerCase() === slugNorm);
-                                                                        return (
-                                                                            <Button
-                                                                                type="button"
-                                                                                variant="ghost"
-                                                                                size="icon"
-                                                                                className="h-8 w-8 text-destructive"
-                                                                                disabled={isRequired}
-                                                                                onClick={() => !isRequired && setPagePendingDelete(pageItem)}
-                                                                                aria-label={isRequired ? t('Required page; cannot be deleted') : t('Delete Page')}
-                                                                                title={isRequired ? t('This page is required for ecommerce and cannot be deleted.') : undefined}
-                                                                            >
-                                                                                <Trash2 className="h-4 w-4" />
-                                                                            </Button>
-                                                                        );
-                                                                    })()}
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-
-                            <Dialog open={isCreatePageDialogOpen} onOpenChange={setIsCreatePageDialogOpen}>
-                                <DialogContent
-                                    overlayClassName={cmsModalOverlayClassName}
-                                    className={`${cmsModalContentClassName} sm:max-w-xl`}
-                                >
-                                    <DialogHeader>
-                                        <DialogTitle>{t('Add New Page')}</DialogTitle>
-                                        <DialogDescription>{t('Create a new page and start editing with Builder or Text mode')}</DialogDescription>
-                                    </DialogHeader>
-                                    <form className="space-y-3" onSubmit={handleCreatePage}>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="create-page-template">{t('Page Template')}</Label>
-                                            <select
-                                                id="create-page-template"
-                                                data-webu-role="create-page-template-select"
-                                                value={createPageForm.template_key}
-                                                onChange={(event) => handleCreatePageTemplatePresetChange(event.target.value)}
-                                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                            >
-                                                <option value="">{t('Blank Page')}</option>
-                                                {availableStorefrontPageTemplatePresets.map((preset) => (
-                                                    <option key={preset.key} value={preset.key}>
-                                                        {t(preset.label)}{preset.optional ? ` (${t('Optional')})` : ''}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            {selectedCreatePageTemplatePreset ? (
-                                                <p
-                                                    data-webu-role="create-page-template-meta"
-                                                    className="text-xs text-muted-foreground"
-                                                >
-                                                    {t('Route pattern')}: {selectedCreatePageTemplatePreset.route_pattern ?? '/'}
-                                                    {' · '}
-                                                    {t('Sections')}: {selectedCreatePageTemplatePreset.section_blueprints.length}
-                                                </p>
-                                            ) : (
-                                                <p
-                                                    data-webu-role="create-page-template-meta"
-                                                    className="text-xs text-muted-foreground"
-                                                >
-                                                    {availableStorefrontPageTemplatePresets.length > 0
-                                                        ? t('Start from a blank builder page or choose a storefront template preset.')
-                                                        : t('Start from a blank builder page. Storefront presets appear only for ecommerce sites.')}
-                                                </p>
-                                            )}
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>{t('Title')}</Label>
-                                            <Input
-                                                value={createPageForm.title}
-                                                onChange={(event) => {
-                                                    const value = event.target.value;
-                                                    setCreatePageForm((prev) => ({
-                                                        ...prev,
-                                                        title: value,
-                                                        slug: slugify(value),
-                                                    }));
-                                                }}
-                                                placeholder="Home"
-                                                required
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>{t('Slug')}</Label>
-                                            <Input
-                                                value={createPageForm.slug}
-                                                onChange={(event) => setCreatePageForm((prev) => ({
-                                                    ...prev,
-                                                    slug: slugify(event.target.value),
-                                                }))}
-                                                placeholder="home"
-                                                required
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>{t('SEO Title')}</Label>
-                                            <Input
-                                                value={createPageForm.seo_title}
-                                                onChange={(event) => setCreatePageForm((prev) => ({
-                                                    ...prev,
-                                                    seo_title: event.target.value,
-                                                }))}
-                                                placeholder={t('Optional')}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>{t('SEO Description')}</Label>
-                                            <Textarea
-                                                value={createPageForm.seo_description}
-                                                onChange={(event) => setCreatePageForm((prev) => ({
-                                                    ...prev,
-                                                    seo_description: event.target.value,
-                                                }))}
-                                                rows={3}
-                                                placeholder={t('Optional')}
-                                            />
-                                        </div>
-                                        <DialogFooter>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={() => setIsCreatePageDialogOpen(false)}
-                                            >
-                                                {t('Cancel')}
-                                            </Button>
-                                            <Button type="submit" disabled={isCreatingPage}>
-                                                {isCreatingPage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-                                                {t('Create Page')}
-                                            </Button>
-                                        </DialogFooter>
-                                    </form>
-                                </DialogContent>
-                            </Dialog>
-
-                            <AlertDialog open={pagePendingDelete !== null} onOpenChange={(open) => {
-                                if (!open && !isDeletingPage) {
-                                    setPagePendingDelete(null);
-                                }
-                            }}>
-                                <AlertDialogContent overlayClassName={cmsModalOverlayClassName} className={cmsModalContentClassName}>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>{t('Delete Page?')}</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            {pagePendingDelete
-                                                ? t('Are you sure you want to delete "{{title}}"? This action cannot be undone.', { title: pagePendingDelete.title })
-                                                : t('Are you sure you want to delete this page?')}
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel disabled={isDeletingPage}>{t('Cancel')}</AlertDialogCancel>
-                                        <AlertDialogAction
-                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                            disabled={isDeletingPage}
-                                            onClick={(event) => {
-                                                event.preventDefault();
-                                                void handleDeletePageConfirmed();
-                                            }}
-                                        >
-                                            {isDeletingPage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-                                            {t('Delete')}
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </TabsContent>
-
-                        <TabsContent value="blog" className="pt-2 min-w-0 max-w-full overflow-x-hidden">
-                            {!isBlogPostDialogOpen ? (
+                        <Suspense
+                            fallback={(
                                 <Card>
-                                    <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                        <div>
-                                            <CardTitle>{t('Blog Posts')}</CardTitle>
-                                            <CardDescription>{t('Create, edit, and publish blog content')}</CardDescription>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={openCreateBlogPostDialog}
-                                            >
-                                                <Plus className="h-4 w-4 mr-1.5" />
-                                                {t('Add New Post')}
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                onClick={() => void loadBlogPosts()}
-                                                disabled={isBlogPostsLoading}
-                                                aria-label={t('Refresh Blog Posts')}
-                                            >
-                                                {isBlogPostsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                                            </Button>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {blogPosts.length === 0 ? (
-                                            <div className="py-10 text-center text-sm text-muted-foreground">
-                                                {isBlogPostsLoading ? t('Loading blog posts...') : t('No blog posts yet. Add your first post.')}
-                                            </div>
-                                        ) : (
-                                            <div className="overflow-x-auto rounded-lg border">
-                                                <table className="w-full min-w-[760px] text-sm">
-                                                    <thead className="bg-muted/40 text-left">
-                                                        <tr>
-                                                            <th className="px-4 py-3 font-medium">{t('Title')}</th>
-                                                            <th className="px-4 py-3 font-medium">{t('Slug')}</th>
-                                                            <th className="px-4 py-3 font-medium">{t('Status')}</th>
-                                                            <th className="px-4 py-3 font-medium">{t('Updated')}</th>
-                                                            <th className="px-4 py-3 text-right font-medium">{t('Actions')}</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {blogPosts.map((post) => (
-                                                            <tr key={post.id} className="border-t">
-                                                                <td className="px-4 py-3">
-                                                                    <button
-                                                                        type="button"
-                                                                        className="text-left font-medium hover:underline"
-                                                                        onClick={() => openEditBlogPostDialog(post)}
-                                                                    >
-                                                                        {post.title}
-                                                                    </button>
-                                                                </td>
-                                                                <td className="px-4 py-3 text-muted-foreground">/{post.slug}</td>
-                                                                <td className="px-4 py-3">
-                                                                    <Badge variant={post.status === 'published' ? 'default' : 'secondary'}>
-                                                                        {post.status}
-                                                                    </Badge>
-                                                                </td>
-                                                                <td className="px-4 py-3 text-muted-foreground">{formatDate(post.updated_at)}</td>
-                                                                <td className="px-4 py-3">
-                                                                    <div className="flex items-center justify-end gap-1">
-                                                                        <Button
-                                                                            type="button"
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-8 w-8"
-                                                                            onClick={() => openEditBlogPostDialog(post)}
-                                                                            aria-label={t('Edit Post')}
-                                                                        >
-                                                                            <Pencil className="h-4 w-4" />
-                                                                        </Button>
-                                                                        <Button
-                                                                            type="button"
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-8 w-8 text-destructive"
-                                                                            onClick={() => setBlogPostPendingDelete(post)}
-                                                                            aria-label={t('Delete Post')}
-                                                                        >
-                                                                            <Trash2 className="h-4 w-4" />
-                                                                        </Button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            ) : (
-                                <Card>
-                                    <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                        <div className="space-y-1">
-                                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                <button
-                                                    type="button"
-                                                    className="inline-flex items-center gap-1 hover:text-foreground"
-                                                    onClick={() => {
-                                                        setIsBlogPostDialogOpen(false);
-                                                        setEditingBlogPostId(null);
-                                                        resetBlogPostForm();
-                                                    }}
-                                                >
-                                                    <ChevronLeft className="h-3.5 w-3.5" />
-                                                    {t('Back to Posts')}
-                                                </button>
-                                            </div>
-                                            <CardTitle>{editingBlogPostId === null ? t('Add New Post') : t('Edit Post')}</CardTitle>
-                                            <CardDescription>{t('Manage blog post content and publish status')}</CardDescription>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={() => {
-                                                    setIsBlogPostDialogOpen(false);
-                                                    setEditingBlogPostId(null);
-                                                    resetBlogPostForm();
-                                                }}
-                                            >
-                                                {t('Cancel')}
-                                            </Button>
-                                            <Button type="submit" form="blog-post-editor-form" disabled={isSavingBlogPost}>
-                                                {isSavingBlogPost ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                                                {editingBlogPostId === null ? t('Create Post') : t('Save Changes')}
-                                            </Button>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <form id="blog-post-editor-form" className="space-y-4" onSubmit={handleSaveBlogPost}>
-                                            <div className="grid gap-3 md:grid-cols-2">
-                                                <div className="space-y-2">
-                                                    <Label>{t('Title')}</Label>
-                                                    <Input
-                                                        value={blogPostForm.title}
-                                                        onChange={(event) => {
-                                                            const value = event.target.value;
-                                                            setBlogPostForm((prev) => ({
-                                                                ...prev,
-                                                                title: value,
-                                                                slug: slugify(value),
-                                                            }));
-                                                        }}
-                                                        placeholder={t('Post title')}
-                                                        required
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>{t('Slug')}</Label>
-                                                    <Input
-                                                        value={blogPostForm.slug}
-                                                        onChange={(event) => setBlogPostForm((prev) => ({
-                                                            ...prev,
-                                                            slug: slugify(event.target.value),
-                                                        }))}
-                                                        placeholder="my-blog-post"
-                                                        required
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <Label>{t('Content')}</Label>
-                                                <RichTextField
-                                                    value={blogPostForm.content}
-                                                    onChange={(nextValue) => setBlogPostForm((prev) => ({ ...prev, content: nextValue }))}
-                                                    toolbarPreset="advanced"
-                                                    showHtmlToggle
-                                                    minHeightClassName="min-h-[420px]"
-                                                    placeholder={t('Write your blog post content...')}
-                                                />
-                                            </div>
-
-                                            <div className="grid gap-3 md:grid-cols-2">
-                                                <div className="space-y-2">
-                                                    <Label>{t('Status')}</Label>
-                                                    <select
-                                                        value={blogPostForm.status}
-                                                        onChange={(event) => setBlogPostForm((prev) => ({
-                                                            ...prev,
-                                                            status: event.target.value === 'published' ? 'published' : 'draft',
-                                                        }))}
-                                                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                                                    >
-                                                        <option value="draft">{t('Draft')}</option>
-                                                        <option value="published">{t('Published')}</option>
-                                                    </select>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>{t('Cover Image')}</Label>
-                                                    <div className="flex items-center gap-2">
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            onClick={() => openMediaPicker({
-                                                                fieldLabel: t('Blog Cover Image'),
-                                                                mediaType: 'image',
-                                                                currentValue: blogPostForm.coverMediaUrl,
-                                                                onApply: (assetUrl) => {
-                                                                    const matchedMedia = mediaItems.find((item) => item.asset_url === assetUrl || `/${item.path}` === assetUrl);
-                                                                    setBlogPostForm((prev) => ({
-                                                                        ...prev,
-                                                                        coverMediaUrl: assetUrl,
-                                                                        coverMediaId: matchedMedia?.id ?? null,
-                                                                    }));
-                                                                },
-                                                            })}
-                                                        >
-                                                            {t('Choose Image')}
-                                                        </Button>
-                                                        {blogPostForm.coverMediaUrl ? (
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                onClick={() => setBlogPostForm((prev) => ({
-                                                                    ...prev,
-                                                                    coverMediaUrl: '',
-                                                                    coverMediaId: null,
-                                                                }))}
-                                                            >
-                                                                {t('Remove')}
-                                                            </Button>
-                                                        ) : null}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {blogPostForm.coverMediaUrl ? (
-                                                <div className="rounded-md border bg-muted/20 p-2">
-                                                    <img src={blogPostForm.coverMediaUrl} alt={t('Cover preview')} className="h-40 w-full rounded object-cover" />
-                                                </div>
-                                            ) : null}
-                                        </form>
+                                    <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        {t('Loading dashboard...')}
                                     </CardContent>
                                 </Card>
                             )}
+                        >
+                            <CmsDashboardTab
+                                activeContentLocale={activeContentLocale}
+                                bookingModuleAvailable={isModuleAvailable(MODULE_BOOKING)}
+                                builderCmsProductsCount={builderCmsProducts.length}
+                                canUseMediaModule={canUseMediaModule}
+                                dashboardBlogCounts={dashboardBlogCounts}
+                                dashboardBookingCounts={dashboardBookingCounts}
+                                dashboardBookingInboxCounts={dashboardBookingInboxCounts}
+                                dashboardBookingInboxTotal={dashboardBookingInboxTotal}
+                                dashboardBookingRecentItems={dashboardBookingRecentItems}
+                                dashboardBookingServicesCount={dashboardBookingServicesCount}
+                                dashboardEcommerceCategoriesCount={dashboardEcommerceCategoriesCount}
+                                dashboardEcommerceCustomerStats={dashboardEcommerceCustomerStats}
+                                dashboardEcommerceFinanceMetrics={dashboardEcommerceFinanceMetrics}
+                                dashboardEcommerceOrderCounts={dashboardEcommerceOrderCounts}
+                                dashboardEcommerceRecentOrders={dashboardEcommerceRecentOrders}
+                                dashboardLatestContentUpdate={dashboardLatestContentUpdate}
+                                dashboardPageCounts={dashboardPageCounts}
+                                dashboardPublishedCoverage={dashboardPublishedCoverage}
+                                dashboardSummaryUpdatedAt={dashboardSummaryUpdatedAt}
+                                dashboardViewMode={dashboardViewMode}
+                                dashboardViewOptions={dashboardViewOptions}
+                                ecommerceModuleAvailable={isModuleAvailable(MODULE_ECOMMERCE)}
+                                hasBookingDashboardCapability={hasBookingDashboardCapability}
+                                hasEcommerceDashboardCapability={hasEcommerceDashboardCapability}
+                                isDashboardSummaryLoading={isDashboardSummaryLoading}
+                                isEcommerceDashboardMode={isEcommerceDashboardMode}
+                                isCrmDashboardMode={isCrmDashboardMode}
+                                locale={locale || 'ka'}
+                                mediaItemsCount={mediaItems.length}
+                                modulePlanName={moduleMatrix.plan?.name ?? null}
+                                moduleSummary={moduleSummary}
+                                onDashboardViewModeChange={setDashboardViewMode}
+                                onRefreshDashboardSummary={loadDashboardSummary}
+                                previewWebsiteUrl={previewWebsiteUrl}
+                                projectId={project.id}
+                                projectName={project.name}
+                                publicDomain={publicDomain}
+                                siteStatus={site.status}
+                                templateSlug={templateBlueprint.template_slug ?? null}
+                                visibleDashboardFeatureShortcuts={visibleDashboardFeatureShortcuts}
+                                visibleVerticalFeatureBadges={visibleVerticalFeatureBadges}
+                            />
+                        </Suspense>
+                    </TabsContent>
 
-                            <AlertDialog open={blogPostPendingDelete !== null} onOpenChange={(open) => {
-                                if (!open) {
-                                    setBlogPostPendingDelete(null);
-                                }
-                            }}
+                        <TabsContent value="pages" className="pt-2 min-w-0 max-w-full overflow-x-hidden">
+                            <Suspense
+                                fallback={(
+                                    <Card>
+                                        <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            {t('Loading pages...')}
+                                        </CardContent>
+                                    </Card>
+                                )}
                             >
-                                <AlertDialogContent overlayClassName={cmsModalOverlayClassName} className={cmsModalContentClassName}>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>{t('Delete Post?')}</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            {t('This action cannot be undone.')}
-                                            {blogPostPendingDelete ? ` ${t('Post')}: ${blogPostPendingDelete.title}` : ''}
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel disabled={isDeletingBlogPost}>{t('Cancel')}</AlertDialogCancel>
-                                        <AlertDialogAction
-                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                            disabled={isDeletingBlogPost}
-                                            onClick={(event) => {
-                                                event.preventDefault();
-                                                void handleDeleteBlogPostConfirmed();
-                                            }}
-                                        >
-                                            {isDeletingBlogPost ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-                                            {t('Delete')}
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
+                                <CmsPagesTab
+                                    availableStorefrontPageTemplatePresets={availableStorefrontPageTemplatePresets}
+                                    createPageForm={createPageForm}
+                                    isCreatePageDialogOpen={isCreatePageDialogOpen}
+                                    isCreatingPage={isCreatingPage}
+                                    isDeletingPage={isDeletingPage}
+                                    isPagesLoading={isPagesLoading}
+                                    modalContentClassName={cmsModalContentClassName}
+                                    modalOverlayClassName={cmsModalOverlayClassName}
+                                    onCreatePageDialogOpenChange={setIsCreatePageDialogOpen}
+                                    onCreatePageSeoDescriptionChange={(value) => setCreatePageForm((prev) => ({ ...prev, seo_description: value }))}
+                                    onCreatePageSeoTitleChange={(value) => setCreatePageForm((prev) => ({ ...prev, seo_title: value }))}
+                                    onCreatePageSlugChange={(value) => setCreatePageForm((prev) => ({ ...prev, slug: slugify(value) }))}
+                                    onCreatePageSubmit={handleCreatePage}
+                                    onCreatePageTemplatePresetChange={handleCreatePageTemplatePresetChange}
+                                    onCreatePageTitleChange={(value) => setCreatePageForm((prev) => ({
+                                        ...prev,
+                                        title: value,
+                                        slug: slugify(value),
+                                    }))}
+                                    onDeletePageConfirm={handleDeletePageConfirmed}
+                                    onOpenPageEditor={openPageEditor}
+                                    onPagePendingDeleteChange={setPagePendingDelete}
+                                    onReloadPages={() => loadPages(selectedPageId)}
+                                    pagePendingDelete={pagePendingDelete}
+                                    pages={pages}
+                                    requiredEcommercePageSlugs={requiredEcommercePageSlugs}
+                                    selectedCreatePageTemplatePreset={selectedCreatePageTemplatePreset}
+                                    selectedPageId={selectedPageId}
+                                />
+                            </Suspense>
+                        </TabsContent>
+
+                        <TabsContent value="blog" className="pt-2 min-w-0 max-w-full overflow-x-hidden">
+                            <Suspense
+                                fallback={(
+                                    <Card>
+                                        <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            {t('Loading blog posts...')}
+                                        </CardContent>
+                                    </Card>
+                                )}
+                            >
+                                <CmsBlogTab
+                                    blogPostForm={blogPostForm}
+                                    blogPostPendingDelete={blogPostPendingDelete}
+                                    blogPosts={blogPosts}
+                                    editingBlogPostId={editingBlogPostId}
+                                    isBlogPostDialogOpen={isBlogPostDialogOpen}
+                                    isBlogPostsLoading={isBlogPostsLoading}
+                                    isDeletingBlogPost={isDeletingBlogPost}
+                                    isSavingBlogPost={isSavingBlogPost}
+                                    modalContentClassName={cmsModalContentClassName}
+                                    modalOverlayClassName={cmsModalOverlayClassName}
+                                    onBlogPostContentChange={(value) => setBlogPostForm((prev) => ({ ...prev, content: value }))}
+                                    onBlogPostPendingDeleteChange={setBlogPostPendingDelete}
+                                    onBlogPostSlugChange={(value) => setBlogPostForm((prev) => ({ ...prev, slug: slugify(value) }))}
+                                    onBlogPostStatusChange={(status) => setBlogPostForm((prev) => ({ ...prev, status }))}
+                                    onBlogPostTitleChange={(value) => setBlogPostForm((prev) => ({
+                                        ...prev,
+                                        title: value,
+                                        slug: slugify(value),
+                                    }))}
+                                    onCancelBlogPostDialog={() => {
+                                        setIsBlogPostDialogOpen(false);
+                                        setEditingBlogPostId(null);
+                                        resetBlogPostForm();
+                                    }}
+                                    onClearCoverImage={() => setBlogPostForm((prev) => ({
+                                        ...prev,
+                                        coverMediaUrl: '',
+                                        coverMediaId: null,
+                                    }))}
+                                    onDeleteBlogPostConfirm={handleDeleteBlogPostConfirmed}
+                                    onEditBlogPost={openEditBlogPostDialog}
+                                    onOpenCoverImagePicker={() => openMediaPicker({
+                                        fieldLabel: t('Blog Cover Image'),
+                                        mediaType: 'image',
+                                        currentValue: blogPostForm.coverMediaUrl,
+                                        onApply: (assetUrl) => {
+                                            const matchedMedia = mediaItems.find((item) => item.asset_url === assetUrl || `/${item.path}` === assetUrl);
+                                            setBlogPostForm((prev) => ({
+                                                ...prev,
+                                                coverMediaUrl: assetUrl,
+                                                coverMediaId: matchedMedia?.id ?? null,
+                                            }));
+                                        },
+                                    })}
+                                    onOpenCreateBlogPostDialog={openCreateBlogPostDialog}
+                                    onReloadBlogPosts={loadBlogPosts}
+                                    onSaveBlogPostSubmit={handleSaveBlogPost}
+                                />
+                            </Suspense>
                         </TabsContent>
 
                         <TabsContent value="editor" className="pt-2 min-w-0 max-w-full overflow-x-hidden">
@@ -31559,383 +28148,25 @@ ${showRules}
 
                                     <Card>
                                         <CardHeader>
-                                            <CardTitle>{pageEditorMode === 'builder' ? t('Sections') : t('Text Content')}</CardTitle>
+                                            <CardTitle>{t('Text Content')}</CardTitle>
                                             <CardDescription>
-                                                {pageEditorMode === 'builder'
-                                                    ? t('Manage all sections visually. No code editing is required.')
-                                                    : t('Write and format content with a simple editor.')}
+                                                {t('Write and format content with a simple editor.')}
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
-                                            {pageEditorMode === 'builder' ? (
-                                            <>
-                                            <div className="rounded-lg border bg-muted/20 p-3">
-                                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                                    <div className="space-y-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <Layers className="h-4 w-4 text-muted-foreground" />
-                                                            <p className="text-sm font-medium">{t('Elementor-style Page Builder')}</p>
-                                                            {isHomePageSelected ? (
-                                                                <Badge variant="default">{t('Main Page Builder')}</Badge>
-                                                            ) : (
-                                                                <Badge variant="secondary">{t('Page Builder')}</Badge>
-                                                            )}
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            {t('Drag components from the left panel to canvas. Select a section to edit content on the right.')}
-                                                        </p>
-                                                    </div>
-
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {t('Left panel controls widgets and settings, right panel shows full visual page.')}
-                                                    </p>
+                                            <div className="space-y-3">
+                                                <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                                                    {t('Text editor mode is ideal for fast content-only pages.')}
                                                 </div>
-
-                                                <div className="mt-3 flex flex-wrap gap-2">
-                                                    <Button type="button" variant="outline" onClick={() => applyTemplateLayoutForSelectedPage('append')}>
-                                                        <RefreshCw className="h-4 w-4 mr-2" />
-                                                        {t('Add Missing Template Sections')}
-                                                    </Button>
-                                                    <Button type="button" variant="outline" onClick={() => applyTemplateLayoutForSelectedPage('replace')}>
-                                                        <Wand2 className="h-4 w-4 mr-2" />
-                                                        {t('Apply Template Layout')}
-                                                    </Button>
-                                                </div>
+                                                <RichTextField
+                                                    value={pageRichTextHtml || ''}
+                                                    onChange={setPageRichTextHtml}
+                                                    minHeightClassName="min-h-[420px]"
+                                                    placeholder={t('Start writing...')}
+                                                    toolbarPreset="advanced"
+                                                    showHtmlToggle
+                                                />
                                             </div>
-
-                                            <DndContext
-                                                sensors={builderSensors}
-                                                collisionDetection={builderCollisionDetection}
-                                                onDragStart={handleBuilderDragStart}
-                                                onDragEnd={handleBuilderDragEnd}
-                                                onDragCancel={() => setActiveDragId(null)}
-                                            >
-                                                <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
-                                                    <div className="space-y-4">
-                                                        <Card>
-                                                            <CardHeader className="pb-3">
-                                                                <CardTitle className="text-sm">{t('Elements')}</CardTitle>
-                                                                <CardDescription>{t('Search and drag widgets')}</CardDescription>
-                                                            </CardHeader>
-                                                            <CardContent className="space-y-3">
-                                                                <Input
-                                                                    value={sectionSearch}
-                                                                    onChange={(event) => setSectionSearch(event.target.value)}
-                                                                    placeholder={t('Search Widget...')}
-                                                                    className="text-xs"
-                                                                />
-
-                                                                <div className="max-h-[320px] overflow-auto space-y-1 pr-1">
-                                                                    {groupedSectionLibrary.length === 0 ? (
-                                                                        <p className="text-xs text-muted-foreground">{t('Nothing found')}</p>
-                                                                    ) : (
-                                                                        groupedSectionLibrary.map((group, groupIndex) => (
-                                                                            <Collapsible
-                                                                                key={group.category}
-                                                                                open={expandedComponentCategories[group.category] ?? groupIndex === 0}
-                                                                                onOpenChange={(open) => setExpandedComponentCategories((prev) => ({ ...prev, [group.category]: open }))}
-                                                                                className="rounded border border-transparent"
-                                                                            >
-                                                                                <CollapsibleTrigger className="flex w-full items-center gap-1.5 py-1.5 text-left hover:opacity-80">
-                                                                                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground data-[state=open]:rotate-90 transition-transform" />
-                                                                                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</span>
-                                                                                </CollapsibleTrigger>
-                                                                                <CollapsibleContent>
-                                                                                    <div className="grid grid-cols-2 gap-2 pt-1 pb-2 pl-4">
-                                                                                        {group.items.map((item) => (
-                                                                                            <DraggableLibraryIconTile
-                                                                                                key={item.id}
-                                                                                                item={item}
-                                                                                                displayLabel={sectionDisplayLabelByKey.get(normalizeSectionTypeKey(item.key)) ?? sectionDisplayLabelByKey.get(item.key) ?? item.label ?? item.key}
-                                                                                                onAdd={(sectionKey) => addSectionByKey(sectionKey, 'library')}
-                                                                                            />
-                                                                                        ))}
-                                                                                    </div>
-                                                                                </CollapsibleContent>
-                                                                            </Collapsible>
-                                                                        ))
-                                                                    )}
-                                                                </div>
-                                                            </CardContent>
-                                                        </Card>
-
-                                                        <Card>
-                                                            <CardHeader className="pb-3">
-                                                                <CardTitle className="text-sm">{t('Structure')}</CardTitle>
-                                                                <CardDescription>{t('Drag to reorder sections')}</CardDescription>
-                                                            </CardHeader>
-                                                            <CardContent>
-                                                                <BuilderCanvasDropZone>
-                                                                    {sectionsDraft.length === 0 ? (
-                                                                        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                                                                            {t('Drop widgets here to build your page')}
-                                                                        </div>
-                                                                    ) : (
-                                                                        <SortableContext
-                                                                            items={sectionsDraft.map((section) => section.localId)}
-                                                                            strategy={verticalListSortingStrategy}
-                                                                        >
-                                                                            <div className="space-y-2 p-1">
-                                                                                {sectionsDraft.map((section, index) => {
-                                                                                    const parsedProps = parseSectionProps(section.propsText);
-                                                                                    const label = sectionDisplayLabelByKey.get(normalizeSectionTypeKey(section.type)) ?? sectionDisplayLabelByKey.get(section.type) ?? section.type;
-                                                                                    const previewTextCandidates = [
-                                                                                        parsedProps ? getValueAtPath(parsedProps, ['headline']) : null,
-                                                                                        parsedProps ? getValueAtPath(parsedProps, ['title']) : null,
-                                                                                        parsedProps ? getValueAtPath(parsedProps, ['subtitle']) : null,
-                                                                                        parsedProps ? getValueAtPath(parsedProps, ['label']) : null,
-                                                                                    ];
-                                                                                    const previewTextRaw = previewTextCandidates.find((value) => typeof value === 'string' && String(value).trim() !== '');
-                                                                                    const previewText = typeof previewTextRaw === 'string'
-                                                                                        ? previewTextRaw
-                                                                                        : t('No preview text');
-                                                                                    const isLayoutPrimitiveAlt = layoutPrimitiveSectionKeys.includes(normalizeSectionTypeKey(section.type));
-                                                                                    const rawNestedAlt = isLayoutPrimitiveAlt && parsedProps && Array.isArray(parsedProps.sections) ? parsedProps.sections : [];
-                                                                                    function buildNestedTreeAlt(sections: unknown[], parentPath: number[]): NestedSectionDisplayItem[] {
-                                                                                        return sections.map((item: unknown, idx: number) => {
-                                                                                            const rec = isRecord(item) ? item : {};
-                                                                                            const nestedType = typeof rec.type === 'string' ? rec.type : (typeof rec.key === 'string' ? rec.key : '');
-                                                                                            const path = [...parentPath, idx];
-                                                                                            const typeNorm = nestedType?.toLowerCase() ?? '';
-                                                                                            const subSectionsAlt = isRecord(rec.props) && Array.isArray((rec.props as Record<string, unknown>).sections) ? (rec.props as Record<string, unknown>).sections : null;
-                                                                                            const childrenAlt = layoutPrimitiveSectionKeys.includes(typeNorm) && Array.isArray(subSectionsAlt) && subSectionsAlt.length > 0
-                                                                                                ? buildNestedTreeAlt(subSectionsAlt as unknown[], path)
-                                                                                                : undefined;
-                                                                                            return {
-                                                                                                type: nestedType || 'section',
-                                                                                                label: (sectionDisplayLabelByKey.get(normalizeSectionTypeKey(nestedType)) ?? sectionDisplayLabelByKey.get(nestedType) ?? nestedType) || t('Section'),
-                                                                                                path,
-                                                                                                children: childrenAlt && childrenAlt.length > 0 ? childrenAlt : undefined,
-                                                                                            };
-                                                                                        });
-                                                                                    }
-                                                                                    const nestedSectionsListAlt: NestedSectionDisplayItem[] = buildNestedTreeAlt(rawNestedAlt, []);
-
-                                                                                    return (
-                                                                                        <SortableCanvasSectionCard
-                                                                                            key={section.localId}
-                                                                                            section={section}
-                                                                                            index={index}
-                                                                                            isSelected={selectedSectionLocalId === section.localId}
-                                                                                            label={label}
-                                                                                            previewText={previewText}
-                                                                                        canMoveUp={index > 0}
-                                                                                        canMoveDown={index < sectionsDraft.length - 1}
-                                                                                        onSelect={() => handleFocusSection(section.localId)}
-                                                                                        onMoveUp={() => handleMoveSection(section.localId, 'up')}
-                                                                                        onMoveDown={() => handleMoveSection(section.localId, 'down')}
-                                                                                        onDuplicate={() => handleDuplicateSection(section.localId)}
-                                                                                            onRemove={() => handleRemoveSection(section.localId)}
-                                                                                            onAddSectionInside={handleAddSectionInside}
-                                                                                            onAddSectionInsideAtPath={handleAddSectionInsideAtPath}
-                                                                                            addInsideSectionOptions={addInsideSectionOptions}
-                                                                                            layoutPrimitiveKeys={layoutPrimitiveSectionKeys}
-                                                                                            showAddInside={isLayoutPrimitiveAlt}
-                                                                                            nestedSections={nestedSectionsListAlt}
-                                                                                            onRemoveNestedSection={handleRemoveNestedSection}
-                                                                                            onMoveNestedSection={handleMoveNestedSection}
-                                                                                            onSelectNestedSection={handleSelectNestedSection}
-                                                                                            selectedNestedPath={selectedNestedPath}
-                                                                                            selectedNestedParentLocalId={selectedNestedSection?.parentLocalId ?? null}
-                                                                                            t={t}
-                                                                                        />
-                                                                                    );
-                                                                                })}
-                                                                            </div>
-                                                                        </SortableContext>
-                                                                    )}
-                                                                </BuilderCanvasDropZone>
-                                                            </CardContent>
-                                                        </Card>
-
-                                                        <Card>
-                                                            <CardHeader className="pb-3">
-                                                                <CardTitle className="text-sm">{t('Settings')}</CardTitle>
-                                                                <CardDescription>{t('Select section and edit')}</CardDescription>
-                                                            </CardHeader>
-                                                            <CardContent className="space-y-3">
-                                                                {!selectedSectionDraft ? (
-                                                                    <p className="text-sm text-muted-foreground">{t('Select section from structure')}</p>
-                                                                ) : (
-                                                                    <>
-                                                                        <div className="flex flex-wrap items-center gap-2">
-                                                                            <Badge variant="secondary">
-                                                                                {t('Section')} #{selectedSectionIndex + 1}
-                                                                            </Badge>
-                                                                            <div className="min-w-0 rounded-md border bg-muted/20 px-2 py-1.5 text-sm text-foreground/90 truncate">
-                                                                                {sectionDisplayLabelByKey.get(normalizeSectionTypeKey(selectedSectionDraft.type)) ?? sectionDisplayLabelByKey.get(selectedSectionDraft.type) ?? selectedSectionDraft.type}
-                                                                            </div>
-                                                                        </div>
-
-                                                                        <div className="flex items-center gap-1">
-                                                                            <Button type="button" size="icon" variant="outline" className="h-8 w-8" disabled={selectedSectionIndex <= 0} onClick={() => handleMoveSection(selectedSectionDraft.localId, 'up')}>
-                                                                                <ArrowUp className="h-3.5 w-3.5" />
-                                                                            </Button>
-                                                                            <Button type="button" size="icon" variant="outline" className="h-8 w-8" disabled={selectedSectionIndex === sectionsDraft.length - 1} onClick={() => handleMoveSection(selectedSectionDraft.localId, 'down')}>
-                                                                                <ArrowDown className="h-3.5 w-3.5" />
-                                                                            </Button>
-                                                                            <Button type="button" size="icon" variant="outline" className="h-8 w-8" onClick={() => handleDuplicateSection(selectedSectionDraft.localId)}>
-                                                                                <Copy className="h-3.5 w-3.5" />
-                                                                            </Button>
-                                                                            <Button type="button" size="icon" variant="outline" className="h-8 w-8 text-destructive" onClick={() => handleRemoveSection(selectedSectionDraft.localId)}>
-                                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                                            </Button>
-                                                                        </div>
-
-                                                                        {renderSelectedSectionEditableFields(false)}
-                                                                    </>
-                                                                )}
-                                                            </CardContent>
-                                                        </Card>
-
-                                                        <Card>
-                                                            <CardHeader className="pb-3">
-                                                                <CardTitle className="text-sm">{t('Design System')}</CardTitle>
-                                                                <CardDescription>{t('Primary color, fonts, spacing, radius. Changes apply site-wide.')}</CardDescription>
-                                                            </CardHeader>
-                                                            <CardContent>
-                                                                <DesignSystemPanel
-                                                                    overrides={designSystemOverrides}
-                                                                    onChange={setDesignSystemOverrides}
-                                                                    t={t}
-                                                                    onRegenerate={() => {
-                                                                        const system = generateDesignSystemFromPrompt('');
-                                                                        setDesignSystemOverrides(generatedSystemToOverrides(system));
-                                                                    }}
-                                                                />
-                                                            </CardContent>
-                                                        </Card>
-                                                    </div>
-
-                                                    <Card>
-                                                        <CardHeader className="pb-3">
-                                                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                <div>
-                                                                    <CardTitle className="text-sm">{t('Visual Preview')}</CardTitle>
-                                                                    <CardDescription>{t('Full page preview on the right, like a visual builder')}</CardDescription>
-                                                                </div>
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <Button
-                                                                        type="button"
-                                                                        size="icon"
-                                                                        variant={builderPreviewMode === 'desktop' ? 'default' : 'outline'}
-                                                                        className="h-8 w-8"
-                                                                        onClick={() => setBuilderPreviewMode('desktop')}
-                                                                        aria-label={t('Desktop')}
-                                                                    >
-                                                                        <Monitor className="h-4 w-4" />
-                                                                    </Button>
-                                                                    <Button
-                                                                        type="button"
-                                                                        size="icon"
-                                                                        variant={builderPreviewMode === 'tablet' ? 'default' : 'outline'}
-                                                                        className="h-8 w-8"
-                                                                        onClick={() => setBuilderPreviewMode('tablet')}
-                                                                        aria-label={t('Tablet')}
-                                                                    >
-                                                                        <Tablet className="h-4 w-4" />
-                                                                    </Button>
-                                                                    <Button
-                                                                        type="button"
-                                                                        size="icon"
-                                                                        variant={builderPreviewMode === 'mobile' ? 'default' : 'outline'}
-                                                                        className="h-8 w-8"
-                                                                        onClick={() => setBuilderPreviewMode('mobile')}
-                                                                        aria-label={t('Mobile')}
-                                                                    >
-                                                                        <Smartphone className="h-4 w-4" />
-                                                                    </Button>
-                                                                    <Button
-                                                                        type="button"
-                                                                        size="icon"
-                                                                        variant="outline"
-                                                                        className="h-8 w-8"
-                                                                        onClick={() => setBuilderPreviewRefreshToken(Date.now())}
-                                                                        aria-label={t('Refresh Preview')}
-                                                                    >
-                                                                        <RefreshCw className="h-4 w-4" />
-                                                                    </Button>
-                                                                    {builderVisualPreviewUrl ? (
-                                                                        <Button
-                                                                            variant="outline"
-                                                                            size="sm"
-                                                                            type="button"
-                                                                            onClick={() => void handleOpenDraftSyncedPreview(builderVisualPreviewUrl)}
-                                                                            disabled={isSavingRevision}
-                                                                        >
-                                                                            <ExternalLink className="h-4 w-4 mr-1.5" />
-                                                                            {t('Open')}
-                                                                        </Button>
-                                                                    ) : null}
-                                                                </div>
-                                                            </div>
-                                                        </CardHeader>
-                                                        <CardContent className="space-y-3">
-                                                            <div className={builderCanvasViewportClass}>
-                                                                <div className="rounded-lg border overflow-hidden bg-background">
-                                                                    {builderVisualPreviewUrl ? (
-                                                                        <iframe
-                                                                            src={builderVisualPreviewUrl}
-                                                                            title={t('Visual Builder Preview')}
-                                                                            className="w-full h-[1100px] bg-white"
-                                                                        />
-                                                                    ) : (
-                                                                        <div className="p-8 text-center text-sm text-muted-foreground">
-                                                                            {t('No template preview is available for this page yet.')}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-
-                                                            {activeDragLabel ? (
-                                                                <p className="text-xs text-muted-foreground">
-                                                                    {t('Dragging')}: <span className="font-medium">{activeDragLabel}</span>
-                                                                </p>
-                                                            ) : null}
-                                                        </CardContent>
-                                                    </Card>
-                                                </div>
-                                                <DragOverlay>
-                                                    {activeDragLabel ? (
-                                                        <div className="w-[240px] rounded-xl border bg-background/95 px-3 py-2 shadow-xl backdrop-blur">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-muted/20">
-                                                                    <ActiveDragIcon className="h-4 w-4" />
-                                                                </div>
-                                                                <div className="min-w-0">
-                                                                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('Dragging')}</p>
-                                                                    <p className="text-sm font-medium truncate">{activeDragLabel}</p>
-                                                                </div>
-                                                            </div>
-                                                            {activeDragLibraryItem?.description ? (
-                                                                <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
-                                                                    {activeDragLibraryItem.description}
-                                                                </p>
-                                                            ) : null}
-                                                        </div>
-                                                    ) : null}
-                                                </DragOverlay>
-                                            </DndContext>
-
-                                            <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-                                                {t('Advanced page data is managed automatically. Use visual controls above.')}
-                                            </div>
-                                            </>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                                                        {t('Text editor mode is ideal for fast content-only pages.')}
-                                                    </div>
-                                                    <RichTextField
-                                                        value={pageRichTextHtml || ''}
-                                                        onChange={setPageRichTextHtml}
-                                                        minHeightClassName="min-h-[420px]"
-                                                        placeholder={t('Start writing...')}
-                                                        toolbarPreset="advanced"
-                                                        showHtmlToggle
-                                                    />
-                                                </div>
-                                            )}
                                         </CardContent>
                                     </Card>
 
@@ -33853,531 +30084,70 @@ ${showRules}
                         </TabsContent>
 
                         <TabsContent value="menus" className="pt-2 min-w-0 max-w-full overflow-x-hidden">
-                            {isDesignMenusSection ? (
-                                <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)] items-start">
-                                    <div className="space-y-4 xl:sticky xl:top-20">
-                                        <Card>
-                                            <CardHeader className="pb-3">
-                                                <CardTitle>{t('Menus')}</CardTitle>
-                                                <CardDescription>{t('Select a menu and build its structure like WordPress menu editor.')}</CardDescription>
-                                            </CardHeader>
-                                            <CardContent className="space-y-3">
-                                                <div className="space-y-2">
-                                                    <Label className="text-xs">{t('Create New Menu')}</Label>
-                                                    <div className="flex items-center gap-2">
-                                                        <Input
-                                                            value={newMenuName}
-                                                            onChange={(event) => setNewMenuName(event.target.value)}
-                                                            placeholder={t('Main Menu')}
-                                                        />
-                                                        <Button
-                                                            type="button"
-                                                            size="sm"
-                                                            onClick={() => void handleCreateMenu()}
-                                                            disabled={isCreatingMenu}
-                                                        >
-                                                            {isCreatingMenu ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center justify-between">
-                                                    <Label className="text-xs">{t('Available Menus')}</Label>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-7 px-2"
-                                                        onClick={() => void loadMenus()}
-                                                        disabled={isMenuListLoading}
-                                                    >
-                                                        {isMenuListLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                                                    </Button>
-                                                </div>
-                                                <div className="space-y-1.5 max-h-56 overflow-y-auto pe-1">
-                                                    {menus.length === 0 ? (
-                                                        <p className="text-xs text-muted-foreground">{t('No menus yet')}</p>
-                                                    ) : (
-                                                        menus.map((menu) => {
-                                                            const isActive = activeMenuKey === menu.key;
-                                                            const isSystem = Boolean(menu.is_system) || SYSTEM_MENU_KEYS.includes(menu.key as typeof SYSTEM_MENU_KEYS[number]);
-                                                            const itemCount = (menuDrafts[menu.key] ?? []).length;
-
-                                                            return (
-                                                                <div
-                                                                    key={`menu-list-${menu.key}`}
-                                                                    className={`rounded-md border px-2.5 py-2 flex items-center gap-2 ${
-                                                                        isActive ? 'border-primary bg-primary/5' : 'bg-background'
-                                                                    }`}
-                                                                >
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setActiveMenuKey(menu.key)}
-                                                                        className="flex-1 min-w-0 text-left"
-                                                                    >
-                                                                        <p className="text-sm font-medium truncate">{humanizeMenuKey(menu.key)}</p>
-                                                                        <p className="text-[11px] text-muted-foreground truncate">
-                                                                            {itemCount} {t('items')}
-                                                                        </p>
-                                                                    </button>
-                                                                    {isSystem ? <Badge variant="outline">{t('System')}</Badge> : null}
-                                                                    {!isSystem ? (
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="icon"
-                                                                            variant="ghost"
-                                                                            className="h-7 w-7 text-destructive"
-                                                                            disabled={deletingMenuKey === menu.key}
-                                                                            onClick={() => void handleDeleteMenu(menu.key)}
-                                                                        >
-                                                                            {deletingMenuKey === menu.key ? (
-                                                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                                            ) : (
-                                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                                            )}
-                                                                        </Button>
-                                                                    ) : null}
-                                                                </div>
-                                                            );
-                                                        })
-                                                    )}
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-
-                                        <Card>
-                                            <CardHeader className="pb-3">
-                                                <CardTitle className="text-base">{t('Custom Links')}</CardTitle>
-                                                <CardDescription>{t('Add custom URLs to the selected menu')}</CardDescription>
-                                            </CardHeader>
-                                            <CardContent className="space-y-3">
-                                                <div className="space-y-1.5">
-                                                    <Label className="text-xs">{t('URL')}</Label>
-                                                    <Input
-                                                        value={menuCustomLinkDraft.url}
-                                                        onChange={(event) => setMenuCustomLinkDraft((prev) => ({ ...prev, url: event.target.value }))}
-                                                        placeholder="https://example.com or /contact"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <Label className="text-xs">{t('Link Text')}</Label>
-                                                    <Input
-                                                        value={menuCustomLinkDraft.label}
-                                                        onChange={(event) => setMenuCustomLinkDraft((prev) => ({ ...prev, label: event.target.value }))}
-                                                        placeholder={t('Contact')}
-                                                    />
-                                                </div>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="w-full"
-                                                    disabled={!activeMenuMeta}
-                                                    onClick={() => handleAddCustomMenuLink(activeMenuKey)}
-                                                >
-                                                    <Plus className="h-4 w-4 mr-2" />
-                                                    {t('Add to Menu')}
-                                                </Button>
-                                            </CardContent>
-                                        </Card>
-
-                                        <Card>
-                                            <CardHeader className="pb-3">
-                                                <CardTitle className="text-base">{t('Pages')}</CardTitle>
-                                                <CardDescription>{t('Select pages and add them to the current menu')}</CardDescription>
-                                            </CardHeader>
-                                            <CardContent className="space-y-3">
-                                                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                                    <span>{t('Selected')}: {selectedMenuPageIds.length}</span>
-                                                    <div className="flex items-center gap-1">
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-7 px-2"
-                                                            onClick={() => setSelectedMenuPageIds(pages.map((pageItem) => pageItem.id))}
-                                                            disabled={pages.length === 0}
-                                                        >
-                                                            {t('Select All')}
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-7 px-2"
-                                                            onClick={() => setSelectedMenuPageIds([])}
-                                                            disabled={selectedMenuPageIds.length === 0}
-                                                        >
-                                                            {t('Clear')}
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                                <div className="max-h-72 overflow-y-auto space-y-1.5 pe-1">
-                                                    {pages.length === 0 ? (
-                                                        <p className="text-xs text-muted-foreground">{t('No pages found')}</p>
-                                                    ) : (
-                                                        pages.map((pageItem) => {
-                                                            const pageCheckboxId = `design-menu-page-${pageItem.id}`;
-                                                            const isChecked = selectedMenuPageIds.includes(pageItem.id);
-
-                                                            return (
-                                                                <label
-                                                                    key={`menu-page-checkbox-${pageItem.id}`}
-                                                                    htmlFor={pageCheckboxId}
-                                                                    className="flex items-start gap-2 rounded-md border bg-background px-2.5 py-2 cursor-pointer hover:bg-muted/30"
-                                                                >
-                                                                    <Checkbox
-                                                                        id={pageCheckboxId}
-                                                                        checked={isChecked}
-                                                                        onCheckedChange={(checked) => {
-                                                                            setSelectedMenuPageIds((prev) => {
-                                                                                const nextChecked = checked === true;
-                                                                                if (nextChecked) {
-                                                                                    return prev.includes(pageItem.id) ? prev : [...prev, pageItem.id];
-                                                                                }
-                                                                                return prev.filter((id) => id !== pageItem.id);
-                                                                            });
-                                                                        }}
-                                                                        className="mt-0.5"
-                                                                    />
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <p className="text-xs font-medium truncate">{pageItem.title}</p>
-                                                                        <p className="text-[11px] text-muted-foreground truncate">
-                                                                            /{pageItem.slug}
-                                                                        </p>
-                                                                    </div>
-                                                                </label>
-                                                            );
-                                                        })
-                                                    )}
-                                                </div>
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    className="w-full"
-                                                    disabled={!activeMenuMeta || selectedMenuPageIds.length === 0}
-                                                    onClick={() => handleAddSelectedPagesToMenu(activeMenuKey)}
-                                                >
-                                                    <Plus className="h-4 w-4 mr-2" />
-                                                    {t('Add to Menu')}
-                                                </Button>
-                                            </CardContent>
-                                        </Card>
-                                    </div>
-
-                                    <Card className="min-w-0">
-                                        <CardHeader>
-                                            <CardTitle>
-                                                {activeMenuMeta
-                                                    ? `${t('Menu Structure')}: ${humanizeMenuKey(activeMenuMeta.key)}`
-                                                    : t('Select a menu')}
-                                            </CardTitle>
-                                            <CardDescription>
-                                                {activeMenuMeta
-                                                    ? `${t('Drag items to reorder. Drag right for submenu, drag left to move up a level.')}`
-                                                    : t('Choose a menu from the left panel')}
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                            {!activeMenuMeta ? (
-                                                <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-                                                    {t('No menu selected')}
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 p-2">
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => handleAddMenuItem(activeMenuMeta.key)}
-                                                        >
-                                                            <Plus className="h-4 w-4 mr-2" />
-                                                            {t('Add Empty Item')}
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => void loadMenu(activeMenuMeta.key)}
-                                                            disabled={menuLoading[activeMenuMeta.key]}
-                                                        >
-                                                            {menuLoading[activeMenuMeta.key] ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                                                            {t('Reload')}
-                                                        </Button>
-                                                        <Button type="button" size="sm" onClick={() => void handleSaveMenu()} disabled={isSavingMenu}>
-                                                            {isSavingMenu ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                                                            {t('Save Menu')}
-                                                        </Button>
-                                                        <p className="text-xs text-muted-foreground ms-auto">
-                                                            {t('Last update')}: {formatDate(menuUpdatedAt[activeMenuMeta.key] ?? null)}
-                                                        </p>
-                                                    </div>
-
-                                                    {activeMenuItems.length === 0 ? (
-                                                        <div className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
-                                                            {t('Menu is empty. Add items from the left panel.')}
-                                                        </div>
-                                                    ) : (
-                                                        <DndContext
-                                                            sensors={menuBuilderSensors}
-                                                            collisionDetection={closestCenter}
-                                                            onDragStart={handleMenuDragStart}
-                                                            onDragEnd={handleMenuDragEnd}
-                                                            onDragCancel={handleMenuDragCancel}
-                                                        >
-                                                            <SortableContext items={activeMenuItemIds} strategy={verticalListSortingStrategy}>
-                                                                <div className="space-y-2">
-                                                                    {activeMenuItems.map((item) => (
-                                                                        <SortableMenuItemRow
-                                                                            key={item.id}
-                                                                            item={item}
-                                                                            depth={activeMenuDepthMap[item.id] ?? 0}
-                                                                            onChange={(itemId, field, value) => handleMenuItemChange(activeMenuMeta.key, itemId, field, value)}
-                                                                            onIndent={(itemId) => handleIndentMenuItem(activeMenuMeta.key, itemId, 'in')}
-                                                                            onOutdent={(itemId) => handleIndentMenuItem(activeMenuMeta.key, itemId, 'out')}
-                                                                            onRemove={(itemId) => setMenuDrafts((prev) => ({
-                                                                                ...prev,
-                                                                                [activeMenuMeta.key]: (prev[activeMenuMeta.key] ?? []).filter((current) => current.id !== itemId),
-                                                                            }))}
-                                                                            t={t}
-                                                                            variant="wordpress"
-                                                                        />
-                                                                    ))}
-                                                                </div>
-                                                            </SortableContext>
-                                                            <DragOverlay>
-                                                                {activeMenuDragItem ? (
-                                                                    <div className="rounded-lg border bg-background/95 px-3 py-2 shadow-xl backdrop-blur w-[280px]">
-                                                                        <p className="text-xs text-muted-foreground">{t('Dragging menu item')}</p>
-                                                                        <p className="text-sm font-medium truncate">
-                                                                            {activeMenuDragItem.label.trim() !== '' ? activeMenuDragItem.label : t('Untitled item')}
-                                                                        </p>
-                                                                    </div>
-                                                                ) : null}
-                                                            </DragOverlay>
-                                                        </DndContext>
-                                                    )}
-                                                </>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                </div>
-                            ) : (
-                                <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+                            <Suspense
+                                fallback={(
                                     <Card>
-                                        <CardHeader>
-                                            <CardTitle>{t('Menu Constructor')}</CardTitle>
-                                            <CardDescription>{t('Create menus separately, then select them in Header/Footer settings.')}</CardDescription>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                            <div className="flex items-center gap-2">
-                                                <Input
-                                                    value={newMenuName}
-                                                    onChange={(event) => setNewMenuName(event.target.value)}
-                                                    placeholder={t('Menu name (e.g. Main Navigation)')}
-                                                />
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    onClick={() => void handleCreateMenu()}
-                                                    disabled={isCreatingMenu}
-                                                >
-                                                    {isCreatingMenu ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                                                </Button>
-                                            </div>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="w-full"
-                                                onClick={() => void loadMenus()}
-                                                disabled={isMenuListLoading}
-                                            >
-                                                {isMenuListLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                                                {t('Refresh Menus')}
-                                            </Button>
-                                            <div className="space-y-1.5">
-                                                {menus.length === 0 ? (
-                                                    <p className="text-xs text-muted-foreground">{t('No menus yet')}</p>
-                                                ) : (
-                                                    menus.map((menu) => {
-                                                        const isActive = activeMenuKey === menu.key;
-                                                        const isSystem = Boolean(menu.is_system) || SYSTEM_MENU_KEYS.includes(menu.key as typeof SYSTEM_MENU_KEYS[number]);
-                                                        const itemCount = (menuDrafts[menu.key] ?? []).length;
-
-                                                        return (
-                                                            <div
-                                                                key={`menu-list-${menu.key}`}
-                                                                className={`rounded-md border p-2 flex items-center gap-2 ${
-                                                                    isActive ? 'border-primary bg-primary/5' : 'bg-background'
-                                                                }`}
-                                                            >
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setActiveMenuKey(menu.key)}
-                                                                    className="flex-1 min-w-0 text-left"
-                                                                >
-                                                                    <p className="text-sm font-medium truncate">{humanizeMenuKey(menu.key)}</p>
-                                                                    <p className="text-[11px] text-muted-foreground truncate">
-                                                                        {menu.key} · {itemCount} {t('items')}
-                                                                    </p>
-                                                                </button>
-                                                                {isSystem ? <Badge variant="outline">{t('System')}</Badge> : null}
-                                                                {!isSystem ? (
-                                                                    <Button
-                                                                        type="button"
-                                                                        size="icon"
-                                                                        variant="ghost"
-                                                                        className="h-7 w-7 text-destructive"
-                                                                        disabled={deletingMenuKey === menu.key}
-                                                                        onClick={() => void handleDeleteMenu(menu.key)}
-                                                                    >
-                                                                        {deletingMenuKey === menu.key ? (
-                                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                                        ) : (
-                                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                                        )}
-                                                                    </Button>
-                                                                ) : null}
-                                                            </div>
-                                                        );
-                                                    })
-                                                )}
-                                            </div>
-                                            <div className="border-t pt-3 space-y-2">
-                                                <p className="text-xs font-medium text-muted-foreground">{t('Pages')}</p>
-                                                <p className="text-[11px] text-muted-foreground">
-                                                    {t('Click + to add a page to selected menu')}
-                                                </p>
-                                                <div className="max-h-64 overflow-y-auto space-y-1.5 pe-1">
-                                                    {pages.length === 0 ? (
-                                                        <p className="text-xs text-muted-foreground">{t('No pages found')}</p>
-                                                    ) : (
-                                                        pages.map((pageItem) => (
-                                                            <div
-                                                                key={`menu-page-add-${pageItem.id}`}
-                                                                className="rounded-md border bg-background px-2 py-1.5 flex items-center gap-2"
-                                                            >
-                                                                <div className="min-w-0 flex-1">
-                                                                    <p className="text-xs font-medium truncate">{pageItem.title}</p>
-                                                                    <p className="text-[11px] text-muted-foreground truncate">
-                                                                        /{pageItem.slug}
-                                                                    </p>
-                                                                </div>
-                                                                <Button
-                                                                    type="button"
-                                                                    size="icon"
-                                                                    variant="ghost"
-                                                                    className="h-7 w-7"
-                                                                    disabled={!activeMenuMeta}
-                                                                    onClick={() => handleAddPageMenuItem(activeMenuKey, pageItem)}
-                                                                >
-                                                                    <Plus className="h-3.5 w-3.5" />
-                                                                </Button>
-                                                            </div>
-                                                        ))
-                                                    )}
-                                                </div>
-                                            </div>
+                                        <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            {t('Loading menus...')}
                                         </CardContent>
                                     </Card>
+                                )}
+                            >
+                                <CmsMenusTab
+                                    activeMenuDepthMap={activeMenuDepthMap}
+                                    activeMenuDragItem={activeMenuDragItem}
+                                    activeMenuItemIds={activeMenuItemIds}
+                                    activeMenuItems={activeMenuItems}
+                                    activeMenuKey={activeMenuKey}
+                                    activeMenuMeta={activeMenuMeta}
+                                    deletingMenuKey={deletingMenuKey}
+                                    isCreatingMenu={isCreatingMenu}
+                                    isDesignMenusSection={isDesignMenusSection}
+                                    isMenuListLoading={isMenuListLoading}
+                                    isSavingMenu={isSavingMenu}
+                                    menuBuilderSensors={menuBuilderSensors}
+                                    menuCustomLinkDraft={menuCustomLinkDraft}
+                                    menuDrafts={menuDrafts}
+                                    menuLoading={menuLoading}
+                                    menuUpdatedAt={menuUpdatedAt}
+                                    menus={menus}
+                                    newMenuName={newMenuName}
+                                    onActiveMenuKeyChange={setActiveMenuKey}
+                                    onAddCustomMenuLink={handleAddCustomMenuLink}
+                                    onAddMenuItem={handleAddMenuItem}
+                                    onAddPageMenuItem={handleAddPageMenuItem}
+                                    onAddSelectedPagesToMenu={handleAddSelectedPagesToMenu}
+                                    onCreateMenu={handleCreateMenu}
+                                    onDeleteMenu={handleDeleteMenu}
+                                    onMenuCustomLinkDraftChange={(field, value) => setMenuCustomLinkDraft((prev) => ({ ...prev, [field]: value }))}
+                                    onMenuDragCancel={handleMenuDragCancel}
+                                    onMenuDragEnd={handleMenuDragEnd}
+                                    onMenuDragStart={handleMenuDragStart}
+                                    onMenuItemChange={handleMenuItemChange}
+                                    onMenuItemIndent={handleIndentMenuItem}
+                                    onMenuItemRemove={(menuKey, itemId) => setMenuDrafts((prev) => ({
+                                        ...prev,
+                                        [menuKey]: (prev[menuKey] ?? []).filter((current) => current.id !== itemId),
+                                    }))}
+                                    onMenuNameChange={setNewMenuName}
+                                    onReloadMenu={loadMenu}
+                                    onReloadMenus={loadMenus}
+                                    onSaveMenu={handleSaveMenu}
+                                    onSelectedMenuPageIdsChange={setSelectedMenuPageIds}
+                                    onToggleSelectedMenuPage={(pageId, checked) => {
+                                        setSelectedMenuPageIds((prev) => {
+                                            if (checked) {
+                                                return prev.includes(pageId) ? prev : [...prev, pageId];
+                                            }
 
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle>
-                                                {activeMenuMeta
-                                                    ? `${t('Edit Menu')}: ${humanizeMenuKey(activeMenuMeta.key)}`
-                                                    : t('Select a menu')}
-                                            </CardTitle>
-                                            <CardDescription>
-                                                {activeMenuMeta
-                                                    ? `${t('Last update')}: ${formatDate(menuUpdatedAt[activeMenuMeta.key] ?? null)}`
-                                                    : t('Choose a menu from the left panel')}
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                            {!activeMenuMeta ? (
-                                                <p className="text-sm text-muted-foreground">{t('No menu selected')}</p>
-                                            ) : (
-                                                <>
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => handleAddMenuItem(activeMenuMeta.key)}
-                                                        >
-                                                            <Plus className="h-4 w-4 mr-2" />
-                                                            {t('Add Item')}
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => void loadMenu(activeMenuMeta.key)}
-                                                            disabled={menuLoading[activeMenuMeta.key]}
-                                                        >
-                                                            {menuLoading[activeMenuMeta.key] ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                                                            {t('Reload')}
-                                                        </Button>
-                                                        <Button type="button" size="sm" onClick={() => void handleSaveMenu()} disabled={isSavingMenu}>
-                                                            {isSavingMenu ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                                                            {t('Save Menu')}
-                                                        </Button>
-                                                        <p className="text-xs text-muted-foreground ms-auto">
-                                                            {t('Drag right = submenu, drag left = move level up')}
-                                                        </p>
-                                                    </div>
-
-                                                    {activeMenuItems.length === 0 ? (
-                                                        <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-                                                            {t('No menu items yet. Add your first link.')}
-                                                        </div>
-                                                    ) : (
-                                                        <DndContext
-                                                            sensors={menuBuilderSensors}
-                                                            collisionDetection={closestCenter}
-                                                            onDragStart={handleMenuDragStart}
-                                                            onDragEnd={handleMenuDragEnd}
-                                                            onDragCancel={handleMenuDragCancel}
-                                                        >
-                                                            <SortableContext items={activeMenuItemIds} strategy={verticalListSortingStrategy}>
-                                                                <div className="space-y-2">
-                                                                    {activeMenuItems.map((item) => (
-                                                                        <SortableMenuItemRow
-                                                                            key={item.id}
-                                                                            item={item}
-                                                                            depth={activeMenuDepthMap[item.id] ?? 0}
-                                                                            onChange={(itemId, field, value) => handleMenuItemChange(activeMenuMeta.key, itemId, field, value)}
-                                                                            onIndent={(itemId) => handleIndentMenuItem(activeMenuMeta.key, itemId, 'in')}
-                                                                            onOutdent={(itemId) => handleIndentMenuItem(activeMenuMeta.key, itemId, 'out')}
-                                                                            onRemove={(itemId) => setMenuDrafts((prev) => ({
-                                                                                ...prev,
-                                                                                [activeMenuMeta.key]: (prev[activeMenuMeta.key] ?? []).filter((current) => current.id !== itemId),
-                                                                            }))}
-                                                                            t={t}
-                                                                        />
-                                                                    ))}
-                                                                </div>
-                                                            </SortableContext>
-                                                            <DragOverlay>
-                                                                {activeMenuDragItem ? (
-                                                                    <div className="rounded-lg border bg-background/95 px-3 py-2 shadow-xl backdrop-blur w-[280px]">
-                                                                        <p className="text-xs text-muted-foreground">{t('Dragging menu item')}</p>
-                                                                        <p className="text-sm font-medium truncate">
-                                                                            {activeMenuDragItem.label.trim() !== '' ? activeMenuDragItem.label : t('Untitled item')}
-                                                                        </p>
-                                                                    </div>
-                                                                ) : null}
-                                                            </DragOverlay>
-                                                        </DndContext>
-                                                    )}
-                                                </>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                </div>
-                            )}
+                                            return prev.filter((id) => id !== pageId);
+                                        });
+                                    }}
+                                    pages={pages}
+                                    selectedMenuPageIds={selectedMenuPageIds}
+                                />
+                            </Suspense>
                         </TabsContent>
 
                         <TabsContent value="media" className="pt-2 w-full min-w-0 max-w-full overflow-x-hidden">

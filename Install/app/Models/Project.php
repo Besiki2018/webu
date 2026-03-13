@@ -127,6 +127,16 @@ class Project extends Model
         return $this->hasOne(Site::class);
     }
 
+    public function generationRuns(): HasMany
+    {
+        return $this->hasMany(ProjectGenerationRun::class);
+    }
+
+    public function latestGenerationRun(): HasOne
+    {
+        return $this->hasOne(ProjectGenerationRun::class)->latestOfMany('created_at');
+    }
+
     public function projectMembers(): HasMany
     {
         return $this->hasMany(ProjectMember::class);

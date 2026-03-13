@@ -20,7 +20,8 @@ class AiSiteEditorAnalyzeService
         protected SiteProvisioningService $siteProvisioning,
         protected CmsComponentLibraryCatalogService $catalog,
         protected FixedLayoutComponentService $fixedLayoutComponents,
-        protected LocalizedCmsPayload $localizedPayload
+        protected LocalizedCmsPayload $localizedPayload,
+        protected CmsSectionBindingService $sectionBindings,
     ) {}
 
     /**
@@ -131,6 +132,16 @@ class AiSiteEditorAnalyzeService
                 $editableFields = is_array($props) ? array_keys($props) : [];
             }
             if ($editableFields === null || $editableFields === []) {
+                $binding = $this->sectionBindings->resolveBinding($type);
+                $bindingFields = is_array($binding['editable_fields'] ?? null) ? $binding['editable_fields'] : [];
+                if ($bindingFields !== []) {
+                    $editableFields = array_values(array_filter(array_map(
+                        static fn ($field): string => is_string($field) ? trim($field) : '',
+                        $bindingFields
+                    )));
+                }
+            }
+            if ($editableFields === null || $editableFields === []) {
                 $editableFields = $this->fallbackEditableFieldsForSection($type);
             }
             $props = $section['props'] ?? null;
@@ -163,8 +174,10 @@ class AiSiteEditorAnalyzeService
     private function fallbackEditableFieldsForSection(string $sectionType): array
     {
         return match (Str::lower(trim($sectionType))) {
-            'webu_general_heading_01' => ['headline', 'color', 'background_color'],
+            'hero', 'webu_general_heading_01' => ['headline', 'title', 'subtitle', 'eyebrow', 'color', 'background_color'],
+            'banner' => ['headline', 'title', 'subtitle', 'cta_label', 'cta_url'],
             'webu_general_text_01' => ['body', 'color', 'background_color'],
+            'webu_ecom_product_grid_01' => ['title', 'subtitle', 'add_to_cart_label', 'products_per_page', 'show_filters', 'show_sort', 'pagination_mode'],
             'webu_general_image_01' => ['image_url', 'image_alt', 'image_link'],
             'webu_general_button_01' => ['button', 'url', 'style_variant', 'background_color', 'text_color'],
             default => [],

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { buildSectionScopedEditableTarget, type BuilderEditableTarget, type BuilderSidebarTab } from '@/builder/editingState';
 import { isRecord } from '@/builder/state/sectionProps';
+import { applyBuilderUpdatePipeline, type BuilderUpdateOperation } from '@/builder/state/updatePipeline';
 import type { BuilderBridgeSidebarMode, BuilderBridgeViewport, BuilderBridgeInteractionState } from '@/builder/cms/embeddedBuilderBridgeContract';
 import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
 import type {
@@ -17,6 +18,7 @@ interface UseCmsEmbeddedBuilderSelectionHandlersOptions {
     setPageEditorMode: (mode: 'builder' | 'text') => void;
     setSectionsDraft: StateUpdater<SectionDraft[]>;
     sectionsDraftRef: { current: SectionDraft[] };
+    scheduleStructuralDraftPersistRef: { current: () => void };
     setSelectedSectionLocalId: StateUpdater<string | null>;
     setSelectedFixedSectionKey: (value: string | null) => void;
     setSelectedNestedSection: (value: null) => void;
@@ -29,6 +31,13 @@ interface UseCmsEmbeddedBuilderSelectionHandlersOptions {
     normalizeSectionTypeKey: (key: string) => string;
     formatPropsText: (props: Record<string, unknown>) => string;
     builderFieldGroupToSidebarTab: (fieldGroup?: BuilderEditableTarget['fieldGroup']) => BuilderSidebarTab;
+    createBuilderSectionDraft: (input: { sectionType: string; props?: Record<string, unknown>; localId?: string | null }) => SectionDraft | null;
+    applyMutationState: (state: {
+        sectionsDraft: SectionDraft[];
+        selectedSectionLocalId: string | null;
+        selectedBuilderTarget: BuilderEditableTarget | null;
+        mutationId?: string | null;
+    }) => void;
 }
 
 export function useCmsEmbeddedBuilderSelectionHandlers({
@@ -37,6 +46,7 @@ export function useCmsEmbeddedBuilderSelectionHandlers({
     setPageEditorMode,
     setSectionsDraft,
     sectionsDraftRef,
+    scheduleStructuralDraftPersistRef,
     setSelectedSectionLocalId,
     setSelectedFixedSectionKey,
     setSelectedNestedSection,
@@ -49,6 +59,8 @@ export function useCmsEmbeddedBuilderSelectionHandlers({
     normalizeSectionTypeKey,
     formatPropsText,
     builderFieldGroupToSidebarTab,
+    createBuilderSectionDraft,
+    applyMutationState,
 }: UseCmsEmbeddedBuilderSelectionHandlersOptions) {
     const findDraftByLocalId = useCallback((localId: string | null) => {
         if (!localId) {
@@ -105,9 +117,85 @@ export function useCmsEmbeddedBuilderSelectionHandlers({
             setPageEditorMode('builder');
         }
 
-        setSectionsDraft(drafts);
-        sectionsDraftRef.current = drafts;
-    }, [formatPropsText, isEmbeddedMode, pageEditorMode, sectionsDraftRef, setPageEditorMode, setSectionsDraft]);
+        const operations: BuilderUpdateOperation[] = [
+            ...sectionsDraftRef.current
+                .slice()
+                .reverse()
+                .map((section) => ({
+                    kind: 'delete-section' as const,
+                    source: 'chat' as const,
+                    sectionLocalId: section.localId,
+                })),
+            ...drafts.flatMap<BuilderUpdateOperation>((draft, index) => {
+                const nextOperations: BuilderUpdateOperation[] = [{
+                    kind: 'insert-section',
+                    source: 'chat',
+                    sectionType: draft.type,
+                    insertIndex: index,
+                    localId: draft.localId,
+                    selectInserted: false,
+                }];
+
+                if (Object.keys(draft.props ?? {}).length > 0) {
+                    nextOperations.push({
+                        kind: 'merge-props',
+                        source: 'chat',
+                        sectionLocalId: draft.localId,
+                        patch: draft.props ?? {},
+                    });
+                }
+
+                return nextOperations;
+            }),
+        ];
+
+        const result = applyBuilderUpdatePipeline({
+            sectionsDraft: sectionsDraftRef.current,
+            selectedSectionLocalId: null,
+            selectedBuilderTarget: null,
+        }, operations, {
+            createSection: createBuilderSectionDraft,
+        });
+
+        if (!result.ok) {
+            setSectionsDraft(drafts);
+            sectionsDraftRef.current = drafts;
+            setSelectedFixedSectionKey(null);
+            setSelectedNestedSection(null);
+            setSelectedSectionLocalId(null);
+            setSelectedBuilderTarget(null);
+            setBuilderSidebarMode('elements');
+            setSelectedSidebarTab('content');
+            scheduleStructuralDraftPersistRef.current();
+            return;
+        }
+
+        sectionsDraftRef.current = result.state.sectionsDraft;
+        applyMutationState(result.state);
+        setSelectedFixedSectionKey(null);
+        setSelectedNestedSection(null);
+        setSelectedSectionLocalId(null);
+        setSelectedBuilderTarget(null);
+        setBuilderSidebarMode('elements');
+        setSelectedSidebarTab('content');
+        scheduleStructuralDraftPersistRef.current();
+    }, [
+        applyMutationState,
+        createBuilderSectionDraft,
+        formatPropsText,
+        isEmbeddedMode,
+        pageEditorMode,
+        scheduleStructuralDraftPersistRef,
+        sectionsDraftRef,
+        setBuilderSidebarMode,
+        setPageEditorMode,
+        setSectionsDraft,
+        setSelectedBuilderTarget,
+        setSelectedFixedSectionKey,
+        setSelectedNestedSection,
+        setSelectedSectionLocalId,
+        setSelectedSidebarTab,
+    ]);
 
     const handleEmbeddedBuilderSelectedTarget = useCallback((payload: EmbeddedBuilderSelectedTargetPayload) => {
         const requestedLocalId = typeof payload.sectionLocalId === 'string' && payload.sectionLocalId.trim() !== ''

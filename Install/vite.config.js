@@ -42,6 +42,22 @@ export default defineConfig({
                         if (id.includes('@tiptap/')) {
                             return 'tiptap';
                         }
+
+                        if (id.includes('@dnd-kit/')) {
+                            return 'dnd-kit';
+                        }
+
+                        if (id.includes('@tanstack/react-table') || id.includes('@tanstack/react-virtual')) {
+                            return 'tanstack';
+                        }
+
+                        if (id.includes('lucide-react')) {
+                            return 'lucide-react';
+                        }
+
+                        if (id.includes('@lexical/') || id.includes('lexical')) {
+                            return 'lexical';
+                        }
                     }
 
                     return undefined;

@@ -2,15 +2,18 @@
 
 namespace Tests\Feature\Project;
 
+use App\Jobs\RunProjectGeneration;
 use App\Models\AiProvider;
 use App\Models\Builder;
 use App\Models\Plan;
 use App\Models\Project;
+use App\Models\ProjectGenerationRun;
 use App\Models\Site;
 use App\Models\SystemSetting;
 use App\Models\Template;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
 
 class ManualProjectBuilderTest extends TestCase
@@ -85,6 +88,8 @@ class ManualProjectBuilderTest extends TestCase
 
     public function test_ai_mode_redirects_create_page_requests_to_chat(): void
     {
+        Bus::fake();
+
         $builder = Builder::factory()->create();
         $provider = AiProvider::factory()->openai()->create();
         $plan = Plan::factory()
@@ -103,11 +108,24 @@ class ManualProjectBuilderTest extends TestCase
             ]);
 
         $project = Project::query()->latest('created_at')->firstOrFail();
+        $generationRun = ProjectGenerationRun::query()
+            ->where('project_id', $project->id)
+            ->latest('created_at')
+            ->first();
 
         $response
-            ->assertRedirect(route('chat', $project))
-            ->assertSessionHas('create_pending_redirect_url', route('chat', $project));
+            ->assertRedirect(route('chat', [
+                'project' => $project,
+                'tab' => 'inspect',
+            ]))
+            ->assertSessionHas('create_pending_redirect_url', route('chat', [
+                'project' => $project,
+                'tab' => 'inspect',
+            ]));
 
         $this->assertSame('Create a consulting landing page', $project->initial_prompt);
+        $this->assertNotNull($generationRun);
+        $this->assertSame(ProjectGenerationRun::STATUS_QUEUED, $generationRun->status);
+        Bus::assertDispatched(RunProjectGeneration::class);
     }
 }

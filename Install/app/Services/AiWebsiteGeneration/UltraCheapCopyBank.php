@@ -53,6 +53,9 @@ class UltraCheapCopyBank
         if (isset($out['title']) && ($out['title'] === '' || $out['title'] === null)) {
             $out['title'] = str_replace('{Brand}', $brand, $this->pickOne($copy['hero_headlines'] ?? ['Welcome']));
         }
+        if (isset($out['headline']) && ($out['headline'] === '' || $out['headline'] === null)) {
+            $out['headline'] = str_replace('{Brand}', $brand, $this->pickOne($copy['hero_headlines'] ?? ['Welcome']));
+        }
         if (isset($out['subtitle']) && ($out['subtitle'] === '' || $out['subtitle'] === null)) {
             $out['subtitle'] = $this->pickOne($copy['about_lines'] ?? ['']);
         }
@@ -68,7 +71,7 @@ class UltraCheapCopyBank
 
     private function pickForSectionKey(string $key, string $sectionType, array $copy): ?string
     {
-        if ($key === 'title' || $key === 'heading') {
+        if ($key === 'title' || $key === 'headline' || $key === 'heading') {
             return $this->pickOne($copy['hero_headlines'] ?? $copy['about_lines'] ?? null);
         }
         if ($key === 'subtitle' || $key === 'body' || $key === 'description') {

@@ -7,6 +7,7 @@ use App\Cms\Support\LocalizedCmsPayload;
 use App\Models\Page;
 use App\Models\PageRevision;
 use App\Models\Project;
+use App\Models\ProjectGenerationRun;
 use App\Models\SystemSetting;
 use App\Models\Site;
 use App\Services\ChatApplyPatchService;
@@ -46,6 +47,7 @@ class ChatController extends Controller
     {
         $this->authorize('view', $project);
 
+        $project->loadMissing(['latestGenerationRun', 'site', 'template']);
         $project->update(['last_viewed_at' => now()]);
 
         // Get broadcast settings from database
@@ -69,14 +71,20 @@ class ChatController extends Controller
         }
 
         // Check if preview exists for this project
-        $previewExists = Storage::disk('local')->exists("previews/{$project->id}");
+        $generationRun = $project->latestGenerationRun;
+        $isManagedGenerationActive = $generationRun?->isActive() ?? false;
+
+        $previewExists = ! $isManagedGenerationActive && Storage::disk('local')->exists("previews/{$project->id}");
         $previewUrl = $previewExists ? "/preview/{$project->id}" : null;
         $hasActiveSession = ! empty($project->build_session_id) && ! empty($project->builder_id);
         // Only reconnect if build is currently running (not idle, completed, failed, or cancelled)
         $canReconnect = $hasActiveSession && $project->build_status === 'building';
 
         $user = request()->user();
-        $site = $this->siteProvisioningService->provisionForProject($project);
+        $site = $project->site;
+        if (! $isManagedGenerationActive) {
+            $site = $this->siteProvisioningService->provisionForProject($project);
+        }
         // Same catalog as /admin/component-library — Georgian labels, same components
         $catalog = $this->catalogService->buildCatalog();
         $builderLibraryItems = [];
@@ -102,7 +110,9 @@ class ChatController extends Controller
 
             return $carry;
         }, []));
-        $generatedPages = $this->resolveGeneratedPageSnapshots($site);
+        $generatedPages = ($site && ! $isManagedGenerationActive)
+            ? $this->resolveGeneratedPageSnapshots($site)
+            : [];
         $hasGeneratedPages = count($generatedPages) > 0;
         $templateSlug = $hasGeneratedPages
             ? $this->resolveCmsPreviewTemplateSlug($generatedPages, 'home')
@@ -110,15 +120,20 @@ class ChatController extends Controller
         if ($templateSlug === '') {
             $templateSlug = 'default';
         }
-        // live_design=1: use latest app.css and no payload cache so component-library design changes react immediately
-        $cmsPreviewUrl = sprintf(
-            '/themes/%s?site=%s&slug=home&locale=%s&draft=1&live_design=1',
-            rawurlencode($templateSlug),
-            rawurlencode((string) $site->id),
-            rawurlencode((string) ($site->locale ?: 'ka'))
-        );
+        $cmsPreviewUrl = null;
+        if ($site && ! $isManagedGenerationActive) {
+            // live_design=1: use latest app.css and no payload cache so component-library design changes react immediately
+            $cmsPreviewUrl = sprintf(
+                '/themes/%s?site=%s&slug=home&locale=%s&draft=1&live_design=1',
+                rawurlencode($templateSlug),
+                rawurlencode((string) $site->id),
+                rawurlencode((string) ($site->locale ?: 'ka'))
+            );
+        }
         $baseDomain = SystemSetting::get('domain_base_domain', config('app.base_domain', 'example.com'));
-        $modulesPayload = $this->moduleRegistry->modules($site, $user);
+        $modulesPayload = $site && ! $isManagedGenerationActive
+            ? $this->moduleRegistry->modules($site, $user)
+            : null;
 
         // Firebase settings
         $firebaseSettings = null;
@@ -157,6 +172,7 @@ class ChatController extends Controller
                 'build_status' => $project->build_status,
                 'can_reconnect' => $canReconnect,
                 'build_started_at' => $project->build_started_at?->toIso8601String(),
+                'generation' => $this->buildGenerationPayload($generationRun, $project),
                 // Publishing fields
                 'subdomain' => $project->subdomain,
                 'published_title' => $project->published_title,
@@ -320,6 +336,28 @@ class ChatController extends Controller
             'title' => null,
             'revision_source' => null,
             'sections' => [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function buildGenerationPayload(?ProjectGenerationRun $run, Project $project): ?array
+    {
+        if (! $run) {
+            return null;
+        }
+
+        return [
+            'id' => (string) $run->id,
+            'status' => $run->status,
+            'is_active' => $run->isActive(),
+            'progress_message' => $run->progress_message,
+            'error_message' => $run->error_message,
+            'started_at' => $run->started_at?->toIso8601String(),
+            'completed_at' => $run->completed_at?->toIso8601String(),
+            'failed_at' => $run->failed_at?->toIso8601String(),
+            'status_url' => route('project.generation.status', $project),
         ];
     }
 

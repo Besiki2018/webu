@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 
 class ProjectCmsController extends Controller
 {
@@ -28,9 +29,17 @@ class ProjectCmsController extends Controller
         protected CmsSiteVisibilityService $siteVisibility
     ) {}
 
-    public function show(Request $request, Project $project): Response
+    public function show(Request $request, Project $project): Response|RedirectResponse
     {
         $this->authorize('update', $project);
+
+        $project->loadMissing('latestGenerationRun');
+        if ($project->latestGenerationRun?->isActive()) {
+            return redirect()->route('chat', [
+                'project' => $project,
+                'tab' => 'inspect',
+            ]);
+        }
 
         $site = $this->siteProvisioningService->provisionForProject($project);
         $project->loadMissing('template');

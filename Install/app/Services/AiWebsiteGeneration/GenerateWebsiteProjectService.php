@@ -4,6 +4,8 @@ namespace App\Services\AiWebsiteGeneration;
 
 use App\Cms\Contracts\CmsRepositoryContract;
 use App\Models\Project;
+use App\Models\Page;
+use App\Models\PageRevision;
 use App\Models\Site;
 use App\Models\Tenant;
 use App\Models\Website;
@@ -12,7 +14,6 @@ use App\Models\WebsiteSeo;
 use App\Models\WebsiteRevision;
 use App\Models\PageSection;
 use App\Services\ProjectWorkspace\ProjectWorkspaceService;
-use App\Services\UniversalCmsSyncService;
 use App\Services\WebuCodex\CodebaseScanner;
 use App\Support\CmsSectionLocalId;
 use Illuminate\Support\Facades\Cache;
@@ -34,24 +35,56 @@ class GenerateWebsiteProjectService
         protected UltraCheapCopyBank $copyBank,
         protected UltraCheapTemplateMatrix $templateMatrix,
         protected CmsRepositoryContract $repository,
-        protected UniversalCmsSyncService $cmsSync,
         protected ProjectWorkspaceService $projectWorkspace,
         protected CodebaseScanner $codebaseScanner
     ) {}
 
     /**
-     * @param  array{userPrompt: string, language?: string, style?: string, websiteType?: string, brandName?: string, currency?: string}  $input
+     * @param  array{userPrompt: string, language?: string, style?: string, websiteType?: string, brandName?: string, currency?: string, user_id?: int, ultra_cheap_mode?: bool}  $input
      * @return array{website: Website, project: Project, site: Site, pages: array}
      */
     public function generate(array $input): array
     {
         $userPrompt = (string) ($input['userPrompt'] ?? '');
         $userId = (int) ($input['user_id'] ?? 0);
+        if ($userId < 1) {
+            throw new \InvalidArgumentException('user_id required.');
+        }
+
+        $project = $this->createProjectShell($userId, $userPrompt);
+
+        return $this->generateIntoProject($project, $input);
+    }
+
+    public function createProjectShell(int $userId, string $userPrompt): Project
+    {
+        $prompt = trim($userPrompt);
+
+        return Project::query()->create([
+            'tenant_id' => $this->resolveTenantIdForUser($userId),
+            'user_id' => $userId,
+            'name' => str($prompt)->limit(50, '...')->toString(),
+            'initial_prompt' => $prompt,
+            'last_viewed_at' => now(),
+        ]);
+    }
+
+    /**
+     * @param  array{userPrompt: string, language?: string|null, style?: string|null, websiteType?: string|null, brandName?: string|null, currency?: string|null, user_id?: int, ultra_cheap_mode?: bool}  $input
+     * @return array{website: Website, project: Project, site: Site, pages: array}
+     */
+    public function generateIntoProject(Project $project, array $input, ?callable $progress = null): array
+    {
+        $userPrompt = trim((string) ($input['userPrompt'] ?? ''));
+        $userId = (int) ($input['user_id'] ?? $project->user_id ?? 0);
         $ultraCheapMode = (bool) ($input['ultra_cheap_mode'] ?? true);
         if ($userId < 1) {
             throw new \InvalidArgumentException('user_id required.');
         }
-        $tenantId = $this->resolveTenantIdForUser($userId);
+
+        $tenantId = (string) ($project->tenant_id ?: $this->resolveTenantIdForUser($userId));
+
+        $this->reportProgress($progress, 'planning', 'Understanding your website brief.');
 
         $brief = $this->resolveBrief($userPrompt, $input);
         $language = $input['language'] ?? $brief['language'];
@@ -64,10 +97,19 @@ class GenerateWebsiteProjectService
         $brief['websiteType'] = $websiteType;
         $brief['brandName'] = $brandName;
 
+        $project->forceFill([
+            'tenant_id' => $tenantId,
+            'name' => $brandName,
+            'initial_prompt' => $project->initial_prompt ?: $userPrompt,
+            'last_viewed_at' => now(),
+        ])->save();
+
         $category = $brief['category'] ?? 'general';
         if ($ultraCheapMode) {
             $brief['templateId'] = $this->templateMatrix->resolve($websiteType, $category, $style);
         }
+
+        $this->reportProgress($progress, 'generating', 'Generating pages, sections, and content.');
 
         $structure = $this->structureGenerator->generate($brief);
         $pagesPlan = $structure['pages'];
@@ -81,21 +123,26 @@ class GenerateWebsiteProjectService
         $theme = $this->themeGenerator->generate($brief);
         $seoPlan = $this->seoGenerator->generate($brief, $pagesPlan, $language === 'both' ? 'ka' : $language);
 
-        $result = DB::transaction(function () use ($userId, $tenantId, $brief, $pagesPlan, $contentPatches, $theme, $seoPlan) {
-            // 1) CMS-first: create Website (no site_id yet)
+        $this->reportProgress($progress, 'finalizing', 'Saving the project and preparing the builder.');
+
+        $result = DB::transaction(function () use ($project, $userId, $tenantId, $brief, $pagesPlan, $contentPatches, $theme, $seoPlan) {
+            $site = $this->prepareSiteForGeneration($project, $brief, $theme);
+
+            $this->resetGeneratedContent($site);
+
             $website = Website::create([
                 'user_id' => $userId,
                 'tenant_id' => $tenantId,
                 'name' => $brief['brandName'],
                 'domain' => null,
                 'theme' => $theme,
-                'site_id' => null,
+                'site_id' => $site->id,
             ]);
 
             $websitePages = [];
             foreach ($pagesPlan as $pageIndex => $plan) {
-                $slug = $plan['slug'];
-                $title = $plan['title'];
+                $slug = (string) $plan['slug'];
+                $title = (string) $plan['title'];
 
                 $websitePage = WebsitePage::create([
                     'website_id' => $website->id,
@@ -106,10 +153,13 @@ class GenerateWebsiteProjectService
                     'page_id' => null,
                 ]);
 
+                $contentJson = ['sections' => []];
+
                 foreach ($plan['sections'] ?? [] as $secOrder => $sec) {
-                    $content = $sec['content_json'] ?? [];
-                    $patch = $contentPatches[$pageIndex][$secOrder] ?? [];
-                    $settings = array_merge($content, $patch);
+                    $content = is_array($sec['content_json'] ?? null) ? $sec['content_json'] : [];
+                    $patch = is_array($contentPatches[$pageIndex][$secOrder] ?? null) ? $contentPatches[$pageIndex][$secOrder] : [];
+                    $settings = array_replace_recursive($content, $patch);
+
                     PageSection::create([
                         'page_id' => $websitePage->id,
                         'tenant_id' => $tenantId,
@@ -118,6 +168,12 @@ class GenerateWebsiteProjectService
                         'order' => $secOrder,
                         'settings_json' => $settings,
                     ]);
+
+                    $contentJson['sections'][] = [
+                        'type' => $sec['section_type'],
+                        'props' => $settings,
+                        'localId' => CmsSectionLocalId::fallbackForIndex((int) $secOrder),
+                    ];
                 }
 
                 WebsiteSeo::create([
@@ -131,66 +187,26 @@ class GenerateWebsiteProjectService
                     'locale' => $brief['language'] === 'en' ? 'en' : 'ka',
                 ]);
 
-                $websitePages[] = $websitePage;
-            }
-
-            // 2) Create Project + Site, then link: create Page + Revision per website_page
-            $project = Project::create([
-                'tenant_id' => $tenantId,
-                'user_id' => $userId,
-                'name' => $brief['brandName'],
-                'initial_prompt' => $brief['brandName'],
-                'last_viewed_at' => now(),
-            ]);
-
-            $site = $this->repository->findSiteByProject($project);
-            if ($site) {
-                $site = $this->repository->updateSite($site, [
-                    'name' => $brief['brandName'],
-                    'status' => 'draft',
-                    'locale' => $brief['language'] === 'en' ? 'en' : 'ka',
-                    'theme_settings' => $theme,
-                ]);
-            } else {
-                $site = $this->repository->createSiteForProject($project, [
-                    'name' => $brief['brandName'],
-                    'status' => 'draft',
-                    'locale' => $brief['language'] === 'en' ? 'en' : 'ka',
-                    'theme_settings' => $theme,
-                ]);
-            }
-
-            $website->update(['site_id' => $site->id]);
-
-            foreach ($websitePages as $pageIndex => $websitePage) {
-                $plan = $pagesPlan[$pageIndex];
-                $slug = $plan['slug'];
-                $title = $plan['title'];
-                $contentJson = ['sections' => []];
-                foreach ($websitePage->sections()->orderBy('order')->get()->values() as $sectionIndex => $sec) {
-                    $contentJson['sections'][] = [
-                        'type' => $sec->section_type,
-                        'props' => $sec->settings_json ?? [],
-                        'localId' => CmsSectionLocalId::fallbackForIndex((int) $sectionIndex),
-                    ];
-                }
-
-                $page = $this->repository->firstOrCreatePage($site, $slug, [
+                $page = $this->repository->createPage($site, [
+                    'slug' => $slug,
                     'title' => $title,
                     'status' => 'draft',
                     'seo_title' => $seoPlan[$pageIndex]['seo_title'] ?? $title,
                     'seo_description' => $seoPlan[$pageIndex]['meta_description'] ?? '',
                 ]);
-                $nextVersion = max(1, $this->repository->maxRevisionVersion($site, $page) + 1);
+
                 $this->repository->createRevision($site, $page, [
-                    'version' => $nextVersion,
+                    'version' => 1,
                     'content_json' => $contentJson,
                     'created_by' => $userId,
                     'published_at' => null,
                 ]);
+
                 $websitePage->update(['page_id' => $page->id]);
+                $websitePages[] = $websitePage->fresh();
             }
 
+            $this->syncMenusFromPagesPlan($site, $pagesPlan);
             $this->snapshotRevision($website->fresh(), 'ai', $userId);
 
             return [
@@ -255,6 +271,15 @@ class GenerateWebsiteProjectService
         return $out;
     }
 
+    private function reportProgress(?callable $progress, string $status, string $message): void
+    {
+        if ($progress === null) {
+            return;
+        }
+
+        $progress($status, $message);
+    }
+
     private function snapshotRevision(Website $website, string $changeType, ?int $createdBy = null): void
     {
         $maxVersion = (int) $website->revisions()->max('version');
@@ -280,6 +305,77 @@ class GenerateWebsiteProjectService
             'snapshot_json' => $snapshot,
             'change_type' => $changeType,
             'created_by' => $createdBy,
+        ]);
+    }
+
+    /**
+     * @param  array{brandName: string, language: string}  $brief
+     * @param  array<string, mixed>  $theme
+     */
+    private function prepareSiteForGeneration(Project $project, array $brief, array $theme): Site
+    {
+        $attributes = [
+            'name' => $brief['brandName'],
+            'status' => 'draft',
+            'locale' => $brief['language'] === 'en' ? 'en' : 'ka',
+            'theme_settings' => $theme,
+        ];
+
+        $site = $this->repository->findSiteByProject($project);
+        if ($site) {
+            return $this->repository->updateSite($site, $attributes);
+        }
+
+        return $this->repository->createSiteForProject($project, $attributes);
+    }
+
+    private function resetGeneratedContent(Site $site): void
+    {
+        Website::query()
+            ->where('site_id', $site->id)
+            ->delete();
+
+        PageRevision::query()
+            ->where('site_id', $site->id)
+            ->delete();
+
+        Page::query()
+            ->where('site_id', $site->id)
+            ->delete();
+    }
+
+    /**
+     * @param  array<int, array{slug: string, title: string}>  $pagesPlan
+     */
+    private function syncMenusFromPagesPlan(Site $site, array $pagesPlan): void
+    {
+        $headerItems = array_values(array_filter(array_map(static function (array $page): ?array {
+            $slug = trim((string) ($page['slug'] ?? ''));
+            $title = trim((string) ($page['title'] ?? ''));
+
+            if ($slug === '' || $title === '') {
+                return null;
+            }
+
+            return [
+                'label' => $title,
+                'slug' => $slug,
+                'url' => $slug === 'home' ? '/' : '/'.$slug,
+            ];
+        }, $pagesPlan)));
+
+        if ($headerItems === []) {
+            $headerItems = [
+                ['label' => 'Home', 'slug' => 'home', 'url' => '/'],
+            ];
+        }
+
+        $this->repository->updateOrCreateMenu($site, 'header', ['items_json' => $headerItems]);
+        $this->repository->updateOrCreateMenu($site, 'footer', [
+            'items_json' => [
+                ['label' => 'Privacy', 'url' => '/privacy'],
+                ['label' => 'Terms', 'url' => '/terms'],
+            ],
         ]);
     }
 

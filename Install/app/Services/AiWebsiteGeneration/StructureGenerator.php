@@ -39,15 +39,32 @@ class StructureGenerator
     /** @return array<int, array{section_type: string, cms_fields: array, content_json: array, style_json: array}> */
     private function sectionsForPage(string $slug, array $brief): array
     {
-        $sectionSlugMap = [
-            'home' => ['hero', 'features', 'cta'],
-            'about' => ['heading', 'content', 'cta'],
-            'services' => ['heading', 'features', 'cta'],
-            'contact' => ['heading', 'contact'],
-            'shop' => ['hero', 'features', 'cta'],
-            'work' => ['heading', 'gallery', 'cta'],
-        ];
-        $types = $sectionSlugMap[$slug] ?? ['heading', 'content', 'cta'];
+        $websiteType = (string) ($brief['websiteType'] ?? 'business');
+
+        $types = match ($websiteType) {
+            'ecommerce' => match ($slug) {
+                'home' => ['webu_general_heading_01', 'webu_ecom_product_grid_01', 'webu_general_heading_01', 'webu_ecom_product_grid_01', 'banner'],
+                'shop', 'product', 'cart', 'checkout' => ['webu_general_heading_01', 'webu_ecom_product_grid_01'],
+                'contact' => ['webu_general_heading_01', 'webu_general_text_01'],
+                default => ['webu_general_heading_01', 'webu_general_text_01'],
+            },
+            'portfolio' => match ($slug) {
+                'home' => ['webu_general_heading_01', 'webu_general_text_01', 'banner'],
+                'work', 'about', 'contact' => ['webu_general_heading_01', 'webu_general_text_01'],
+                default => ['webu_general_heading_01', 'webu_general_text_01'],
+            },
+            'booking' => match ($slug) {
+                'home' => ['webu_general_heading_01', 'webu_general_text_01', 'banner'],
+                'services', 'book', 'contact' => ['webu_general_heading_01', 'webu_general_text_01'],
+                default => ['webu_general_heading_01', 'webu_general_text_01'],
+            },
+            default => match ($slug) {
+                'home' => ['webu_general_heading_01', 'webu_general_text_01', 'banner'],
+                'about', 'services', 'contact' => ['webu_general_heading_01', 'webu_general_text_01'],
+                default => ['webu_general_heading_01', 'webu_general_text_01'],
+            },
+        };
+
         $sections = [];
         foreach ($types as $order => $type) {
             $template = $this->sectionTemplates[$type] ?? $this->sectionTemplates['content'];
@@ -87,72 +104,61 @@ class StructureGenerator
     private function defaultSectionTemplates(): array
     {
         return [
-            'hero' => [
-                'type' => 'hero',
+            'webu_general_heading_01' => [
+                'type' => 'webu_general_heading_01',
                 'cms_fields' => [
-                    ['key' => 'title', 'label' => 'Title', 'type' => 'text'],
+                    ['key' => 'headline', 'label' => 'Headline', 'type' => 'text'],
                     ['key' => 'subtitle', 'label' => 'Subtitle', 'type' => 'textarea'],
-                    ['key' => 'cta_text', 'label' => 'Button text', 'type' => 'text'],
-                    ['key' => 'cta_link', 'label' => 'Button link', 'type' => 'link'],
-                    ['key' => 'image', 'label' => 'Hero image', 'type' => 'image'],
+                    ['key' => 'eyebrow', 'label' => 'Eyebrow', 'type' => 'text'],
                 ],
-                'default_content' => ['title' => '', 'subtitle' => '', 'cta_text' => '', 'cta_link' => '/contact', 'image' => ''],
+                'default_content' => ['headline' => '', 'title' => '', 'subtitle' => '', 'eyebrow' => '', 'layout_variant' => 'centered', 'style_variant' => 'minimal'],
                 'default_style' => ['alignment' => 'center', 'spacing' => 'medium'],
             ],
-            'features' => [
-                'type' => 'features',
-                'cms_fields' => [
-                    ['key' => 'heading', 'label' => 'Heading', 'type' => 'text'],
-                    ['key' => 'items', 'label' => 'Features', 'type' => 'repeater'],
-                ],
-                'default_content' => ['heading' => '', 'items' => []],
-                'default_style' => ['columns' => 3],
-            ],
-            'cta' => [
-                'type' => 'cta',
+            'webu_general_text_01' => [
+                'type' => 'webu_general_text_01',
                 'cms_fields' => [
                     ['key' => 'title', 'label' => 'Title', 'type' => 'text'],
-                    ['key' => 'button_text', 'label' => 'Button text', 'type' => 'text'],
-                    ['key' => 'button_link', 'label' => 'Button link', 'type' => 'link'],
+                    ['key' => 'body', 'label' => 'Body', 'type' => 'richtext'],
                 ],
-                'default_content' => ['title' => '', 'button_text' => '', 'button_link' => ''],
+                'default_content' => ['title' => '', 'body' => ''],
+                'default_style' => [],
+            ],
+            'banner' => [
+                'type' => 'banner',
+                'cms_fields' => [
+                    ['key' => 'headline', 'label' => 'Headline', 'type' => 'text'],
+                    ['key' => 'subtitle', 'label' => 'Subtitle', 'type' => 'textarea'],
+                    ['key' => 'cta_label', 'label' => 'Button text', 'type' => 'text'],
+                    ['key' => 'cta_url', 'label' => 'Button link', 'type' => 'link'],
+                ],
+                'default_content' => ['headline' => '', 'title' => '', 'subtitle' => '', 'cta_label' => '', 'cta_url' => '/contact'],
                 'default_style' => ['alignment' => 'center'],
             ],
-            'heading' => [
-                'type' => 'heading',
+            'webu_ecom_product_grid_01' => [
+                'type' => 'webu_ecom_product_grid_01',
                 'cms_fields' => [
                     ['key' => 'title', 'label' => 'Title', 'type' => 'text'],
                     ['key' => 'subtitle', 'label' => 'Subtitle', 'type' => 'textarea'],
+                    ['key' => 'products_per_page', 'label' => 'Products per page', 'type' => 'number'],
                 ],
-                'default_content' => ['title' => '', 'subtitle' => ''],
-                'default_style' => [],
+                'default_content' => [
+                    'title' => '',
+                    'subtitle' => '',
+                    'add_to_cart_label' => 'Add to cart',
+                    'products_per_page' => 8,
+                    'show_filters' => false,
+                    'show_sort' => false,
+                    'pagination_mode' => 'pagination',
+                ],
+                'default_style' => ['layout_style' => 'grid'],
             ],
             'content' => [
-                'type' => 'content',
+                'type' => 'webu_general_text_01',
                 'cms_fields' => [
                     ['key' => 'body', 'label' => 'Content', 'type' => 'richtext'],
                 ],
-                'default_content' => ['body' => ''],
+                'default_content' => ['title' => '', 'body' => ''],
                 'default_style' => [],
-            ],
-            'contact' => [
-                'type' => 'contact',
-                'cms_fields' => [
-                    ['key' => 'heading', 'label' => 'Heading', 'type' => 'text'],
-                    ['key' => 'email', 'label' => 'Email', 'type' => 'text'],
-                    ['key' => 'phone', 'label' => 'Phone', 'type' => 'text'],
-                ],
-                'default_content' => ['heading' => 'Contact', 'email' => '', 'phone' => ''],
-                'default_style' => [],
-            ],
-            'gallery' => [
-                'type' => 'gallery',
-                'cms_fields' => [
-                    ['key' => 'heading', 'label' => 'Heading', 'type' => 'text'],
-                    ['key' => 'images', 'label' => 'Images', 'type' => 'images'],
-                ],
-                'default_content' => ['heading' => '', 'images' => []],
-                'default_style' => ['columns' => 3],
             ],
         ];
     }

@@ -30,7 +30,7 @@ class WebsiteBriefExtractor
         $lower = Str::lower($userPrompt);
         $websiteType = $this->detectWebsiteType($lower);
         $businessType = $this->detectBusinessType($lower);
-        $brandName = $this->extractBrandName($userPrompt) ?? $this->placeholderBrandName($websiteType);
+        $brandName = $this->extractBrandName($userPrompt) ?? $this->fallbackBrandNameFromPrompt($userPrompt, $websiteType);
         $tone = $this->detectTone($lower);
         $style = $this->detectStyle($lower);
         $language = $this->detectLanguage($lower);
@@ -110,6 +110,33 @@ class WebsiteBriefExtractor
             'booking' => 'Bookings',
             default => 'My Website',
         };
+    }
+
+    private function fallbackBrandNameFromPrompt(string $prompt, string $websiteType): string
+    {
+        $normalized = preg_replace('/[^\p{L}\p{N}\s\-]+/u', ' ', trim($prompt));
+        $normalized = is_string($normalized) ? preg_replace('/\s+/u', ' ', $normalized) : null;
+        $normalized = is_string($normalized) ? trim($normalized) : '';
+
+        if ($normalized !== '') {
+            $stopWords = [
+                'build', 'create', 'website', 'site', 'for', 'with', 'and', 'the', 'a', 'an',
+                'make', 'modern', 'minimal', 'luxury', 'playful', 'corporate', 'business',
+                'store', 'shop', 'portfolio', 'booking', 'online',
+            ];
+            $tokens = preg_split('/\s+/u', $normalized) ?: [];
+            $filtered = array_values(array_filter($tokens, static function ($token) use ($stopWords): bool {
+                $value = Str::lower(trim((string) $token));
+
+                return $value !== '' && ! in_array($value, $stopWords, true);
+            }));
+            $candidate = trim(implode(' ', array_slice($filtered, 0, 4)));
+            if ($candidate !== '') {
+                return Str::title(Str::limit($candidate, 60, ''));
+            }
+        }
+
+        return $this->placeholderBrandName($websiteType);
     }
 
     private function detectTone(string $lower): string

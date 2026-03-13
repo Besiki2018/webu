@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Cms\Contracts\CmsRepositoryContract;
+use App\Jobs\RunProjectGeneration;
 use App\Models\Project;
+use App\Models\ProjectGenerationRun;
 use App\Models\SystemSetting;
 use App\Models\Template;
+use App\Services\AiWebsiteGeneration\GenerateWebsiteProjectService;
 use App\Services\AssetFirstDraftComposerService;
 use App\Services\ReadyTemplatesService;
 use App\Services\SiteProvisioningService;
@@ -158,31 +161,50 @@ class ProjectController extends Controller
             ]);
         }
 
-        // Block concurrent builds for the same user
-        $activeBuild = Project::where('user_id', $user->id)
-            ->where('build_status', 'building')
+        $hasActiveGeneration = ProjectGenerationRun::query()
+            ->where('user_id', $user->id)
+            ->whereIn('status', [
+                ProjectGenerationRun::STATUS_QUEUED,
+                ProjectGenerationRun::STATUS_PLANNING,
+                ProjectGenerationRun::STATUS_GENERATING,
+                ProjectGenerationRun::STATUS_FINALIZING,
+            ])
             ->exists();
 
-        if ($activeBuild) {
+        if ($hasActiveGeneration) {
             return back()->withErrors([
-                'prompt' => 'You have an active session. Wait for it to complete, or stop it.',
+                'prompt' => 'You already have a website generation in progress. Wait for it to finish before starting a new one.',
             ]);
         }
 
-        // Generate a name from the prompt (first 50 chars)
-        $name = str($prompt)->limit(50, '...')->toString();
-
-        $project = Project::create([
-            'user_id' => $user->id,
-            'name' => $name,
+        $ultraCheapMode = $user->aiSettings?->isUltraCheapMode() ?? true;
+        $project = app(GenerateWebsiteProjectService::class)->createProjectShell($user->id, $prompt);
+        $project->forceFill([
             'initial_prompt' => $prompt,
             'template_id' => $templateId,
             'theme_preset' => $validated['theme_preset'] ?? null,
-            'last_viewed_at' => now(),
+        ])->save();
+
+        $generationRun = ProjectGenerationRun::query()->create([
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'status' => ProjectGenerationRun::STATUS_QUEUED,
+            'requested_prompt' => $prompt,
+            'requested_input' => [
+                'prompt' => $prompt,
+                'ultra_cheap_mode' => $ultraCheapMode,
+                'template_id' => $templateId,
+                'theme_preset' => $validated['theme_preset'] ?? null,
+            ],
+            'progress_message' => 'Preparing generation.',
         ]);
 
-        // Redirect to chat so user continues the conversation with AI only (ChatGPT-like).
-        return $this->inertiaAwareRedirect($request, route('chat', $project));
+        RunProjectGeneration::dispatchAfterResponse((string) $generationRun->id);
+
+        return $this->inertiaAwareRedirect($request, route('chat', [
+            'project' => $project,
+            'tab' => 'inspect',
+        ]));
     }
 
     /**

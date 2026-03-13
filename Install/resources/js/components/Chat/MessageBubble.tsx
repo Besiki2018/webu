@@ -270,6 +270,7 @@ export function MessageBubble({ message, currentUser, shouldType = false, onTypi
     const { t, locale } = useTranslation();
     const isUser = message.type === 'user';
     const isActivity = message.type === 'activity';
+    const showDiagnosticLog = typeof window !== 'undefined' && window.location.search.includes('debug=agent');
     const { dateLabel, time } = formatMessageTimestamp(message.timestamp, locale, t);
     const userName = currentUser?.name || 'User';
     const [displayedContent, setDisplayedContent] = useState(() => (shouldType ? '' : message.content));
@@ -433,7 +434,7 @@ export function MessageBubble({ message, currentUser, shouldType = false, onTypi
                             <span className="font-medium">{t('Scope')}:</span> {message.scope}
                         </div>
                     )}
-                    {message.diagnosticLog && message.diagnosticLog.length > 0 && (
+                    {showDiagnosticLog && message.diagnosticLog && message.diagnosticLog.length > 0 && (
                         <div className="mt-2 rounded-xl border border-black/5 bg-black/[0.03] px-3 py-2">
                             <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                                 {t('Debug log')}

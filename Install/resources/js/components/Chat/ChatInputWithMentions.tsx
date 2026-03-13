@@ -327,6 +327,8 @@ export function ChatInputWithMentions({
                                     'h-9 w-9 rounded-full text-white hover:text-white',
                                     isWorkspaceVariant ? 'workspace-composer-submit workspace-composer-stop' : 'bg-black hover:bg-black/90'
                                 )}
+                                aria-label={t('Stop generating')}
+                                title={t('Stop generating')}
                             >
                                 <Square className="h-4 w-4" />
                             </Button>
@@ -340,6 +342,8 @@ export function ChatInputWithMentions({
                                     'h-9 w-9 rounded-full text-white',
                                     isWorkspaceVariant ? 'workspace-composer-submit' : 'bg-black hover:bg-black/90'
                                 )}
+                                aria-label={t('Send message')}
+                                title={t('Send message')}
                             >
                                 {isLoading ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />

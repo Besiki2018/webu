@@ -55,7 +55,9 @@ class TemplateDemoService
             $pages = $this->ekkaDefaultPages($pageTemplateFiles);
         }
 
-        $pages = $this->ensureCanonicalTemplateCoveragePages($template, $pages, $pageTemplateFiles);
+        if ($site === null) {
+            $pages = $this->ensureCanonicalTemplateCoveragePages($template, $pages, $pageTemplateFiles);
+        }
 
         if ($pages === []) {
             $pages = $isEkkaTemplate
@@ -2123,9 +2125,9 @@ class TemplateDemoService
 
         return match ($component) {
             'hero' => [
-                'eyebrow' => Arr::get($props, 'eyebrow', 'Demo Experience'),
+                'eyebrow' => Arr::get($props, 'eyebrow', 'Featured'),
                 'headline' => Arr::get($props, 'headline', "{$templateName} demo for {$pageTitle}"),
-                'subtitle' => Arr::get($props, 'subtitle', 'This section is loaded from backend demo payload with dynamic test content.'),
+                'subtitle' => Arr::get($props, 'subtitle', "Explore {$templateName} through a polished {$pageTitle} experience."),
                 'image_url' => $heroImage,
                 'primary_cta' => Arr::get($props, 'primary_cta', ['label' => 'Start now', 'url' => '/contact']),
                 'secondary_cta' => Arr::get($props, 'secondary_cta', ['label' => 'View more', 'url' => '/shop']),
@@ -2226,7 +2228,7 @@ class TemplateDemoService
             ],
             default => [
                 'title' => Arr::get($props, 'title', $this->humanize($key)),
-                'summary' => 'Generic demo section rendered with backend test payload.',
+                'summary' => 'This section is ready for real project content.',
                 'details' => [
                     'template' => $templateName,
                     'page' => $pageTitle,

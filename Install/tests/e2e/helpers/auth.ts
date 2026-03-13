@@ -13,16 +13,31 @@ export async function ensureAuthenticatedPage(page: Page, targetUrl: string): Pr
     throw new Error('Login required for E2E builder flow. Set TEST_USER_EMAIL and TEST_USER_PASSWORD, or provide PLAYWRIGHT_AUTH_STORAGE_STATE.');
   }
 
-  const dismissCookieBanner = page.getByRole('button', { name: /accept all|essential only/i }).first();
-  if (await dismissCookieBanner.isVisible().catch(() => false)) {
-    await dismissCookieBanner.click().catch(() => {});
+  const loginPageResponse = await page.context().request.get('/login');
+  const loginPageHtml = await loginPageResponse.text();
+  const csrfToken = loginPageHtml.match(/name="csrf-token"\s+content="([^"]+)"/i)?.[1]
+    ?? loginPageHtml.match(/name="_token"\s+value="([^"]+)"/i)?.[1]
+    ?? null;
+
+  if (!csrfToken) {
+    throw new Error('Unable to resolve CSRF token for E2E login.');
   }
 
-  await page.locator('input[name="email"], input[type="email"]').first().fill(USER_EMAIL);
-  await page.locator('input[name="password"], input[type="password"]').first().fill(USER_PASSWORD);
-  await page.getByRole('button', { name: /log in|sign in|შესვლა/i }).click();
-  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  await page.context().request.post('/login', {
+    form: {
+      _token: csrfToken,
+      email: USER_EMAIL,
+      password: USER_PASSWORD,
+    },
+    headers: {
+      referer: loginPageResponse.url(),
+    },
+  });
 
   await page.goto(targetUrl);
   await expect(page).not.toHaveURL(/\/login/, { timeout: 30000 });
+
+  if (!page.url().includes(targetUrl)) {
+    await page.goto(targetUrl);
+  }
 }

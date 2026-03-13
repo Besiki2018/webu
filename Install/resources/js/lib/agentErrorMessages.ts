@@ -7,7 +7,7 @@ const ERROR_CODE_MESSAGES_EN: Record<string, string> = {
     page_not_found: 'Page not found. Try specifying the page or use the home page.',
     site_operations_failed: 'Could not update theme or global header/footer. The change was not applied.',
     change_set_failed: 'Could not apply the requested changes to the page structure.',
-    validation_failed: 'The change was rejected (validation failed). Check the content and try again.',
+    validation_failed: 'The change could not be applied to the current builder data. Try a more specific request or reselect the target.',
     patcher_failed: 'Could not save the draft. The change was not applied.',
     component_no_editable_param: 'That component has no editable parameter for this change. The target may be read-only or not support the requested field.',
     media_upload_failed: 'Logo or media upload failed. The media endpoint returned an error. Try a different image or try again later.',
@@ -15,7 +15,7 @@ const ERROR_CODE_MESSAGES_EN: Record<string, string> = {
     target_not_found: 'Could not find the target section or component on this page. It may have been removed or the page structure changed.',
     selected_target_scope_violation: 'The request tried to change content outside the selected element. Select a broader target or ask explicitly for a wider change.',
     selected_target_unmappable: 'The selected element is not mapped to a safe editable builder field yet, so chat could not change it.',
-    no_effect: 'The request ran, but it did not produce any visible change. See the debug log below for the exact operations and diff status.',
+    no_effect: 'The request ran, but it did not produce any visible change.',
     executor_exception: 'An unexpected error occurred while applying changes. Check the console or server logs for details.',
 };
 
@@ -23,7 +23,7 @@ const ERROR_CODE_MESSAGES_KA: Record<string, string> = {
     page_not_found: 'გვერდი ვერ მოიძებნა. მიუთითე გვერდი ან გამოიყენე მთავარი გვერდი.',
     site_operations_failed: 'თემის ან გლობალური header/footer-ის განახლება ვერ მოხდა.',
     change_set_failed: 'მოთხოვნილი ცვლილებები გვერდის სტრუქტურაზე ვერ გამოვიყენეთ.',
-    validation_failed: 'ცვლილება უარყოფილია (ვალიდაცია ვერ გავიდა). შეამოწმე კონტენტი და სცადე თავიდან.',
+    validation_failed: 'ცვლილება მიმდინარე builder მონაცემებზე ვერ გამოვიყენეთ. სცადე უფრო ზუსტი მოთხოვნა ან თავიდან აირჩიე target.',
     patcher_failed: 'შავი ნახატის შენახვა ვერ მოხდა. ცვლილება არ გამოვიყენეთ.',
     component_no_editable_param: 'ამ კომპონენტს არ აქვს რედაქტირებადი პარამეტრი ამ ცვლილებისთვის.',
     media_upload_failed: 'ლოგოს ან მედიის ატვირთვა ვერ მოხდა. სცადე სხვა სურათი ან მოგვიანებით.',
@@ -31,7 +31,7 @@ const ERROR_CODE_MESSAGES_KA: Record<string, string> = {
     target_not_found: 'სამიზნე სექცია ან კომპონენტი ამ გვერდზე ვერ მოიძებნა.',
     selected_target_scope_violation: 'მოთხოვნა გასცდა არჩეული ელემენტის ფარგლებს. აირჩიე უფრო ფართო target ან პირდაპირ მიუთითე, რომ უფრო ფართო ცვლილება გინდა.',
     selected_target_unmappable: 'არჩეული ელემენტი ჯერ უსაფრთხო builder field-ზე არ არის მიბმული, ამიტომ ჩატმა მისი ზუსტად შეცვლა ვერ შეძლო.',
-    no_effect: 'ოპერაცია გაეშვა, მაგრამ ხილული ცვლილება არ დაფიქსირდა. ქვემოთ Debug log-ში ზუსტად ნახავ რა ოპერაციები წავიდა და შეიცვალა თუ არა რეალური state.',
+    no_effect: 'ოპერაცია გაეშვა, მაგრამ ხილული ცვლილება არ დაფიქსირდა.',
     executor_exception: 'ცვლილებების გამოყენებისას მოხდა შეცდომა. დეტალებისთვის შეამოწმე კონსოლი ან სერვერის ლოგები.',
 };
 

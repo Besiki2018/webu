@@ -757,7 +757,19 @@ class BuilderProjectContextService
 
     protected function resolveRuntimeApiBaseUrl(): string
     {
-        $configured = (string) config('app.url', '');
+        try {
+            $request = request();
+            if ($request !== null) {
+                $origin = trim((string) $request->getSchemeAndHttpHost());
+                if ($origin !== '') {
+                    return rtrim($origin, '/');
+                }
+            }
+        } catch (\Throwable) {
+            // Ignore missing request context and fall back to configured app URL.
+        }
+
+        $configured = trim((string) config('app.url', ''));
         if ($configured !== '') {
             return rtrim($configured, '/');
         }

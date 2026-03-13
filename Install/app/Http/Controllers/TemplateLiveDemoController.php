@@ -181,9 +181,9 @@ class TemplateLiveDemoController extends Controller
             $requestedSite->loadMissing('project');
             $project = $requestedSite->project;
             if ($project) {
-                $apiBaseUrl = rtrim((string) config('app.url', ''), '/');
+                $apiBaseUrl = rtrim($request->getSchemeAndHttpHost(), '/');
                 if ($apiBaseUrl === '') {
-                    $apiBaseUrl = rtrim($request->getSchemeAndHttpHost(), '/');
+                    $apiBaseUrl = rtrim((string) config('app.url', ''), '/');
                 }
 
                 $runtimeAppConfig = [

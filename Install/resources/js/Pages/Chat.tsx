@@ -93,6 +93,14 @@ import { buildBuilderPreviewUrl, useBuilderWorkspace, type BuilderLibraryItem } 
 import { buildCanonicalBridgeSelectedTargetPayload } from '@/builder/cms/canonicalSelectionPayload';
 import { BuilderWorkspaceShell } from '@/builder/workspace/BuilderWorkspaceShell';
 import { BuilderPreviewSurface } from '@/builder/workspace/BuilderPreviewSurface';
+import {
+    BUILDER_GENERATION_STEPS,
+    getBuilderGenerationHeadline,
+    getBuilderGenerationStepStatus,
+    isBuilderGenerationBlocking,
+    resolveBuilderGenerationState,
+    type BuilderGenerationState,
+} from '@/builder/state/builderGenerationState';
 
 const FileTree = lazy(async () => ({ default: (await import('@/components/Code/FileTree')).FileTree }));
 const CodeEditor = lazy(async () => ({ default: (await import('@/components/Code/CodeEditor')).CodeEditor }));
@@ -162,6 +170,7 @@ interface Project {
     build_status?: string;
     can_reconnect?: boolean;
     build_started_at?: string | null;
+    generation?: ProjectGenerationPayload | null;
     // Publishing fields
     subdomain: string | null;
     published_title: string | null;
@@ -173,6 +182,18 @@ interface Project {
     theme_preset: string | null;
     share_image: string | null;
     api_token?: string | null;
+}
+
+interface ProjectGenerationPayload {
+    id: string;
+    status: string;
+    is_active: boolean;
+    progress_message?: string | null;
+    error_message?: string | null;
+    started_at?: string | null;
+    completed_at?: string | null;
+    failed_at?: string | null;
+    status_url: string;
 }
 
 interface FirebaseSettings {
@@ -417,11 +438,30 @@ export default function Chat({
     const [appliedTheme, setAppliedTheme] = useState(project.theme_preset);
     const [captureThumbnailTrigger, setCaptureThumbnailTrigger] = useState(0);
     const visualPreviewUrl = project.cms_preview_url ?? null;
+    const [projectGeneration, setProjectGeneration] = useState<ProjectGenerationPayload | null>(project.generation ?? null);
+    const generationReloadRequestedRef = useRef(false);
+    const hasExistingGeneratedSite = useMemo(() => (
+        (Array.isArray(generatedPages) && generatedPages.some((page) => Array.isArray(page.sections) && page.sections.length > 0))
+        || (Array.isArray(generatedPage?.sections) && generatedPage.sections.length > 0)
+    ), [generatedPage?.sections, generatedPages]);
+    const builderGenerationState = useMemo<BuilderGenerationState>(
+        () => resolveBuilderGenerationState(projectGeneration?.status),
+        [projectGeneration?.status],
+    );
+    const isProjectGenerationActive = Boolean(projectGeneration?.is_active);
 
     const handleCodeFileSelect = useCallback((path: string, meta: CodeFileSelectionMeta) => {
         setSelectedFile(path);
         setSelectedFileMeta(meta);
     }, []);
+
+    useEffect(() => {
+        generationReloadRequestedRef.current = false;
+    }, [project.id]);
+
+    useEffect(() => {
+        setProjectGeneration(project.generation ?? null);
+    }, [project.generation, project.id]);
 
     const isGlobalThemeElementMention = useCallback((element: ElementMention | PendingEdit['element']) => {
         const selector = String('selector' in element ? element.selector : element.cssSelector || '').toLowerCase();
@@ -684,6 +724,67 @@ export default function Chat({
     });
 
     useEffect(() => {
+        if (!projectGeneration?.status_url || !projectGeneration.is_active) {
+            return;
+        }
+
+        let cancelled = false;
+        let timeoutId: number | null = null;
+
+        const scheduleNextPoll = (delay = 1500) => {
+            if (cancelled) {
+                return;
+            }
+
+            timeoutId = window.setTimeout(() => {
+                void pollStatus();
+            }, delay);
+        };
+
+        const pollStatus = async () => {
+            try {
+                const response = await axios.get<{ generation?: ProjectGenerationPayload | null }>(projectGeneration.status_url);
+                if (cancelled) {
+                    return;
+                }
+
+                const nextGeneration = response.data?.generation ?? null;
+                setProjectGeneration(nextGeneration);
+
+                const nextStatus = (nextGeneration?.status ?? '').trim().toLowerCase();
+                if (nextStatus === 'completed' || nextStatus === 'complete') {
+                    if (!generationReloadRequestedRef.current) {
+                        generationReloadRequestedRef.current = true;
+                        router.reload({
+                            only: ['project', 'generatedPage', 'generatedPages', 'moduleRegistry', 'builderLibraryItems'],
+                        });
+                    }
+                    return;
+                }
+
+                if (nextStatus === 'failed') {
+                    return;
+                }
+            } catch {
+                if (cancelled) {
+                    return;
+                }
+            }
+
+            scheduleNextPoll();
+        };
+
+        scheduleNextPoll(1000);
+
+        return () => {
+            cancelled = true;
+            if (timeoutId !== null) {
+                window.clearTimeout(timeoutId);
+            }
+        };
+    }, [projectGeneration?.id, projectGeneration?.is_active, projectGeneration?.status_url]);
+
+    useEffect(() => {
         setExpandedStructureItemIds((current) => current.filter((localId) => (
             builderStructureItems.some((item) => item.localId === localId)
         )));
@@ -856,13 +957,20 @@ export default function Chat({
         }
     }, [failedMessages.length, isLoading, messages.length, scheduleScrollChatToBottom]);
 
-    // Send initial message from project prompt (only for new projects with no history)
+    const shouldSendInitialPromptToChat = Boolean(project.initial_prompt?.trim())
+        && !project.has_history
+        && !hasExistingGeneratedSite
+        && !project.cms_preview_url
+        && !project.preview_url
+        && !projectGeneration;
+
+    // Legacy fallback only. Brand-new AI site generation now happens before the builder mounts.
     useEffect(() => {
-        if (project.initial_prompt && !initialSent.current && !project.has_history) {
+        if (shouldSendInitialPromptToChat && project.initial_prompt && !initialSent.current) {
             initialSent.current = true;
             sendMessage(project.initial_prompt);
         }
-    }, [project.initial_prompt, project.has_history, sendMessage]);
+    }, [project.initial_prompt, sendMessage, shouldSendInitialPromptToChat]);
 
     // Auto-rebuild preview for projects with history but no preview
     const autoRebuildTriggered = useRef(false);
@@ -1893,6 +2001,8 @@ export default function Chat({
     );
     const isInspectBuilderMode = viewMode === 'inspect';
     const shouldRenderChatWorkspace = viewMode !== 'inspect';
+    const shouldBlockBuilderDuringGeneration = isProjectGenerationActive
+        && isBuilderGenerationBlocking(builderGenerationState);
 
     const workspaceSidebarContent = (
         <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col md:w-auto">
@@ -2315,6 +2425,99 @@ export default function Chat({
         />
     );
 
+    const initialGenerationScreen = shouldBlockBuilderDuringGeneration ? (
+        <div
+            className="fixed inset-0 z-[100] bg-background"
+            aria-busy="true"
+            aria-label={t('Generating your website...')}
+        >
+            <div className="flex h-full items-center justify-center px-6">
+                <div className="w-full max-w-xl rounded-[32px] border border-[#e8e6e3] bg-white/95 p-8 shadow-[0_24px_80px_rgba(28,25,23,0.08)] backdrop-blur">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5efe7] text-[#7c5c2f]">
+                            <Sparkles className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <h1 className="text-xl font-semibold text-[#1c1917]">
+                                {getBuilderGenerationHeadline(builderGenerationState)}
+                            </h1>
+                            <p className="mt-1 text-sm text-[#78716c]">
+                                {projectGeneration?.progress_message || t('The builder will open after the full layout and content are ready.')}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="mt-8 space-y-3">
+                        {BUILDER_GENERATION_STEPS.map((step) => {
+                            const status = getBuilderGenerationStepStatus(builderGenerationState, step.key);
+
+                            return (
+                                <div
+                                    key={step.key}
+                                    className={cn(
+                                        'flex items-center justify-between rounded-2xl border px-4 py-3 transition-colors',
+                                        status === 'complete' && 'border-emerald-200 bg-emerald-50 text-emerald-900',
+                                        status === 'active' && 'border-amber-200 bg-amber-50 text-amber-950',
+                                        status === 'pending' && 'border-[#ece7df] bg-[#faf8f5] text-[#78716c]',
+                                    )}
+                                >
+                                    <span className="text-sm font-medium">{t(step.label)}</span>
+                                    {status === 'active' ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : status === 'complete' ? (
+                                        <span className="text-xs font-semibold uppercase tracking-[0.14em]">{t('Done')}</span>
+                                    ) : (
+                                        <span className="text-xs font-semibold uppercase tracking-[0.14em]">{t('Pending')}</span>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </div>
+    ) : null;
+
+    const generationFailedScreen = builderGenerationState === 'failed' ? (
+        <div className="fixed inset-0 z-[100] bg-background" role="alert" aria-live="polite">
+            <div className="flex h-full items-center justify-center px-6">
+                <div className="w-full max-w-xl rounded-[32px] border border-red-200 bg-white p-8 shadow-[0_24px_80px_rgba(28,25,23,0.08)]">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-700">
+                            <Sparkles className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <h1 className="text-xl font-semibold text-[#1c1917]">
+                                {t('Website generation failed')}
+                            </h1>
+                            <p className="mt-1 text-sm text-[#78716c]">
+                                {projectGeneration?.error_message || t('We could not finish creating this website.')}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 flex gap-3">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => router.reload({ only: ['project'] })}
+                            className="rounded-full"
+                        >
+                            {t('Refresh status')}
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => router.visit('/create')}
+                            className="rounded-full"
+                        >
+                            {t('Create another project')}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    ) : null;
+
     /** სანამ აგენტი მუშაობს (build_status === 'building'), საიტი დახურული — იგივე ლოადერი როგორც პროექტის შექმნისას. */
     if (project.build_status === 'building') {
         return (
@@ -2324,6 +2527,26 @@ export default function Chat({
                 <div className="fixed inset-0 z-[100] bg-background" aria-busy="true" aria-label={t('Building your project...')}>
                     <ChatPageSkeleton />
                 </div>
+            </>
+        );
+    }
+
+    if (initialGenerationScreen) {
+        return (
+            <>
+                <Head title={project.name} />
+                <Toaster />
+                {initialGenerationScreen}
+            </>
+        );
+    }
+
+    if (generationFailedScreen) {
+        return (
+            <>
+                <Head title={project.name} />
+                <Toaster />
+                {generationFailedScreen}
             </>
         );
     }

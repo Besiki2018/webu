@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RunProjectGeneration;
+use App\Models\ProjectGenerationRun;
 use App\Services\AiWebsiteGeneration\GenerateWebsiteProjectService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -40,26 +42,54 @@ class GenerateWebsiteController extends Controller
             ]);
         }
 
-        $ultraCheapMode = $user->aiSettings?->isUltraCheapMode() ?? true;
-
-        try {
-            $result = app(GenerateWebsiteProjectService::class)->generate([
-                'userPrompt' => $validated['prompt'],
-                'language' => $validated['language'] ?? null,
-                'style' => $validated['style'] ?? null,
-                'websiteType' => $validated['websiteType'] ?? null,
-                'user_id' => $user->id,
-                'ultra_cheap_mode' => $ultraCheapMode,
-            ]);
-        } catch (\Throwable $e) {
-            report($e);
-
+        $buildCreditService = app(\App\Services\BuildCreditService::class);
+        $canBuild = $buildCreditService->canPerformBuild($user);
+        if (! $canBuild['allowed']) {
             return back()->withErrors([
-                'prompt' => __('Generation failed. Try again or create a project from the main Create page.'),
+                'prompt' => $canBuild['reason'],
             ]);
         }
 
-        $project = $result['project'];
+        $hasActiveGeneration = ProjectGenerationRun::query()
+            ->where('user_id', $user->id)
+            ->whereIn('status', [
+                ProjectGenerationRun::STATUS_QUEUED,
+                ProjectGenerationRun::STATUS_PLANNING,
+                ProjectGenerationRun::STATUS_GENERATING,
+                ProjectGenerationRun::STATUS_FINALIZING,
+            ])
+            ->exists();
+
+        if ($hasActiveGeneration) {
+            return back()->withErrors([
+                'prompt' => __('You already have a website generation in progress. Wait for it to finish before starting a new one.'),
+            ]);
+        }
+
+        $ultraCheapMode = $user->aiSettings?->isUltraCheapMode() ?? true;
+
+        $prompt = trim((string) $validated['prompt']);
+        $project = app(GenerateWebsiteProjectService::class)->createProjectShell($user->id, $prompt);
+
+        $generationRun = ProjectGenerationRun::query()->create([
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'status' => ProjectGenerationRun::STATUS_QUEUED,
+            'requested_prompt' => $prompt,
+            'requested_language' => $validated['language'] ?? null,
+            'requested_style' => $validated['style'] ?? null,
+            'requested_website_type' => $validated['websiteType'] ?? null,
+            'requested_input' => [
+                'prompt' => $prompt,
+                'language' => $validated['language'] ?? null,
+                'style' => $validated['style'] ?? null,
+                'websiteType' => $validated['websiteType'] ?? null,
+                'ultra_cheap_mode' => $ultraCheapMode,
+            ],
+            'progress_message' => 'Preparing generation.',
+        ]);
+
+        RunProjectGeneration::dispatchAfterResponse((string) $generationRun->id);
 
         $url = route('chat', [
             'project' => $project,
@@ -70,7 +100,7 @@ class GenerateWebsiteController extends Controller
 
         return redirect()->to($url)->with(
             'success',
-            __('Website created. The visual builder is ready.')
+            __('Website generation started. The visual builder will open when the project is ready.')
         );
     }
 }

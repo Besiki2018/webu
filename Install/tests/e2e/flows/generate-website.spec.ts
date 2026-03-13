@@ -1,52 +1,67 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import { ensureAuthenticatedPage } from '../helpers/auth';
 
-/**
- * E2E flow: Generate website (Tab 9 B1).
- * Open app, trigger generate-website path, assert no runtime errors and critical UI exists.
- */
+const HAS_AUTH = Boolean(
+  process.env.PLAYWRIGHT_AUTH_STORAGE_STATE
+  || (process.env.TEST_USER_EMAIL && process.env.TEST_USER_PASSWORD)
+);
+
+async function openCreatePage(page: Page): Promise<void> {
+  await page.goto('/create');
+
+  if (!page.url().includes('/login')) {
+    return;
+  }
+
+  test.skip(!HAS_AUTH, 'Set TEST_USER_EMAIL/TEST_USER_PASSWORD or PLAYWRIGHT_AUTH_STORAGE_STATE to run create-flow E2E.');
+  await ensureAuthenticatedPage(page, '/create');
+}
+
+async function fillCreatePrompt(page: Page, prompt: string): Promise<void> {
+  const promptEditor = page.getByRole('textbox').first();
+  await expect(promptEditor).toBeVisible({ timeout: 10000 });
+  await promptEditor.fill(prompt);
+}
+
+async function clickGenerate(page: Page): Promise<void> {
+  const submit = page.getByRole('button', { name: /send message|გაგზავნა/i }).first();
+  await expect(submit).toBeVisible({ timeout: 10000 });
+  await submit.click();
+}
+
 test.describe('Generate website flow', () => {
-  test('Create page loads and generate-website entry point is visible', async ({ page }) => {
-    await page.goto('/create');
-    await expect(page).toHaveURL(/\/create/);
-    const textarea = page.locator('textarea').first();
-    await expect(textarea).toBeVisible({ timeout: 10000 });
-    await textarea.fill('Small business landing page');
-    const generateLink = page.getByText(/generate website with AI|instant.*CMS/i);
-    await expect(generateLink.first()).toBeVisible({ timeout: 5000 });
+  test('Create page loads for an authenticated user', async ({ page }) => {
+    await openCreatePage(page);
+    await expect(page).toHaveURL(/\/create/, { timeout: 10000 });
+    await expect(page.getByRole('textbox').first()).toBeVisible({ timeout: 10000 });
   });
 
-  test('Chat generates project -> redirect to project or show progress', async ({ page }) => {
-    await page.goto('/create');
-    await expect(page).toHaveURL(/\/create/);
-    const textarea = page.locator('textarea').first();
-    await expect(textarea).toBeVisible({ timeout: 10000 });
-    await textarea.fill('Coffee shop landing');
-    const generateBtn = page.getByText(/generate website with AI|instant.*CMS/i).first();
-    await expect(generateBtn).toBeVisible({ timeout: 5000 });
-    await generateBtn.click();
-    await expect(
-      page.getByText(/building|redirect|project|error/i).or(page.locator('[class*="loading"], [class*="progress"]'))
-    ).toBeVisible({ timeout: 15000 });
+  test('Create redirects directly to inspect builder route', async ({ page }) => {
+    await openCreatePage(page);
+    await fillCreatePrompt(page, `Coffee shop landing ${Date.now()}`);
+    await clickGenerate(page);
+
+    await expect(page).toHaveURL(/\/project\/[^/?]+\?tab=inspect/, { timeout: 35000 });
   });
 
-  test('Chat generates project -> inspect/CMS tab opens when redirect completes', async ({ page }) => {
-    await page.goto('/create');
-    await expect(page).toHaveURL(/\/create/);
-    const textarea = page.locator('textarea').first();
-    await expect(textarea).toBeVisible({ timeout: 10000 });
-    await textarea.fill('Pet store one page');
-    const generateBtn = page.getByText(/generate website with AI|instant.*CMS/i).first();
-    await expect(generateBtn).toBeVisible({ timeout: 5000 });
-    await generateBtn.click();
-    await expect(
-      page.getByText(/building|redirect|project|error/i).or(page.locator('[class*="loading"], [class*="progress"]'))
-    ).toBeVisible({ timeout: 10000 });
-    await expect(page).toHaveURL(/\/(project\/[^/]+\/(cms|chat)|create)/, { timeout: 35000 });
-    if (page.url().match(/\/project\/[^/]+\/(cms|chat)/)) {
-      const editorTab = page.getByRole('tab').filter({ hasText: /editor|structure|elements|page/i }).or(
-        page.locator('[data-section="editor"], [data-value="editor"]')
-      ).first();
-      await expect(editorTab).toBeVisible({ timeout: 8000 });
+  test('Preview stays unmounted while generation overlay is visible', async ({ page }) => {
+    await openCreatePage(page);
+    await fillCreatePrompt(page, `Pet store landing ${Date.now()}`);
+    await clickGenerate(page);
+
+    await expect(page).toHaveURL(/\/project\/[^/?]+\?tab=inspect/, { timeout: 35000 });
+
+    const generationOverlay = page.locator('[aria-label="Generating your website..."]').first();
+    const previewFrame = page.locator('iframe[src*="/themes/"][src*="draft=1"]').first();
+
+    if (await generationOverlay.isVisible().catch(() => false)) {
+      await expect(generationOverlay).toBeVisible({ timeout: 10000 });
+      await expect(previewFrame).toHaveCount(0);
+      return;
     }
+
+    await expect(
+      previewFrame.or(page.getByText(/Website generation failed/i)).or(page.getByRole('button', { name: /save|publish|undo/i }).first())
+    ).toBeVisible({ timeout: 15000 });
   });
 });

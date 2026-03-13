@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Booking\Contracts\BookingAuthorizationServiceContract;
 use App\Cms\Contracts\CmsRepositoryContract;
 use App\Models\Project;
+use App\Models\ProjectGenerationRun;
 use App\Models\Site;
 use App\Services\ProjectWorkspace\ProjectWorkspaceService;
 use Illuminate\Support\Arr;
@@ -41,12 +42,18 @@ class SiteProvisioningService
             ]);
         }
 
+        $managedGenerationFlow = $this->usesManagedGenerationFlow($project);
+
         $this->syncSiteMetaFromProject($site, $project);
         $this->ensureGlobalSettings($site);
-        $this->ensureMenus($site, $project);
-        $this->ensureDefaultPages($site, $project);
+        if (! $managedGenerationFlow) {
+            $this->ensureMenus($site, $project);
+            $this->ensureDefaultPages($site, $project);
+        }
         $this->bookingAuthorization->ensureSiteRoles($site);
-        $this->demoContentSeeder->seedForProject($site, $project);
+        if (! $managedGenerationFlow) {
+            $this->demoContentSeeder->seedForProject($site, $project);
+        }
         $this->ensureBakedDesignSnapshot($site);
         $this->ensureProjectCodebase($project);
 
@@ -204,6 +211,17 @@ class SiteProvisioningService
         $this->ensureBakedDesignSnapshot($site);
 
         return $site->fresh();
+    }
+
+    private function usesManagedGenerationFlow(Project $project): bool
+    {
+        if ($project->relationLoaded('latestGenerationRun') && $project->latestGenerationRun) {
+            return true;
+        }
+
+        return ProjectGenerationRun::query()
+            ->where('project_id', $project->id)
+            ->exists();
     }
 
     private function isEcommerceTemplate(array $templateData): bool

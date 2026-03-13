@@ -42,6 +42,7 @@ describe('useCmsEmbeddedBuilderSync', () => {
             setPageEditorMode: vi.fn(),
             setSectionsDraft: vi.fn(),
             sectionsDraftRef: { current: [] },
+            scheduleStructuralDraftPersistRef: { current: vi.fn() },
             setSelectedSectionLocalId: vi.fn(),
             setSelectedFixedSectionKey: vi.fn(),
             setSelectedNestedSection: vi.fn(),
@@ -54,6 +55,8 @@ describe('useCmsEmbeddedBuilderSync', () => {
             normalizeSectionTypeKey: vi.fn((key: string) => key),
             formatPropsText: vi.fn(() => '{}'),
             builderFieldGroupToSidebarTab: vi.fn(() => 'content' as const),
+            createBuilderSectionDraft: vi.fn(() => null),
+            applyMutationState: vi.fn(),
         };
         const mutationOptions = {
             isEmbeddedMode: true,

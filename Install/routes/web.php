@@ -88,6 +88,7 @@ use App\Http\Controllers\ProjectCmsController;
 use App\Http\Controllers\ProjectCustomDomainController;
 use App\Http\Controllers\ProjectFileController;
 use App\Http\Controllers\ProjectFirebaseController;
+use App\Http\Controllers\ProjectGenerationStatusController;
 use App\Http\Controllers\ProjectBuilderRetrievalController;
 use App\Http\Controllers\ProjectPublishController;
 use App\Http\Controllers\ProjectSettingsController;
@@ -223,6 +224,8 @@ Route::middleware('installed')->group(function () {
     // Project chat routes
     Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/project/{project}', [ChatController::class, 'show'])->name('chat');
+        Route::get('/project/{project}/generation-status', ProjectGenerationStatusController::class)
+            ->name('project.generation.status');
         Route::post('/project/send', [ChatController::class, 'send'])->name('chat.send');
         Route::post('/panel/projects/{project}/chat-propose-patch', [ChatController::class, 'proposePatch'])->name('panel.projects.chat-propose-patch');
         Route::post('/panel/projects/{project}/chat-apply-patch', [ChatController::class, 'applyPatch'])->name('panel.projects.chat-apply-patch');

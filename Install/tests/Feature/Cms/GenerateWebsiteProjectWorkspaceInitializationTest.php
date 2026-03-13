@@ -39,7 +39,7 @@ class GenerateWebsiteProjectWorkspaceInitializationTest extends TestCase
         $this->assertFileExists($workspaceRoot.'/index.html');
         $this->assertFileExists($workspaceRoot.'/src/main.tsx');
         $this->assertFileExists($workspaceRoot.'/src/pages/home/Page.tsx');
-        $this->assertFileExists($workspaceRoot.'/src/sections/HeroSection.tsx');
+        $this->assertFileExists($workspaceRoot.'/src/sections/HeadingSection.tsx');
         $this->assertFileExists($workspaceRoot.'/.webu/index.json');
         $this->assertFileExists($workspaceRoot.'/.webu/component-parameters.json');
 
@@ -48,8 +48,8 @@ class GenerateWebsiteProjectWorkspaceInitializationTest extends TestCase
         $this->assertIsArray($index);
         $this->assertArrayHasKey('component_parameters', $index);
         $this->assertArrayHasKey('sections', $index['component_parameters']);
-        $this->assertArrayHasKey('HeroSection', $index['component_parameters']['sections']);
-        $this->assertArrayHasKey('fields', $index['component_parameters']['sections']['HeroSection']);
+        $this->assertArrayHasKey('HeadingSection', $index['component_parameters']['sections']);
+        $this->assertArrayHasKey('fields', $index['component_parameters']['sections']['HeadingSection']);
 
         $homePage = Page::query()
             ->where('site_id', $result['site']->id)
