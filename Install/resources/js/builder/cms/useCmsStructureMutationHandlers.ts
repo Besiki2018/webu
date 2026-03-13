@@ -19,8 +19,8 @@ import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
 import { isRecord } from '@/builder/state/sectionProps';
 import { duplicateSection, getInsertIndex, moveSection } from '@/builder/visual/treeUtils';
 import { parseVisualDropId, type DropTarget, VISUAL_DROP_PREFIX } from '@/builder/visual/types';
-import { getEntry, hasEntry } from '@/builder/registry/componentRegistry';
 import {
+    getComponentRenderEntry,
     getDefaultProps as getBuilderDefaultProps,
     isComponentAllowedForProjectSiteType,
     isValidComponent,
@@ -153,8 +153,8 @@ export function useCmsStructureMutationHandlers({
             }
         }
 
-        if (Object.keys(defaultProps).length === 0 && hasEntry(sectionKey)) {
-            const registryEntry = getEntry(sectionKey);
+        if (Object.keys(defaultProps).length === 0) {
+            const registryEntry = getComponentRenderEntry(sectionKey);
             if (registryEntry?.defaults && typeof registryEntry.defaults === 'object' && !Array.isArray(registryEntry.defaults)) {
                 defaultProps = cloneRecord(registryEntry.defaults as Record<string, unknown>);
             }

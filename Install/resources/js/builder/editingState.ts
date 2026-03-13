@@ -8,7 +8,6 @@ import {
     resolveSchemaMatchedField,
     splitSchemaFieldPath,
 } from '@/builder/schema/schemaBindingResolver';
-import { getEntry } from './registry/componentRegistry';
 import { isRecord, parseSectionProps } from '@/builder/state/sectionProps';
 import type { BuilderSection } from '@/builder/visual/treeUtils';
 import type { ElementMention } from '@/types/inspector';
@@ -293,12 +292,6 @@ function resolveFieldMeta(sectionKey: string | null, path: string | null): {
     }
 
     let schema = getComponentSchema(sectionKey) as unknown as BuilderComponentSchema | null;
-    if (!schema && sectionKey) {
-        const entry = getEntry(sectionKey);
-        if (entry?.schema && typeof entry.schema === 'object') {
-            schema = entry.schema as unknown as BuilderComponentSchema;
-        }
-    }
     if (schema && Array.isArray((schema as unknown as Record<string, unknown>).editableFields) && !schema.fields) {
         const editableFields = (schema as unknown as Record<string, unknown>).editableFields as Array<{ key: string; type?: string }>;
         schema = {

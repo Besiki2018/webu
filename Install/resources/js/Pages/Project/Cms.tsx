@@ -193,13 +193,13 @@ import {
     getAvailableComponents,
     getAllowedComponents,
     getComponent,
+    getComponentRenderEntry,
     getComponentSchema,
     getComponentSchemaJson,
     isComponentAllowedForProjectSiteType,
     resolveComponentProps,
 } from '@/builder/componentRegistry';
 import { isComponentCompatibleWithProjectType } from '@/builder/componentCompatibility';
-import { getEntry, hasEntry } from '@/builder/registry/componentRegistry';
 import { normalizeProjectSiteType } from '@/builder/projectTypes';
 import { useBuilderStore } from '@/builder/store/builderStore';
 import { invalidateDOMMapCache } from '@/builder/domMapper';
@@ -8579,7 +8579,7 @@ export default function Cms({
         // Component context: filter central-registry components by schema projectTypes.
         source = source.filter((item) => {
             const normalizedKey = normalizeSectionTypeKey(item.key);
-            if (!hasEntry(normalizedKey)) return true;
+            if (!getComponentRenderEntry(normalizedKey)) return true;
             return isComponentCompatibleWithProjectType(normalizedKey, projectType);
         });
 
@@ -11283,8 +11283,7 @@ main[data-webu-role="page-root"],
                 return;
             }
 
-            const isKnownComponent = hasEntry(normalized)
-                || getComponentSchema(normalized) !== null
+            const isKnownComponent = getComponentSchema(normalized) !== null
                 || getComponent(normalized) !== null;
             if (!isKnownComponent && !loggedUnknownBuilderPreviewSectionKeysRef.current.has(normalized)) {
                 loggedUnknownBuilderPreviewSectionKeysRef.current.add(normalized);
@@ -16160,8 +16159,7 @@ main[data-webu-role="page-root"],
         }
 
         const normalizedSectionType = normalizeSectionTypeKey(sectionType);
-        const isKnownComponent = hasEntry(normalizedSectionType)
-            || getComponentSchema(normalizedSectionType) !== null
+        const isKnownComponent = getComponentSchema(normalizedSectionType) !== null
             || getComponent(normalizedSectionType) !== null;
         if (!isKnownComponent && !loggedUnknownBuilderPreviewSectionKeysRef.current.has(normalizedSectionType)) {
             loggedUnknownBuilderPreviewSectionKeysRef.current.add(normalizedSectionType);
@@ -27031,23 +27029,55 @@ ${showRules}
     }) => {
         const inputClassName = options.compact ? 'h-8 text-xs' : undefined;
         const previewClassName = options.compact ? 'max-h-44' : 'max-h-48';
-        const triggerLabel = options.isVideoField ? t('Choose / Upload Video') : t('Choose / Upload Image');
         const triggerVariant = options.compact ? 'outline' : 'secondary';
         const triggerSize = options.compact ? 'sm' : 'default';
         const hasValue = options.effectiveValue.trim() !== '';
-        const openPicker = () => openMediaPicker({
-            fieldLabel: options.fieldLabel,
-            mediaType: options.isVideoField ? 'video' : 'image',
-            currentValue: options.effectiveValue,
-            onApply: options.onChange,
-        });
+        const triggerLabel = options.isVideoField
+            ? (hasValue ? t('Replace Video') : t('Upload Video'))
+            : (hasValue ? t('Replace Image') : t('Upload Image'));
+        const openUploadPicker = (origin: HTMLElement | null) => {
+            const input = origin
+                ?.closest<HTMLElement>('[data-builder-media-field="true"]')
+                ?.querySelector('input[data-builder-media-upload="true"]');
+            if (input instanceof HTMLInputElement) {
+                input.click();
+            }
+        };
+        const handleDirectUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+
+            if (!file) {
+                return;
+            }
+
+            const uploaded = await uploadMediaFile(file);
+            if (!uploaded) {
+                return;
+            }
+
+            options.onChange(uploaded.asset_url);
+            toast.success(options.isVideoField ? t('Video uploaded') : t('Image uploaded'));
+        };
 
         return (
-            <div className={options.compact ? 'space-y-1' : 'space-y-1.5'}>
+            <div
+                data-builder-media-field="true"
+                className={options.compact ? 'space-y-1' : 'space-y-1.5'}
+            >
                 <Label className={CMS_BUILDER_PARAM_LABEL_CLASS}>{t(options.fieldLabel)}</Label>
                 {options.pathCaption ? (
                     <p className="text-[10px] text-muted-foreground break-all">{options.pathCaption}</p>
                 ) : null}
+                <input
+                    data-builder-media-upload="true"
+                    type="file"
+                    accept={options.isVideoField ? 'video/*' : 'image/*'}
+                    className="sr-only"
+                    onChange={(event) => {
+                        void handleDirectUpload(event);
+                    }}
+                />
                 {options.isVideoField ? (
                     <Input
                         className={inputClassName}
@@ -27066,7 +27096,7 @@ ${showRules}
                     }}
                     onClick={(event) => {
                         event.stopPropagation();
-                        openPicker();
+                        openUploadPicker(event.currentTarget);
                     }}
                 >
                     {triggerLabel}
@@ -27081,7 +27111,7 @@ ${showRules}
                             }}
                             onClick={(event) => {
                                 event.stopPropagation();
-                                openPicker();
+                                openUploadPicker(event.currentTarget);
                             }}
                             onKeyDown={(event) => {
                                 if (event.key !== 'Enter' && event.key !== ' ') {
@@ -27090,7 +27120,7 @@ ${showRules}
 
                                 event.preventDefault();
                                 event.stopPropagation();
-                                openPicker();
+                                openUploadPicker(event.currentTarget);
                             }}
                             className={`${options.compact ? 'rounded-md border bg-muted/20 p-1' : 'rounded-md border bg-muted/20 p-1.5'} w-full text-left hover:border-primary/50`}
                         >

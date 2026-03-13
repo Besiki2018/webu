@@ -1,6 +1,6 @@
 /**
  * Phase 8 — Legacy system detection.
- * Ensures no direct component imports in renderer, and only the central registry wires real components.
+ * Ensures no direct component imports in renderer, and only the canonical component registry wires real components.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -31,8 +31,7 @@ describe('Phase 8 — Legacy detection', () => {
         expect(content).not.toMatch(/from\s+['\"][^'"]*sections\/Hero['\"]/);
     });
 
-    it('only centralComponentRegistry imports layout/Header, layout/Footer, sections/Hero in builder', () => {
-        const centralPath = path.join(BUILDER_ROOT, 'centralComponentRegistry.ts');
+    it('only componentRegistry imports layout/Header, layout/Footer, sections/Hero in builder', () => {
         const filesWithImports: string[] = [];
         for (const file of walkTsFiles(BUILDER_ROOT)) {
             const content = fs.readFileSync(file, 'utf8');
@@ -44,16 +43,22 @@ describe('Phase 8 — Legacy detection', () => {
                 filesWithImports.push(rel);
             }
         }
-        const allowed = ['centralComponentRegistry.ts', 'componentRegistry.ts'];
+        const allowed = ['componentRegistry.ts'];
         const onlyAllowed = filesWithImports.every((f) => allowed.some((a) => f === a || f.endsWith(a)));
-        expect(onlyAllowed, `Only central registry (and main registry for schema) may import from section paths; found in: ${filesWithImports.join(', ')}`).toBe(true);
+        expect(onlyAllowed, `Only componentRegistry.ts may import canonical section components; found in: ${filesWithImports.join(', ')}`).toBe(true);
         expect(filesWithImports.length).toBeGreaterThan(0);
     });
 
-    it('componentRegistry imports only schemas from Header/Footer/Hero, not components', () => {
+    it('componentRegistry owns canonical component imports and central shim stays empty', () => {
         const regPath = path.join(BUILDER_ROOT, 'componentRegistry.ts');
-        const content = fs.readFileSync(regPath, 'utf8');
-        expect(content).not.toMatch(/import\s+.*\b(Header|Footer|Hero)\s+.*from\s+['\"][^'\"]*(layout\/Header|layout\/Footer|sections\/Hero)/);
-        expect(content).toMatch(/Header\.schema|Footer\.schema|Hero\.schema/);
+        const regContent = fs.readFileSync(regPath, 'utf8');
+        expect(regContent).toMatch(/import\s+.*\bHeader\b.*from\s+['\"][^'\"]*layout\/Header/);
+        expect(regContent).toMatch(/import\s+.*\bFooter\b.*from\s+['\"][^'\"]*layout\/Footer/);
+        expect(regContent).toMatch(/import\s+.*\bHero\b.*from\s+['\"][^'\"]*sections\/Hero/);
+        expect(regContent).toMatch(/Header\.schema|Footer\.schema|Hero\.schema/);
+
+        const centralPath = path.join(BUILDER_ROOT, 'centralComponentRegistry.ts');
+        const centralContent = fs.readFileSync(centralPath, 'utf8');
+        expect(centralContent).not.toMatch(/layout\/Header|layout\/Footer|sections\/Hero/);
     });
 });

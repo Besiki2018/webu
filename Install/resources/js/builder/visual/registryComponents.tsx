@@ -1,5 +1,5 @@
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
-import { getCentralRegistryEntry } from '../centralComponentRegistry';
+import { getComponentRenderEntry } from '../componentRegistry';
 import { ensureFullComponentProps } from '../builderCompatibility';
 
 type BuilderCanvasFieldGroup = 'content' | 'layout' | 'style' | 'advanced' | 'responsive' | 'state' | 'states' | 'data' | 'bindings' | 'meta';
@@ -213,7 +213,7 @@ function Shell({
 
 /** Renders the full Header builder component (no placeholder). */
 export function BuilderHeaderCanvasSection({ displayName, props, sectionKey }: BuilderCanvasComponentProps) {
-    const entry = getCentralRegistryEntry('webu_header_01');
+    const entry = getComponentRenderEntry('webu_header_01');
     if (entry) {
         const mapped = entry.mapBuilderProps ? entry.mapBuilderProps(props) : props;
         const componentProps = ensureFullComponentProps(
@@ -232,7 +232,7 @@ export function BuilderHeaderCanvasSection({ displayName, props, sectionKey }: B
 
 /** Renders the full Hero builder component (no placeholder). */
 export function BuilderHeroCanvasSection({ displayName, props, sectionKey }: BuilderCanvasComponentProps) {
-    const entry = getCentralRegistryEntry('webu_general_hero_01');
+    const entry = getComponentRenderEntry('webu_general_hero_01');
     if (entry) {
         const mapped = entry.mapBuilderProps ? entry.mapBuilderProps(props) : props;
         const componentProps = ensureFullComponentProps(
@@ -453,7 +453,7 @@ export function BuilderVideoCanvasSection({ displayName, props, sectionKey }: Bu
 
 /** Renders the full Footer builder component (no placeholder). */
 export function BuilderFooterCanvasSection({ displayName, props, sectionKey }: BuilderCanvasComponentProps) {
-    const entry = getCentralRegistryEntry('webu_footer_01');
+    const entry = getComponentRenderEntry('webu_footer_01');
     if (entry) {
         const mapped = entry.mapBuilderProps ? entry.mapBuilderProps(props) : props;
         const componentProps = ensureFullComponentProps(

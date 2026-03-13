@@ -5,11 +5,11 @@ import { RootDropZone } from './RootDropZone';
 import type { BuilderSection } from './treeUtils';
 import type { DropTarget } from './types';
 import {
+    getComponentRenderEntry,
     getComponentRuntimeEntry,
     resolveComponentProps,
     resolveComponentRegistryKey,
 } from '../componentRegistry';
-import { getCentralRegistryEntry } from '../registry/componentRegistry';
 import { mergeDefaults } from '../utils';
 import type { BuilderEditableTarget } from '../editingState';
 
@@ -30,23 +30,6 @@ function logUnknownSectionType(section: BuilderSection): void {
         sectionLocalId: section.localId,
         sectionType: normalizedType,
     });
-}
-
-function parseSectionProps(input: unknown): Record<string, unknown> {
-    if (input !== null && typeof input === 'object' && !Array.isArray(input)) {
-        return input as Record<string, unknown>;
-    }
-    if (typeof input === 'string' && input.trim() !== '') {
-        try {
-            const parsed: unknown = JSON.parse(input);
-            return (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed))
-                ? (parsed as Record<string, unknown>)
-                : {};
-        } catch {
-            return {};
-        }
-    }
-    return {};
 }
 
 function UnknownComponentFallback({ type }: { type: string }) {
@@ -141,16 +124,15 @@ export function BuilderCanvas({
 
             // Use central component registry when available (Header, Footer, Hero).
             // Phase 6: props = saved component props + default props; render <Component {...props} />.
-            const centralEntry = getCentralRegistryEntry(runtimeEntry.componentKey);
-            if (centralEntry) {
-                const Component = centralEntry.component;
-                const savedProps = parseSectionProps(section.props ?? section.propsText);
+            const renderEntry = getComponentRenderEntry(runtimeEntry.componentKey);
+            if (renderEntry) {
+                const Component = renderEntry.component;
                 const mergedProps = mergeDefaults(
-                    centralEntry.defaults as Record<string, unknown>,
-                    savedProps
+                    renderEntry.defaults as Record<string, unknown>,
+                    props,
                 );
-                const componentProps = centralEntry.mapBuilderProps
-                    ? centralEntry.mapBuilderProps(mergedProps)
+                const componentProps = renderEntry.mapBuilderProps
+                    ? renderEntry.mapBuilderProps(mergedProps)
                     : mergedProps;
                 return (
                     <BuilderCanvasSectionSurface

@@ -23,7 +23,7 @@ export type {
     BuilderProjectType,
 } from './componentRegistry';
 
-export type { ComponentRegistryEntry as BuilderComponentRegistryEntry } from './centralComponentRegistry';
+export type { ComponentRegistryEntry as BuilderComponentRegistryEntry } from './componentRegistry';
 
 // ---------------------------------------------------------------------------
 // Field group standard (content | style | advanced | responsive | state)

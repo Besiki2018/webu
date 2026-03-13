@@ -4,7 +4,20 @@
  * editable parameters, categories, and metadata. AI may only add components that exist in the registry.
  */
 
+import type { ComponentType } from 'react';
 import type { BuilderCanvasComponent } from './visual/registryComponents';
+import { Header } from '@/components/layout/Header';
+import { Footer } from '@/components/layout/Footer';
+import { Hero } from '@/components/sections/Hero';
+import { Features } from '@/components/sections/Features';
+import { CTA } from '@/components/sections/CTA';
+import { Navigation } from '@/components/layout/Navigation';
+import { Cards } from '@/components/sections/Cards';
+import { Grid } from '@/components/sections/Grid';
+import { WebuTestimonials } from '@/components/design-system/webu-testimonials';
+import { WebuFaq } from '@/components/design-system/webu-faq';
+import { WebuBanner } from '@/components/design-system/webu-banner';
+import { WebuOffcanvasMenu } from '@/components/design-system/webu-offcanvas-menu';
 import { HEADER_SCHEMA } from '@/components/layout/Header/Header.schema';
 import { FOOTER_SCHEMA } from '@/components/layout/Footer/Footer.schema';
 import { HERO_SCHEMA } from '@/components/sections/Hero/Hero.schema';
@@ -28,7 +41,7 @@ import {
     BuilderTextCanvasSection,
     BuilderVideoCanvasSection,
 } from './visual/registryComponents';
-import { normalizeProjectSiteType, type ProjectSiteType } from './projectTypes';
+import { normalizeProjectSiteType, type ProjectSiteType, type ProjectType } from './projectTypes';
 
 export type ParameterType = 'string' | 'number' | 'boolean' | 'image' | 'collection' | 'richtext' | 'url';
 
@@ -193,6 +206,19 @@ export interface ComponentDefinition {
     projectTypes?: BuilderProjectType[];
     /** Normalized AI/builder governance category. Falls back to derived value when omitted. */
     governanceCategory?: BuilderGovernanceCategory;
+}
+
+export interface ComponentRegistryEntry<P = Record<string, unknown>> {
+    component: ComponentType<P>;
+    schema: Record<string, unknown>;
+    defaults: Record<string, unknown>;
+    mapBuilderProps?: (builderProps: Record<string, unknown>) => P;
+}
+
+interface StaticComponentRenderEntry<P = Record<string, unknown>> {
+    key: string;
+    component: ComponentType<P>;
+    mapBuilderProps?: (builderProps: Record<string, unknown>, defaults: Record<string, unknown>) => P;
 }
 
 export interface BuilderComponentRuntimeEntry {
@@ -1114,6 +1140,66 @@ function parseComponentProps(input: unknown): Record<string, unknown> {
     return isPlainObject(input) ? input : {};
 }
 
+function asRenderableString(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
+}
+
+function asRenderableComponent<P>(component: ComponentType<P>): ComponentType<Record<string, unknown>> {
+    return component as unknown as ComponentType<Record<string, unknown>>;
+}
+
+function parseRenderableMenu(value: unknown): Array<{ label: string; url: string; slug?: string }> {
+    if (Array.isArray(value)) {
+        return value
+            .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+            .map((item) => ({
+                label: String(item.label ?? item.title ?? item.text ?? ''),
+                url: String(item.url ?? item.href ?? '#'),
+                slug: item.slug != null ? String(item.slug) : undefined,
+            }))
+            .filter((item) => item.label.trim() !== '');
+    }
+
+    if (typeof value === 'string' && value.trim() !== '') {
+        try {
+            const parsed: unknown = JSON.parse(value);
+            return parseRenderableMenu(parsed);
+        } catch {
+            return [];
+        }
+    }
+
+    return [];
+}
+
+function parseRenderableFooterMenus(
+    links: unknown,
+    socialLinks: unknown,
+): Record<string, { label: string; url: string }[]> {
+    const main = parseRenderableMenu(links).map((item) => ({ label: item.label, url: item.url }));
+    const social = parseRenderableMenu(socialLinks).map((item) => ({ label: item.label, url: item.url }));
+    const result: Record<string, { label: string; url: string }[]> = {};
+    if (main.length > 0) result.links = main;
+    if (social.length > 0) result.social = social;
+    return result;
+}
+
+function parseRenderableRepeaterItems<T extends Record<string, unknown>>(value: unknown): T[] {
+    if (Array.isArray(value)) {
+        return value.filter((item): item is T => !!item && typeof item === 'object') as T[];
+    }
+
+    if (typeof value === 'string' && value.trim() !== '') {
+        try {
+            return parseRenderableRepeaterItems(JSON.parse(value));
+        } catch {
+            return [];
+        }
+    }
+
+    return [];
+}
+
 function resolveCanvasComponent(definition: ComponentDefinition, schema: BuilderComponentSchema): BuilderCanvasComponent {
     if (definition.canvasComponent) {
         return definition.canvasComponent;
@@ -1181,6 +1267,281 @@ function resolveCanvasComponent(definition: ComponentDefinition, schema: Builder
 }
 
 const runtimeEntryCache = new Map<string, BuilderComponentRuntimeEntry>();
+
+const STATIC_COMPONENT_RENDER_ENTRIES: Record<string, StaticComponentRenderEntry> = {
+    webu_header_01: {
+        key: 'header',
+        component: asRenderableComponent(Header),
+        mapBuilderProps: (props, defaults) => ({
+            logo: asRenderableString(props.logoText) || asRenderableString(defaults.logoText) || 'Logo',
+            logoFallback: asRenderableString(props.logoFallback) || asRenderableString(defaults.logoFallback) || 'Logo',
+            logoUrl: asRenderableString(props.logo_url) || asRenderableString(defaults.logoUrl) || '/',
+            logoImageUrl: asRenderableString(props.logo_url) || undefined,
+            menu: parseRenderableMenu(props.menu_items),
+            ctaLabel: asRenderableString(props.ctaText) || asRenderableString(defaults.ctaText) || undefined,
+            ctaUrl: asRenderableString(props.ctaLink) || asRenderableString(defaults.ctaLink) || undefined,
+            variant: asRenderableString(props.variant) || asRenderableString(defaults.variant) || 'header-1',
+            backgroundColor: asRenderableString(props.backgroundColor) || asRenderableString(defaults.backgroundColor),
+            textColor: asRenderableString(props.textColor) || asRenderableString(defaults.textColor),
+            navAriaLabel: asRenderableString(props.navAriaLabel) || asRenderableString(defaults.navAriaLabel),
+            menuDrawerFooterLabel: asRenderableString(props.menuDrawerFooterLabel) || asRenderableString(defaults.menuDrawerFooterLabel),
+            menuDrawerFooterUrl: asRenderableString(props.menuDrawerFooterUrl) || asRenderableString(defaults.menuDrawerFooterUrl),
+            sticky: props.sticky === true,
+            alignment: (asRenderableString(props.alignment) || asRenderableString(defaults.alignment) || 'left') as 'left' | 'center' | 'right',
+            showSearch: props.showSearch === true,
+            searchMode: asRenderableString(props.searchMode) || asRenderableString(defaults.searchMode) || 'generic',
+            showCartIcon: props.showCartIcon === true,
+            showWishlistIcon: props.showWishlistIcon === true,
+            ...props,
+        }),
+    },
+    webu_footer_01: {
+        key: 'footer',
+        component: asRenderableComponent(Footer),
+        mapBuilderProps: (props, defaults) => ({
+            logo: asRenderableString(props.logoText) || asRenderableString(defaults.logoText) || 'Footer',
+            logoFallback: asRenderableString(props.logoFallback) || asRenderableString(defaults.logoFallback) || 'Store',
+            logoUrl: asRenderableString(props.logoUrl) || asRenderableString(defaults.logoUrl) || '/',
+            menus: parseRenderableFooterMenus(props.links, props.socialLinks),
+            copyright: asRenderableString(props.copyright) || asRenderableString(defaults.copyright),
+            contactAddress: asRenderableString(props.contactAddress) || asRenderableString(defaults.contactAddress),
+            newsletterHeading: asRenderableString(props.newsletterHeading) || asRenderableString(defaults.newsletterHeading),
+            newsletterCopy: asRenderableString(props.newsletterCopy) || asRenderableString(defaults.newsletterCopy),
+            newsletterPlaceholder: asRenderableString(props.newsletterPlaceholder) || asRenderableString(defaults.newsletterPlaceholder),
+            newsletterButtonLabel: asRenderableString(props.newsletterButtonLabel) || asRenderableString(defaults.newsletterButtonLabel),
+            paymentsLabel: asRenderableString(props.paymentsLabel) || asRenderableString(defaults.paymentsLabel),
+            paymentsAriaLabel: asRenderableString(props.paymentsAriaLabel) || asRenderableString(defaults.paymentsAriaLabel) || 'Payment methods',
+            footerNavAriaLabel: asRenderableString(props.footerNavAriaLabel) || asRenderableString(defaults.footerNavAriaLabel) || 'Footer',
+            paymentMethods: Array.isArray(props.paymentMethods) ? props.paymentMethods : (defaults.paymentMethods as unknown[]),
+            variant: asRenderableString(props.variant) || asRenderableString(defaults.variant) || 'footer-1',
+            backgroundColor: asRenderableString(props.backgroundColor) || asRenderableString(defaults.backgroundColor),
+            textColor: asRenderableString(props.textColor) || asRenderableString(defaults.textColor),
+            ...props,
+        }),
+    },
+    webu_general_hero_01: {
+        key: 'hero',
+        component: asRenderableComponent(Hero),
+        mapBuilderProps: (props, defaults) => {
+            const statAvatars = Array.isArray(props.statAvatars)
+                ? props.statAvatars
+                : (typeof props.stat_avatars === 'string' && props.stat_avatars.trim() !== ''
+                    ? (() => { try { return JSON.parse(props.stat_avatars); } catch { return []; } })()
+                    : defaults.statAvatars);
+
+            return {
+                headline: asRenderableString(props.title) || asRenderableString(props.headline) || asRenderableString(defaults.title),
+                title: asRenderableString(props.title) || asRenderableString(props.headline) || asRenderableString(defaults.title),
+                subheading: asRenderableString(props.subtitle) || asRenderableString(props.subheading) || asRenderableString(defaults.subtitle),
+                subtitle: asRenderableString(props.subtitle) || asRenderableString(props.subheading) || asRenderableString(defaults.subtitle),
+                eyebrow: asRenderableString(props.eyebrow) || asRenderableString(defaults.eyebrow),
+                badgeText: asRenderableString(props.badgeText) || asRenderableString(props.badge_text) || asRenderableString(defaults.badgeText),
+                description: asRenderableString(props.description) || asRenderableString(defaults.description),
+                ctaLabel: asRenderableString(props.buttonText) || asRenderableString(defaults.buttonText),
+                ctaUrl: asRenderableString(props.buttonLink) || asRenderableString(defaults.buttonLink) || '#',
+                ctaSecondaryLabel: asRenderableString(props.secondaryButtonText) || asRenderableString(defaults.secondaryButtonText) || undefined,
+                ctaSecondaryUrl: asRenderableString(props.secondaryButtonLink) || asRenderableString(defaults.secondaryButtonLink) || undefined,
+                imageUrl: asRenderableString(props.image) || asRenderableString(props.backgroundImage) || asRenderableString(defaults.image),
+                imageAlt: asRenderableString(props.imageAlt) || asRenderableString(defaults.imageAlt),
+                imageAltFallback: asRenderableString(props.imageAltFallback) || asRenderableString(defaults.imageAltFallback) || 'Hero',
+                overlayImageUrl: asRenderableString(props.overlayImageUrl) || asRenderableString(props.overlay_image_url) || asRenderableString(defaults.overlayImageUrl),
+                overlayImageAlt: asRenderableString(props.overlayImageAlt) || asRenderableString(props.overlay_image_alt) || asRenderableString(defaults.overlayImageAlt) || 'Overlay',
+                statValue: asRenderableString(props.statValue) || asRenderableString(props.stat_value) || asRenderableString(defaults.statValue),
+                statUnit: asRenderableString(props.statUnit) || asRenderableString(props.stat_unit) || asRenderableString(defaults.statUnit),
+                statLabel: asRenderableString(props.statLabel) || asRenderableString(props.stat_label) || asRenderableString(defaults.statLabel),
+                statAvatars: Array.isArray(statAvatars) ? statAvatars : defaults.statAvatars,
+                backgroundImage: asRenderableString(props.backgroundImage) || asRenderableString(defaults.backgroundImage),
+                variant: asRenderableString(props.variant) || asRenderableString(defaults.variant) || 'hero-1',
+                alignment: (asRenderableString(props.alignment) || asRenderableString(defaults.alignment) || 'left') as 'left' | 'center' | 'right',
+                backgroundColor: asRenderableString(props.backgroundColor) || asRenderableString(defaults.backgroundColor),
+                textColor: asRenderableString(props.textColor) || asRenderableString(defaults.textColor),
+                padding: asRenderableString(props.padding) || asRenderableString(defaults.padding),
+                spacing: asRenderableString(props.spacing) || asRenderableString(defaults.spacing),
+                ...props,
+            };
+        },
+    },
+    webu_general_features_01: {
+        key: 'features',
+        component: asRenderableComponent(Features),
+        mapBuilderProps: (props, defaults) => {
+            const items = parseRenderableRepeaterItems<{ icon?: string; title: string; description?: string }>(props.items);
+            return {
+                title: asRenderableString(props.title) || asRenderableString(defaults.title) || 'Features',
+                items: (Array.isArray(items) && items.length > 0
+                    ? items
+                    : (defaults.items as { icon?: string; title: string; description?: string }[])) ?? [],
+                variant: asRenderableString(props.variant) || asRenderableString(defaults.variant) || 'features-1',
+                backgroundColor: asRenderableString(props.backgroundColor) || asRenderableString(defaults.backgroundColor),
+                textColor: asRenderableString(props.textColor) || asRenderableString(defaults.textColor),
+                ...props,
+            };
+        },
+    },
+    webu_general_cta_01: {
+        key: 'cta',
+        component: asRenderableComponent(CTA),
+        mapBuilderProps: (props, defaults) => ({
+            title: asRenderableString(props.title) || asRenderableString(defaults.title) || 'Ready to get started?',
+            subtitle: asRenderableString(props.subtitle) || asRenderableString(defaults.subtitle) || '',
+            buttonLabel: asRenderableString(props.buttonLabel) || asRenderableString(props.buttonText) || asRenderableString(defaults.buttonLabel) || 'Get started',
+            buttonUrl: asRenderableString(props.buttonUrl) || asRenderableString(props.buttonLink) || asRenderableString(defaults.buttonUrl) || '#',
+            variant: asRenderableString(props.variant) || asRenderableString(defaults.variant) || 'cta-1',
+            backgroundImage: asRenderableString(props.backgroundImage) || asRenderableString(defaults.backgroundImage),
+            backgroundColor: asRenderableString(props.backgroundColor) || asRenderableString(defaults.backgroundColor),
+            textColor: asRenderableString(props.textColor) || asRenderableString(defaults.textColor),
+            padding: asRenderableString(props.padding) || asRenderableString(defaults.padding),
+            spacing: asRenderableString(props.spacing) || asRenderableString(defaults.spacing),
+            ...props,
+        }),
+    },
+    webu_general_navigation_01: {
+        key: 'navigation',
+        component: asRenderableComponent(Navigation),
+        mapBuilderProps: (props, defaults) => {
+            const parsedLinks = parseRenderableMenu(props.links);
+            return {
+                links: parsedLinks.length > 0 ? parsedLinks : parseRenderableMenu(defaults.links),
+                ariaLabel: asRenderableString(props.ariaLabel) || asRenderableString(defaults.ariaLabel) || 'Navigation',
+                variant: asRenderableString(props.variant) || asRenderableString(defaults.variant) || 'navigation-1',
+                alignment: (asRenderableString(props.alignment) || asRenderableString(defaults.alignment) || 'left') as 'left' | 'center' | 'right',
+                backgroundColor: asRenderableString(props.backgroundColor) || asRenderableString(defaults.backgroundColor),
+                textColor: asRenderableString(props.textColor) || asRenderableString(defaults.textColor),
+                padding: asRenderableString(props.padding) || asRenderableString(defaults.padding),
+                spacing: asRenderableString(props.spacing) || asRenderableString(defaults.spacing),
+                ...props,
+            };
+        },
+    },
+    webu_general_cards_01: {
+        key: 'cards',
+        component: asRenderableComponent(Cards),
+        mapBuilderProps: (props, defaults) => {
+            const items = parseRenderableRepeaterItems<{ image?: string; imageAlt?: string; title: string; description?: string; link?: string }>(props.items);
+            return {
+                title: asRenderableString(props.title) || asRenderableString(defaults.title) || 'Cards',
+                items: (Array.isArray(items) && items.length > 0
+                    ? items
+                    : (defaults.items as { image?: string; imageAlt?: string; title: string; description?: string; link?: string }[])) ?? [],
+                variant: asRenderableString(props.variant) || asRenderableString(defaults.variant) || 'cards-1',
+                backgroundColor: asRenderableString(props.backgroundColor) || asRenderableString(defaults.backgroundColor),
+                textColor: asRenderableString(props.textColor) || asRenderableString(defaults.textColor),
+                padding: asRenderableString(props.padding) || asRenderableString(defaults.padding),
+                spacing: asRenderableString(props.spacing) || asRenderableString(defaults.spacing),
+                ...props,
+            };
+        },
+    },
+    webu_general_grid_01: {
+        key: 'grid',
+        component: asRenderableComponent(Grid),
+        mapBuilderProps: (props, defaults) => {
+            const items = parseRenderableRepeaterItems<{ image?: string; imageAlt?: string; title: string; link?: string }>(props.items);
+            const defaultColumns = typeof defaults.columns === 'number' ? defaults.columns : 3;
+            return {
+                title: asRenderableString(props.title) || asRenderableString(defaults.title) || 'Grid',
+                items: (Array.isArray(items) && items.length > 0
+                    ? items
+                    : (defaults.items as { image?: string; imageAlt?: string; title: string; link?: string }[])) ?? [],
+                columns: typeof props.columns === 'number' ? props.columns : Number.parseInt(String(props.columns), 10) || defaultColumns,
+                variant: asRenderableString(props.variant) || asRenderableString(defaults.variant) || 'grid-1',
+                backgroundColor: asRenderableString(props.backgroundColor) || asRenderableString(defaults.backgroundColor),
+                textColor: asRenderableString(props.textColor) || asRenderableString(defaults.textColor),
+                padding: asRenderableString(props.padding) || asRenderableString(defaults.padding),
+                spacing: asRenderableString(props.spacing) || asRenderableString(defaults.spacing),
+                ...props,
+            };
+        },
+    },
+    webu_general_testimonials_01: {
+        key: 'testimonials',
+        component: asRenderableComponent(WebuTestimonials),
+        mapBuilderProps: (props) => {
+            const itemsRaw = parseRenderableRepeaterItems<Record<string, unknown>>(props.items ?? props.testimonials);
+            const items = itemsRaw.map((item) => ({
+                user_name: asRenderableString(item.author ?? item.name ?? item.user_name) || 'Author',
+                avatar: asRenderableString(item.image_url ?? item.avatar_url ?? item.avatar) || undefined,
+                text: asRenderableString(item.quote ?? item.text ?? item.body) || '',
+                rating: typeof item.rating === 'number' ? item.rating : undefined,
+            }));
+            return {
+                title: asRenderableString(props.title) || 'Testimonials',
+                items: items.length > 0 ? items : [{ user_name: 'Author', text: 'Quote text.', rating: 5 }],
+                variant: asRenderableString(props.variant) || 'testimonials-1',
+                ...props,
+            };
+        },
+    },
+    faq_accordion_plus: {
+        key: 'faq',
+        component: asRenderableComponent(WebuFaq),
+        mapBuilderProps: (props) => {
+            const itemsRaw = parseRenderableRepeaterItems<Record<string, unknown>>(props.items);
+            const items = itemsRaw.map((item) => ({
+                question: asRenderableString(item.q ?? item.question) || 'Question?',
+                answer: asRenderableString(item.a ?? item.answer) || 'Answer.',
+            }));
+            return {
+                title: asRenderableString(props.title) || 'FAQ',
+                items: items.length > 0 ? items : [{ question: 'Question?', answer: 'Answer.' }],
+                variant: asRenderableString(props.variant) || 'faq-1',
+                ...props,
+            };
+        },
+    },
+    webu_general_banner_01: {
+        key: 'banner',
+        component: asRenderableComponent(WebuBanner),
+        mapBuilderProps: (props) => ({
+            title: asRenderableString(props.title ?? props.headline) || 'Banner title',
+            subtitle: asRenderableString(props.subtitle ?? props.subheading) || '',
+            ctaLabel: asRenderableString(props.cta_label ?? props.ctaLabel) || 'Learn more',
+            ctaUrl: asRenderableString(props.cta_url ?? props.ctaUrl) || '#',
+            variant: asRenderableString(props.variant) || 'banner-1',
+            ...props,
+        }),
+    },
+    webu_general_offcanvas_menu_01: {
+        key: 'offcanvas',
+        component: asRenderableComponent(WebuOffcanvasMenu),
+        mapBuilderProps: (props) => {
+            const menuItems = parseRenderableRepeaterItems<{ label?: string; url?: string; description?: string }>(props.menu_items);
+            const items = menuItems.length > 0
+                ? menuItems.map((item) => ({
+                    label: asRenderableString(item.label) || 'Link',
+                    url: asRenderableString(item.url) || '#',
+                    description: asRenderableString(item.description) || undefined,
+                }))
+                : [
+                    { label: 'New arrivals', url: '/shop', description: 'Fresh seasonal edits' },
+                    { label: 'Outerwear', url: '/outerwear', description: 'Layering essentials' },
+                    { label: 'Contact', url: '/contact', description: 'Store support' },
+                ];
+
+            return {
+                triggerLabel: asRenderableString(props.trigger_label ?? props.triggerLabel) || 'Open menu',
+                title: asRenderableString(props.title) || 'Shop navigation',
+                subtitle: asRenderableString(props.subtitle) || 'Reusable drawer for desktop hamburger and mobile navigation.',
+                items,
+                footerLabel: asRenderableString(props.footer_label ?? props.footerLabel) || 'Shop all',
+                footerUrl: asRenderableString(props.footer_url ?? props.footerUrl) || '/shop',
+                variant: asRenderableString(props.variant) || 'drawer-1',
+                ...props,
+            };
+        },
+    },
+};
+
+export const REGISTRY_ID_TO_KEY: Record<string, string> = Object.freeze(
+    Object.fromEntries(
+        Object.entries(STATIC_COMPONENT_RENDER_ENTRIES).map(([registryId, entry]) => [registryId, entry.key]),
+    ),
+);
+
+export const DEFAULT_HERO_REGISTRY_ID = 'webu_general_hero_01';
+export const DEFAULT_FEATURES_REGISTRY_ID = 'webu_general_features_01';
+export const DEFAULT_FOOTER_REGISTRY_ID = 'webu_footer_01';
+export const DEFAULT_GENERIC_SECTION_REGISTRY_ID = 'webu_general_features_01';
 
 function builderFieldTypeToJsonType(type: BuilderFieldType): 'string' | 'number' | 'integer' | 'boolean' {
     switch (type) {
@@ -2250,6 +2611,80 @@ export function getSupportedProjectTypes(registryId: string): BuilderProjectType
     return entry?.projectTypes ?? [];
 }
 
+export function getRegistryKeyByComponentId(registryId: string): string | null {
+    const canonicalRegistryId = resolveComponentRegistryKey(registryId);
+    if (!canonicalRegistryId) {
+        return null;
+    }
+
+    return REGISTRY_ID_TO_KEY[canonicalRegistryId] ?? null;
+}
+
+export function getComponentRenderEntry(registryId: string): ComponentRegistryEntry | null {
+    const runtimeEntry = getComponentRuntimeEntry(registryId);
+    if (!runtimeEntry) {
+        return null;
+    }
+
+    const staticEntry = STATIC_COMPONENT_RENDER_ENTRIES[runtimeEntry.componentKey];
+    if (!staticEntry) {
+        return null;
+    }
+
+    const mapBuilderProps = staticEntry.mapBuilderProps
+        ? (builderProps: Record<string, unknown>) => staticEntry.mapBuilderProps!(builderProps, runtimeEntry.defaults)
+        : undefined;
+
+    return {
+        component: staticEntry.component,
+        schema: runtimeEntry.schema as unknown as Record<string, unknown>,
+        defaults: { ...runtimeEntry.defaults },
+        mapBuilderProps,
+    };
+}
+
+export function getCentralRegistryEntry(registryId: string): ComponentRegistryEntry | null {
+    return getComponentRenderEntry(registryId);
+}
+
+export function getEntry(registryId: string): ComponentRegistryEntry | null {
+    return getComponentRenderEntry(registryId);
+}
+
+export function hasComponentRenderEntry(registryId: string): boolean {
+    return getComponentRenderEntry(registryId) !== null;
+}
+
+export function hasEntry(registryId: string): boolean {
+    return hasComponentRenderEntry(registryId);
+}
+
+export function isInCentralRegistry(registryId: string): boolean {
+    return hasComponentRenderEntry(registryId);
+}
+
+export function getRegistryIdsForProjectType(projectType: ProjectType): string[] {
+    return Object.keys(REGISTRY_ID_TO_KEY).filter((registryId) => {
+        const schema = getComponentSchema(registryId);
+        const projectTypes = schema?.projectTypes ?? [];
+        return projectTypes.length === 0
+            || projectTypes.includes(projectType as BuilderProjectType)
+            || projectTypes.includes('general');
+    });
+}
+
+export function isComponentAllowedForProjectType(registryId: string, projectType: ProjectType): boolean {
+    const schema = getComponentSchema(registryId);
+    if (!schema) {
+        return true;
+    }
+
+    const projectTypes = schema.projectTypes ?? [];
+    return projectTypes.length === 0
+        || projectTypes.includes(projectType as BuilderProjectType)
+        || projectTypes.includes('general');
+}
+
 export function getComponentRuntimeEntry(registryId: string): BuilderComponentRuntimeEntry | null {
     const def = getComponent(registryId);
     if (!def) {
@@ -2452,11 +2887,20 @@ export const componentRegistry = {
     getComponentSchema,
     getComponentRuntimeEntry,
     getComponentCanvasComponent,
+    getComponentRenderEntry,
+    getEntry,
+    getCentralRegistryEntry,
+    hasComponentRenderEntry,
+    hasEntry,
+    isInCentralRegistry,
     getEditableFieldPaths,
     getEditableParameters,
     getParameterSchema,
     getDefaultProps,
     getSupportedProjectTypes,
+    getRegistryIdsForProjectType,
+    isComponentAllowedForProjectType,
+    getRegistryKeyByComponentId,
     resolveComponentProps,
     getComponentSchemaJson,
     getComponentCodegenMetadata,
@@ -2470,17 +2914,11 @@ export const componentRegistry = {
     ADVANCED_SETTINGS,
     REGISTRY_CATEGORY_ORDER,
     BUILDER_GOVERNANCE_CATEGORIES,
-};
-
-/** Re-export central component registry (header, hero, footer with component, schema, defaults). */
-export {
-    componentRegistry as centralComponentRegistry,
-    getCentralRegistryEntry,
-    getRegistryKeyByComponentId,
-    isInCentralRegistry,
     REGISTRY_ID_TO_KEY,
-} from './centralComponentRegistry';
-
-export type { ComponentRegistryEntry } from './centralComponentRegistry';
+    DEFAULT_HERO_REGISTRY_ID,
+    DEFAULT_FEATURES_REGISTRY_ID,
+    DEFAULT_FOOTER_REGISTRY_ID,
+    DEFAULT_GENERIC_SECTION_REGISTRY_ID,
+};
 
 export default componentRegistry;
