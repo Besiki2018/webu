@@ -174,6 +174,7 @@ export interface BuilderComponentSchema {
     chatTargets?: string[];
     bindingFields?: string[];
     projectTypes?: BuilderProjectType[];
+    capabilities?: string[];
     serializable?: boolean;
     codegen?: BuilderCodegenMetadata | null;
 }
@@ -955,6 +956,34 @@ function normalizeResponsiveSupport(fields: BuilderFieldDefinition[], schema: Bu
     };
 }
 
+function inferSchemaCapabilities(definition: ComponentDefinition, fields: BuilderFieldDefinition[]): string[] {
+    const capabilities = new Set<string>();
+    const fieldPaths = fields.map((field) => field.path);
+    const fieldTypes = fields.map((field) => field.type);
+
+    if (definition.category === 'header' || definition.category === 'footer' || fieldPaths.some((path) => path.includes('menu') || path.includes('nav') || path.includes('link'))) {
+        capabilities.add('navigation');
+    }
+
+    if (fieldPaths.some((path) => path.toLowerCase().includes('search'))) {
+        capabilities.add('search');
+    }
+
+    if (fieldTypes.includes('image') || fieldPaths.some((path) => path.toLowerCase().includes('image') || path.toLowerCase().includes('logo'))) {
+        capabilities.add('image');
+    }
+
+    if (fieldPaths.some((path) => /(^|\.)(button|cta|link)(_|$)/i.test(path) || path.toLowerCase().includes('button') || path.toLowerCase().includes('cta'))) {
+        capabilities.add('cta');
+    }
+
+    if (fieldPaths.some((path) => path.includes('title') || path.includes('headline') || path.includes('description') || path.includes('subtitle'))) {
+        capabilities.add('content');
+    }
+
+    return Array.from(capabilities);
+}
+
 function normalizeSchema(definition: ComponentDefinition): BuilderComponentSchema {
     const sourceSchema = definition.schema ?? buildLegacySchema(definition);
     const mergedFields = mergeFieldDefinitions(sourceSchema.fields, buildFoundationFields(definition));
@@ -977,6 +1006,11 @@ function normalizeSchema(definition: ComponentDefinition): BuilderComponentSchem
             .filter(Boolean)
     ));
     const projectTypes = Array.from(new Set(sourceSchema.projectTypes ?? definition.projectTypes ?? inferProjectTypes(definition.category)));
+    const capabilities = Array.from(new Set(
+        (((sourceSchema as BuilderComponentSchema).capabilities ?? inferSchemaCapabilities(definition, mergedFields)))
+            .map((value) => value.trim())
+            .filter(Boolean)
+    ));
     const variantDefinitions = sourceSchema.variantDefinitions ?? buildVariantDefinitions(sourceSchema);
     const normalizedBaseSchema: BuilderComponentSchema = {
         ...sourceSchema,
@@ -996,6 +1030,7 @@ function normalizeSchema(definition: ComponentDefinition): BuilderComponentSchem
         chatTargets,
         bindingFields,
         projectTypes,
+        capabilities,
         contentGroups: sourceSchema.contentGroups ?? buildGroupDefinitions(mergedFields, ['content', 'data', 'bindings', 'meta']),
         styleGroups: sourceSchema.styleGroups ?? buildGroupDefinitions(mergedFields, ['layout', 'style', 'responsive', 'states']),
         advancedGroups: sourceSchema.advancedGroups ?? buildGroupDefinitions(mergedFields, ['advanced']),
@@ -1710,6 +1745,7 @@ const GRID_BUILDER_SCHEMA: BuilderComponentSchema = {
             ],
         }),
         field('columns', 'Columns', 'number', 'layout', { default: GRID_DEFAULTS.columns, min: 1, max: 6 }),
+        field('spacing', 'Spacing', 'spacing', 'advanced', { default: '' }),
         field('variant', 'Design variant', 'layout-variant', 'layout', { default: 'grid-1' }),
         field('backgroundColor', 'Background', 'color', 'style', { default: '' }),
         field('textColor', 'Text color', 'color', 'style', { default: '' }),
@@ -2648,7 +2684,22 @@ export function getCentralRegistryEntry(registryId: string): ComponentRegistryEn
 }
 
 export function getEntry(registryId: string): ComponentRegistryEntry | null {
-    return getComponentRenderEntry(registryId);
+    const runtimeEntry = getComponentRuntimeEntry(registryId);
+    if (!runtimeEntry) {
+        return null;
+    }
+
+    const staticEntry = STATIC_COMPONENT_RENDER_ENTRIES[runtimeEntry.componentKey];
+    const mapBuilderProps = staticEntry?.mapBuilderProps
+        ? (builderProps: Record<string, unknown>) => staticEntry.mapBuilderProps!(builderProps, runtimeEntry.defaults)
+        : undefined;
+
+    return {
+        component: (staticEntry?.component ?? runtimeEntry.component) as ComponentType<Record<string, unknown>>,
+        schema: runtimeEntry.schema as unknown as Record<string, unknown>,
+        defaults: { ...runtimeEntry.defaults },
+        mapBuilderProps,
+    };
 }
 
 export function hasComponentRenderEntry(registryId: string): boolean {
@@ -2656,7 +2707,7 @@ export function hasComponentRenderEntry(registryId: string): boolean {
 }
 
 export function hasEntry(registryId: string): boolean {
-    return hasComponentRenderEntry(registryId);
+    return getEntry(registryId) !== null;
 }
 
 export function isInCentralRegistry(registryId: string): boolean {

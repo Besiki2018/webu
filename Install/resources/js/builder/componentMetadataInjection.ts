@@ -13,7 +13,7 @@
 
 import type { BuilderComponentInstance } from './core/types';
 import type { ProjectType } from './projectTypes';
-import { getEntry } from './registry/componentRegistry';
+import { getComponentSchema } from './componentRegistry';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,8 +51,7 @@ export function getMetadataForComponentKey(
   componentKey: string,
   variant?: string
 ): ComponentInstanceMetadata {
-  const entry = getEntry(componentKey);
-  const schema = entry?.schema as SchemaWithMetadata | undefined;
+  const schema = getComponentSchema(componentKey) as SchemaWithMetadata | null;
   const projectTypes: string[] = Array.isArray(schema?.projectTypes) ? [...schema.projectTypes] : [];
   const capabilities: string[] = Array.isArray(schema?.capabilities) ? [...schema.capabilities] : [];
 

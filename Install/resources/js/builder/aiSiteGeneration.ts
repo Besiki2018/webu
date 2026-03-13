@@ -10,8 +10,7 @@
 
 import type { BuilderComponentInstance } from './core/types';
 import type { ProjectType } from './projectTypes';
-import { getEntry } from './registry/componentRegistry';
-import { getDefaultProps } from './componentRegistry';
+import { getEntry, getDefaultProps } from './componentRegistry';
 import type { BuilderSection } from './visual/treeUtils';
 
 /** One section in the generated site structure (from AI or template). */

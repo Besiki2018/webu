@@ -6,11 +6,11 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import {
+    getCentralRegistryEntry,
     getComponentSchema,
     getComponentRuntimeEntry,
     resolveComponentProps,
 } from '../componentRegistry';
-import { getCentralRegistryEntry } from '../centralComponentRegistry';
 import { BuilderCanvas } from '../visual/BuilderCanvas';
 
 /** Registry IDs for components we must support: Header, Footer, Hero, Feature, CTA, Navigation (header), Cards, Grids */

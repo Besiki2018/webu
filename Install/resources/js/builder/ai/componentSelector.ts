@@ -9,7 +9,7 @@
  */
 
 import type { ProjectType } from '../projectTypes';
-import { hasEntry } from '../registry/componentRegistry';
+import { hasEntry } from '../componentRegistry';
 import {
   getSmartPreferredIndices,
   filterAvoidedIndices,

@@ -5,7 +5,7 @@
  * Example: "Generate hero image" → AI or service returns URL → set on component image prop.
  */
 
-import { getEntry } from './registry/componentRegistry';
+import { getComponentSchema } from './componentRegistry';
 
 // ---------------------------------------------------------------------------
 // Image field sources (how the image was obtained)
@@ -46,23 +46,21 @@ const IMAGE_LIKE_PROP_NAMES = new Set([
  * Used by AI/UI to know where to set "Generate hero image" (e.g. hero → ['image', 'backgroundImage']).
  */
 export function getImagePropPathsForComponent(componentKey: string): string[] {
-  const entry = getEntry(componentKey);
-  if (!entry?.schema || typeof entry.schema !== 'object') {
+  const schema = getComponentSchema(componentKey);
+  if (!schema) {
     return [];
   }
-  const schema = entry.schema as { props?: Record<string, { type?: string }> };
-  const props = schema.props;
-  if (!props || typeof props !== 'object') {
-    return [];
-  }
-  const paths: string[] = [];
-  for (const [key, def] of Object.entries(props)) {
-    const type = (def?.type ?? '').toLowerCase();
-    if (type === 'image' || type === 'icon' || IMAGE_LIKE_PROP_NAMES.has(key)) {
-      paths.push(key);
-    }
-  }
-  return paths;
+
+  return Array.from(new Set(
+    schema.fields
+      .map((field) => field.path)
+      .filter((path) => {
+        const lastSegment = path.split('.').pop() ?? path;
+        const field = schema.fields.find((candidate) => candidate.path === path);
+        const type = (field?.type ?? '').toLowerCase();
+        return type === 'image' || type === 'icon' || IMAGE_LIKE_PROP_NAMES.has(lastSegment);
+      })
+  ));
 }
 
 /**

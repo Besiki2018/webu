@@ -54,7 +54,7 @@ function shortName(componentName: string): string {
 
 /**
  * Generates the registry injection: import, REGISTRY_ID_TO_KEY line, and componentRegistry entry.
- * Caller can merge these into builder/registry/componentRegistry.ts (or use registerGeneratedComponent at runtime).
+ * Caller can merge these into builder/componentRegistry.ts.
  *
  * @param spec — From generateComponentSpec (Part 2). Must have suggestedRegistryId or slug for registry ID.
  * @param options — importPathPrefix: e.g. '@/components/sections' (default).
@@ -78,7 +78,7 @@ export function generateRegistryInjection(
   },`;
 
   return {
-    registryFilePath: 'resources/js/builder/registry/componentRegistry.ts',
+    registryFilePath: 'resources/js/builder/componentRegistry.ts',
     importStatement,
     registryIdToKeyLine,
     componentRegistryEntry,
@@ -96,7 +96,7 @@ export function getRegistryInjectionSnippet(
 ): RegistryInjectionSnippet {
   const gen = generateRegistryInjection(spec, options);
   return {
-    instructions: `Add the following to builder/registry/componentRegistry.ts:
+    instructions: `Add the following to builder/componentRegistry.ts:
 1. With other section imports (e.g. after Grid): add the importLine below.
 2. In REGISTRY_ID_TO_KEY: add the idToKeyLine.
 3. In componentRegistry, before the closing }; add the registryEntryBlock.`,

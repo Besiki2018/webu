@@ -12,7 +12,7 @@ import type { SiteStructureSection } from '../aiSiteGeneration';
 import {
   hasEntry,
   DEFAULT_GENERIC_SECTION_REGISTRY_ID,
-} from '../registry/componentRegistry';
+} from '../componentRegistry';
 
 // ---------------------------------------------------------------------------
 // Input: block with optional layout hints (from vision or heuristic)

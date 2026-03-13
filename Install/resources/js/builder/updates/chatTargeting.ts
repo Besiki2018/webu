@@ -5,7 +5,7 @@
  */
 
 import { useBuilderStore } from '../store/builderStore';
-import { getEntry } from '../registry/componentRegistry';
+import { getEntry } from '../componentRegistry';
 import type { BuilderComponentInstance } from '../core';
 
 export interface EditableField {

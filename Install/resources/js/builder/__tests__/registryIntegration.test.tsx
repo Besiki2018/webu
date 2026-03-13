@@ -9,16 +9,14 @@ import { DndContext } from '@dnd-kit/core';
 import { BuilderCanvas } from '../visual/BuilderCanvas';
 import type { BuilderSection } from '../visual/treeUtils';
 import {
+    REGISTRY_ID_TO_KEY,
+    getCentralRegistryEntry,
     getComponentRuntimeEntry,
     getComponentSchema,
     getDefaultProps,
     getAvailableComponents,
-} from '../componentRegistry';
-import {
-    REGISTRY_ID_TO_KEY,
-    getCentralRegistryEntry,
     isInCentralRegistry,
-} from '../centralComponentRegistry';
+} from '../componentRegistry';
 
 /** Migrated components with full schema-driven flow (central registry). */
 const CENTRAL_REGISTRY_IDS = [

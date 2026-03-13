@@ -4,7 +4,7 @@ import {
   type MappableBlock,
 } from '../sectionMapper';
 import type { DetectedLayoutBlock } from '../layoutDetector';
-import { hasEntry, DEFAULT_GENERIC_SECTION_REGISTRY_ID } from '../../registry/componentRegistry';
+import { hasEntry, DEFAULT_GENERIC_SECTION_REGISTRY_ID } from '../../componentRegistry';
 
 describe('sectionMapper', () => {
   describe('mapBlocksToSectionPlan', () => {

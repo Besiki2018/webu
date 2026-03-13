@@ -8,10 +8,10 @@ import { render, screen } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 import { buildEditableTargetFromMessagePayload } from '../editingState';
 import {
+    getCentralRegistryEntry,
     getComponentSchema,
     resolveComponentProps,
 } from '../componentRegistry';
-import { getCentralRegistryEntry } from '../centralComponentRegistry';
 import {
     applyBuilderUpdatePipeline,
     updateComponentProps,

@@ -8,7 +8,7 @@
  * "Create FAQ accordion", "Create feature comparison table".
  */
 
-import { hasEntry } from '../registry/componentRegistry';
+import { hasEntry } from '../componentRegistry';
 
 // ---------------------------------------------------------------------------
 // Output types

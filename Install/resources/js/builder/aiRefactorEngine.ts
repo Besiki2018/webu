@@ -15,7 +15,7 @@ import type { BuilderComponentInstance } from './core/types';
 import type { ProjectType } from './projectTypes';
 import type { RefactorActionKind } from './refactorActions';
 import type { SuggestReplacement } from './safeRefactorRules';
-import { getEntry } from './registry/componentRegistry';
+import { getEntry } from './componentRegistry';
 
 // ---------------------------------------------------------------------------
 // Types

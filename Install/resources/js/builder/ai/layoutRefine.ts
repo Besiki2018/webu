@@ -8,7 +8,7 @@
 import type { BuilderComponentInstance } from '../core/types';
 import type { BuilderSection } from '../visual/treeUtils';
 import { sectionToComponentInstance } from '../types';
-import { getEntry } from '../registry/componentRegistry';
+import { getEntry } from '../componentRegistry';
 import { getVariantForStyle, type DesignStyle } from './designStyleAnalyzer';
 import { treeToSectionsDraft } from '../aiSiteGeneration';
 import { AVAILABLE_VARIANTS_BY_COMPONENT } from './componentSelector';

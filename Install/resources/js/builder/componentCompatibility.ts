@@ -11,7 +11,7 @@
  */
 
 import type { ProjectType } from './projectTypes';
-import { getEntry, REGISTRY_ID_TO_KEY } from './registry/componentRegistry';
+import { getEntry, REGISTRY_ID_TO_KEY } from './componentRegistry';
 
 /** For each project type, capability tags that make a component irrelevant (hidden in the library). */
 export const excludedCapabilitiesByProjectType: Record<ProjectType, string[]> = {

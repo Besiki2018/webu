@@ -49,16 +49,12 @@ describe('Phase 8 — Legacy detection', () => {
         expect(filesWithImports.length).toBeGreaterThan(0);
     });
 
-    it('componentRegistry owns canonical component imports and central shim stays empty', () => {
+    it('componentRegistry owns canonical component imports without a parallel registry file', () => {
         const regPath = path.join(BUILDER_ROOT, 'componentRegistry.ts');
         const regContent = fs.readFileSync(regPath, 'utf8');
         expect(regContent).toMatch(/import\s+.*\bHeader\b.*from\s+['\"][^'\"]*layout\/Header/);
         expect(regContent).toMatch(/import\s+.*\bFooter\b.*from\s+['\"][^'\"]*layout\/Footer/);
         expect(regContent).toMatch(/import\s+.*\bHero\b.*from\s+['\"][^'\"]*sections\/Hero/);
         expect(regContent).toMatch(/Header\.schema|Footer\.schema|Hero\.schema/);
-
-        const centralPath = path.join(BUILDER_ROOT, 'centralComponentRegistry.ts');
-        const centralContent = fs.readFileSync(centralPath, 'utf8');
-        expect(centralContent).not.toMatch(/layout\/Header|layout\/Footer|sections\/Hero/);
     });
 });

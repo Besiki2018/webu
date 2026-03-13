@@ -6,7 +6,7 @@
  * Output is a single variant id per section for use in the section plan.
  */
 
-import { hasEntry } from '../registry/componentRegistry';
+import { hasEntry } from '../componentRegistry';
 import { AVAILABLE_VARIANTS_BY_COMPONENT } from './componentSelector';
 
 // ---------------------------------------------------------------------------

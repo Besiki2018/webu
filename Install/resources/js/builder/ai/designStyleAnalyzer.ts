@@ -5,7 +5,7 @@
  * Uses style to pick component variants (e.g. minimal → hero-2, corporate → hero-1).
  */
 
-import { hasEntry } from '../registry/componentRegistry';
+import { hasEntry } from '../componentRegistry';
 import { AVAILABLE_VARIANTS_BY_COMPONENT } from './componentSelector';
 
 // ---------------------------------------------------------------------------

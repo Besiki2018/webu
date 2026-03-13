@@ -12,7 +12,7 @@
 
 import type { ProjectType } from './projectTypes';
 import type { BuilderComponentInstance } from './core';
-import { getEntry } from './registry/componentRegistry';
+import { getEntry } from './componentRegistry';
 import type { RefactorActionKind } from './refactorActions';
 
 export type { RefactorActionKind } from './refactorActions';

@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 import {
+    getCentralRegistryEntry,
     getComponentSchema,
     getComponentSchemaJson,
     getComponentRuntimeEntry,
@@ -20,7 +21,6 @@ import {
     getAvailableComponents,
     resolveComponentProps,
 } from '../componentRegistry';
-import { getCentralRegistryEntry } from '../centralComponentRegistry';
 import { applyBuilderUpdatePipeline } from '../state/updatePipeline';
 import { BuilderCanvas } from '../visual/BuilderCanvas';
 import type { BuilderSection } from '../visual/treeUtils';

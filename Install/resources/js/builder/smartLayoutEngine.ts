@@ -6,7 +6,7 @@
  */
 
 import type { BuilderComponentInstance } from './core/types';
-import { getEntry } from './registry/componentRegistry';
+import { getComponentSchema } from './componentRegistry';
 import { resolveToken } from './designTokens';
 
 // ---------------------------------------------------------------------------
@@ -44,11 +44,9 @@ export interface LayoutIntent {
 // ---------------------------------------------------------------------------
 
 function componentAcceptsLayoutProp(componentKey: string, propKey: string): boolean {
-  const entry = getEntry(componentKey);
-  if (!entry?.schema || typeof entry.schema !== 'object') return false;
-  const props = (entry.schema as { props?: Record<string, unknown> }).props;
-  if (!props || typeof props !== 'object') return false;
-  return Object.prototype.hasOwnProperty.call(props, propKey);
+  const schema = getComponentSchema(componentKey);
+  if (!schema) return false;
+  return schema.fields.some((field) => field.path === propKey || field.path.startsWith(propKey + '.'));
 }
 
 /**

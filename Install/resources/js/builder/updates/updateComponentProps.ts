@@ -4,7 +4,7 @@
  * Sidebar and Chat must both use this function.
  */
 
-import { getEntry } from '../registry/componentRegistry';
+import { getEntry } from '../componentRegistry';
 import { useBuilderStore } from '../store/builderStore';
 
 export type UpdatePayload =

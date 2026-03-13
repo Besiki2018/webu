@@ -24,7 +24,7 @@ import {
   DEFAULT_HERO_REGISTRY_ID,
   DEFAULT_FEATURES_REGISTRY_ID,
   DEFAULT_FOOTER_REGISTRY_ID,
-} from '../registry/componentRegistry';
+} from '../componentRegistry';
 
 // ---------------------------------------------------------------------------
 // Input: section plan (from sectionMapper / variantMatcher or planner)

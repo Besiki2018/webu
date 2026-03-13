@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+    REGISTRY_ID_TO_KEY,
     getComponentSchema,
     getComponentSchemaJson,
     getComponentRuntimeEntry,
@@ -17,7 +18,6 @@ import {
     getAvailableComponents,
     getCentralRegistryEntry,
 } from '../componentRegistry';
-import { REGISTRY_ID_TO_KEY } from '../centralComponentRegistry';
 import { sectionToComponentInstance, toSerializableInstance } from '../types';
 
 const MIGRATED_CENTRAL_IDS = ['webu_header_01', 'webu_footer_01', 'webu_general_hero_01'] as const;

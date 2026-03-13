@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { getEntry } from '../registry/componentRegistry';
+import { getEntry } from '../componentRegistry';
 import { useBuilderStore } from '../store/builderStore';
 import { updateComponentProps } from '../updates';
 import { useTranslation } from '@/contexts/LanguageContext';
