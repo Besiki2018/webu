@@ -169,7 +169,7 @@ describe('useCmsStructureMutationHandlers', () => {
         expect(toast.success).toHaveBeenCalledWith('Component added to page canvas');
     });
 
-    it('removes the selected section and resets the sidebar back to elements', () => {
+    it('removes the selected section and deterministically falls back to the nearest section', () => {
         const harness = buildHarness({
             sectionsDraft: [makeSection('hero-1'), makeSection('hero-2')],
             selectedSectionLocalId: 'hero-1',
@@ -181,9 +181,12 @@ describe('useCmsStructureMutationHandlers', () => {
         });
 
         expect(harness.getSectionsDraft().map((section) => section.localId)).toEqual(['hero-2']);
-        expect(harness.getSelectedSectionLocalId()).toBeNull();
+        expect(harness.getSelectedSectionLocalId()).toBe('hero-2');
         expect(harness.getSelectedNestedSection()).toBeNull();
-        expect(harness.options.setBuilderSidebarMode).toHaveBeenCalledWith('elements');
+        expect(harness.getSelectedBuilderTarget()).toEqual(expect.objectContaining({
+            sectionLocalId: 'hero-2',
+        }));
+        expect(harness.options.setBuilderSidebarMode).toHaveBeenCalledWith('settings');
         expect(harness.syncPreviewVisibleSections).toHaveBeenCalledTimes(1);
         expect(harness.scheduleStructuralDraftPersist).toHaveBeenCalledTimes(1);
     });
@@ -238,6 +241,59 @@ describe('useCmsStructureMutationHandlers', () => {
         ]);
         expect(harness.scheduleStructuralDraftPersist).toHaveBeenCalledTimes(1);
         expect(toast.success).toHaveBeenCalledWith('Section added inside');
+    });
+
+    it('duplicates a section through the canonical pipeline and selects the duplicate', () => {
+        const harness = buildHarness({
+            sectionsDraft: [makeSection('hero-1'), makeSection('hero-2')],
+            selectedSectionLocalId: 'hero-1',
+        });
+        const { result } = renderHook(() => useCmsStructureMutationHandlers(harness.options));
+
+        act(() => {
+            result.current.handleDuplicateSection('hero-1');
+        });
+
+        expect(harness.getSectionsDraft().map((section) => section.localId)).toEqual([
+            'hero-1',
+            'generated-1',
+            'hero-2',
+        ]);
+        expect(harness.getSelectedSectionLocalId()).toBe('generated-1');
+        expect(harness.getSelectedBuilderTarget()).toEqual(expect.objectContaining({
+            sectionLocalId: 'generated-1',
+        }));
+        expect(harness.options.setBuilderSidebarMode).toHaveBeenCalledWith('settings');
+        expect(harness.scheduleStructuralDraftPersist).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes a nested section through the canonical pipeline and repairs nested selection indexes', () => {
+        const harness = buildHarness({
+            sectionsDraft: [makeSection('layout-1', 'container', {
+                sections: [
+                    { type: 'webu_general_text_01', props: { content: 'First' } },
+                    { type: 'webu_general_text_01', props: { content: 'Second' } },
+                    { type: 'webu_general_text_01', props: { content: 'Third' } },
+                ],
+            })],
+        });
+        harness.options.setSelectedNestedSection({
+            parentLocalId: 'layout-1',
+            path: [2],
+        });
+        const { result } = renderHook(() => useCmsStructureMutationHandlers(harness.options));
+
+        act(() => {
+            result.current.handleRemoveNestedSection('layout-1', [1]);
+        });
+
+        const updatedProps = JSON.parse(harness.getSectionsDraft()[0].propsText) as { sections?: Array<{ props?: { content?: string } }> };
+        expect(updatedProps.sections?.map((section) => section.props?.content)).toEqual(['First', 'Third']);
+        expect(harness.getSelectedNestedSection()).toEqual({
+            parentLocalId: 'layout-1',
+            path: [1],
+        });
+        expect(harness.syncPreviewVisibleSections).toHaveBeenCalledTimes(1);
     });
 
     it('inserts a dragged library component after the selected section when dropped on the canvas', () => {

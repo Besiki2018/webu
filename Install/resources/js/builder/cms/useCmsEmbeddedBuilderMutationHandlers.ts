@@ -1,6 +1,5 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import { applyBuilderChangeSetPipeline } from '@/builder/state/updatePipeline';
-import { moveSection } from '@/builder/visual/treeUtils';
+import { applyBuilderChangeSetPipeline, applyBuilderUpdatePipeline } from '@/builder/state/updatePipeline';
 import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
 import type { BuilderEditableTarget } from '@/builder/editingState';
 import type {
@@ -81,7 +80,6 @@ export function useCmsEmbeddedBuilderMutationHandlers({
     saveDraftRevisionInternalRef,
     scheduleStructuralDraftPersistRef,
     setPageEditorMode,
-    setSectionsDraft,
     setSelectedSectionLocalId,
     setSelectedNestedSection,
     setSelectedFixedSectionKey,
@@ -292,19 +290,70 @@ export function useCmsEmbeddedBuilderMutationHandlers({
             return;
         }
 
-        setSectionsDraft((prev) => {
-            const next = moveSection(prev, sectionLocalId, targetSectionLocalId, position);
-            sectionsDraftRef.current = next;
-            return next;
+        const currentSections = sectionsDraftRef.current;
+        const currentIndex = currentSections.findIndex((section) => section.localId === sectionLocalId);
+        const targetIndex = currentSections.findIndex((section) => section.localId === targetSectionLocalId);
+        if (currentIndex < 0 || targetIndex < 0) {
+            emitEmbeddedBuilderMutationResult(emit, {
+                requestId,
+                mutation: 'move-section',
+                success: false,
+                changed: false,
+                error: t('Section move target is invalid'),
+            });
+            return;
+        }
+
+        const toIndex = position === 'before'
+            ? (targetIndex > currentIndex ? targetIndex - 1 : targetIndex)
+            : (targetIndex > currentIndex ? targetIndex : targetIndex + 1);
+        const result = applyBuilderUpdatePipeline({
+            sectionsDraft: currentSections,
+            selectedSectionLocalId,
+            selectedBuilderTarget,
+        }, [{
+            kind: 'reorder-section',
+            source: 'chat',
+            sectionLocalId,
+            toIndex,
+        }], {
+            createSection: createBuilderSectionDraft,
         });
+        if (!result.ok) {
+            emitEmbeddedBuilderMutationResult(emit, {
+                requestId,
+                mutation: 'move-section',
+                success: false,
+                changed: false,
+                error: result.errors[0]?.message ?? t('Section move target is invalid'),
+            });
+            return;
+        }
+
+        if (result.changed) {
+            sectionsDraftRef.current = result.state.sectionsDraft;
+            applyMutationState(result.state);
+        }
+
         scheduleStructuralDraftPersistRef.current();
         emitEmbeddedBuilderMutationResult(emit, {
             requestId,
             mutation: 'move-section',
             success: true,
-            changed: true,
+            changed: result.changed,
         });
-    }, [isEmbeddedMode, pageEditorMode, scheduleStructuralDraftPersistRef, sectionsDraftRef, setPageEditorMode, setSectionsDraft, t]);
+    }, [
+        applyMutationState,
+        createBuilderSectionDraft,
+        isEmbeddedMode,
+        pageEditorMode,
+        scheduleStructuralDraftPersistRef,
+        sectionsDraftRef,
+        selectedBuilderTarget,
+        selectedSectionLocalId,
+        setPageEditorMode,
+        t,
+    ]);
 
     return {
         handleEmbeddedBuilderChangeSet,

@@ -1,5 +1,6 @@
 import { getComponentSchema, type BuilderFieldDefinition, type BuilderFieldType } from '@/builder/componentRegistry';
 import {
+    buildEditableTargetFromSection,
     buildEditableTargetFromMessagePayload,
     editableTargetToMessagePayload,
     type BuilderEditableTarget,
@@ -54,12 +55,22 @@ export interface BuilderInsertSectionOperation {
     insertIndex?: number | null;
     props?: Record<string, unknown>;
     localId?: string | null;
+    bindingMeta?: Record<string, unknown> | null;
+    selectInserted?: boolean;
 }
 
 export interface BuilderDeleteSectionOperation {
     kind: 'delete-section';
     source: BuilderUpdateSource;
     sectionLocalId: string;
+}
+
+export interface BuilderDuplicateSectionOperation {
+    kind: 'duplicate-section';
+    source: BuilderUpdateSource;
+    sectionLocalId: string;
+    newLocalId: string;
+    selectDuplicate?: boolean;
 }
 
 export interface BuilderReorderSectionOperation {
@@ -69,18 +80,47 @@ export interface BuilderReorderSectionOperation {
     toIndex: number;
 }
 
+export interface BuilderInsertNestedSectionOperation {
+    kind: 'insert-nested-section';
+    source: BuilderUpdateSource;
+    sectionLocalId: string;
+    sectionType: string;
+    props?: Record<string, unknown>;
+    nestedSectionPath?: number[];
+}
+
+export interface BuilderDeleteNestedSectionOperation {
+    kind: 'delete-nested-section';
+    source: BuilderUpdateSource;
+    sectionLocalId: string;
+    nestedSectionPath: number[];
+}
+
+export interface BuilderReorderNestedSectionOperation {
+    kind: 'reorder-nested-section';
+    source: BuilderUpdateSource;
+    sectionLocalId: string;
+    nestedSectionPath: number[];
+    toIndex: number;
+}
+
 export type BuilderUpdateOperation =
     | BuilderSetFieldOperation
     | BuilderUnsetFieldOperation
     | BuilderMergePropsOperation
     | BuilderInsertSectionOperation
     | BuilderDeleteSectionOperation
-    | BuilderReorderSectionOperation;
+    | BuilderDuplicateSectionOperation
+    | BuilderReorderSectionOperation
+    | BuilderInsertNestedSectionOperation
+    | BuilderDeleteNestedSectionOperation
+    | BuilderReorderNestedSectionOperation;
 
 export interface BuilderCreateSectionInput {
     sectionType: string;
     localId?: string | null;
     props?: Record<string, unknown>;
+    bindingMeta?: Record<string, unknown> | null;
 }
 
 export type BuilderCreateSectionFactory = (input: BuilderCreateSectionInput) => BuilderSection | null;
@@ -94,7 +134,9 @@ export interface BuilderUpdateError {
         | 'target_mismatch'
         | 'invalid_patch'
         | 'insert_factory_missing'
-        | 'insert_failed';
+        | 'insert_failed'
+        | 'duplicate_conflict'
+        | 'nested_section_not_found';
     message: string;
     operation: BuilderUpdateOperation;
 }
@@ -504,6 +546,84 @@ function refreshSelectedTarget(
     });
 }
 
+function buildSelectionStateForSection(section: BuilderSection | null): Pick<BuilderUpdateStateSnapshot, 'selectedSectionLocalId' | 'selectedBuilderTarget'> {
+    return {
+        selectedSectionLocalId: section?.localId ?? null,
+        selectedBuilderTarget: buildEditableTargetFromSection(section),
+    };
+}
+
+function refreshSelectionState(
+    currentState: BuilderUpdateStateSnapshot,
+    sectionsDraft: BuilderSection[],
+): Pick<BuilderUpdateStateSnapshot, 'selectedSectionLocalId' | 'selectedBuilderTarget'> {
+    const selectedSectionLocalId = currentState.selectedSectionLocalId
+        && sectionsDraft.some((section) => section.localId === currentState.selectedSectionLocalId)
+        ? currentState.selectedSectionLocalId
+        : null;
+
+    return {
+        selectedSectionLocalId,
+        selectedBuilderTarget: refreshSelectedTarget(currentState.selectedBuilderTarget, sectionsDraft),
+    };
+}
+
+function resolveNearestSectionSelection(
+    sectionsDraft: BuilderSection[],
+    preferredIndex: number,
+): Pick<BuilderUpdateStateSnapshot, 'selectedSectionLocalId' | 'selectedBuilderTarget'> {
+    if (sectionsDraft.length === 0) {
+        return {
+            selectedSectionLocalId: null,
+            selectedBuilderTarget: null,
+        };
+    }
+
+    const boundedIndex = Math.max(0, Math.min(preferredIndex, sectionsDraft.length - 1));
+    return buildSelectionStateForSection(sectionsDraft[boundedIndex] ?? null);
+}
+
+function normalizeNestedPath(path: number[] | undefined): number[] {
+    return Array.isArray(path)
+        ? path.filter((segment) => Number.isInteger(segment) && segment >= 0)
+        : [];
+}
+
+function resolveNestedSiblingTarget(
+    sections: BuilderSection[],
+    sectionLocalId: string,
+    nestedSectionPath: number[],
+): { target: ResolvedSectionTarget; siblings: Array<Record<string, unknown>>; itemIndex: number } | null {
+    const normalizedPath = normalizeNestedPath(nestedSectionPath);
+    if (normalizedPath.length === 0) {
+        return null;
+    }
+
+    const parentPath = normalizedPath.slice(0, -1);
+    const itemIndex = normalizedPath[normalizedPath.length - 1] ?? -1;
+    const target = resolveSectionTarget(
+        sections,
+        sectionLocalId,
+        parentPath.length > 0 ? parentPath : undefined,
+    );
+    if (!target) {
+        return null;
+    }
+
+    const siblings = Array.isArray(target.props.sections)
+        ? target.props.sections.filter((entry): entry is Record<string, unknown> => isRecord(entry))
+        : [];
+    if (itemIndex < 0 || itemIndex >= siblings.length) {
+        return null;
+    }
+
+    return {
+        target,
+        siblings: [...siblings],
+        itemIndex,
+    };
+}
+
 function applySetLikeOperation(
     currentState: BuilderUpdateStateSnapshot,
     operation: BuilderSetFieldOperation | BuilderUnsetFieldOperation
@@ -725,6 +845,7 @@ function applyInsertSectionOperation(
         sectionType: operation.sectionType,
         localId: operation.localId ?? null,
         props: operation.props,
+        bindingMeta: operation.bindingMeta ?? null,
     });
     if (!nextSection) {
         return {
@@ -738,6 +859,18 @@ function applyInsertSectionOperation(
         };
     }
 
+    if (nextSection.localId.trim() === '' || currentState.sectionsDraft.some((section) => section.localId === nextSection.localId)) {
+        return {
+            ok: false,
+            changed: false,
+            structuralChange: false,
+            immediatePreviewRefresh: false,
+            state: currentState,
+            appliedOperations: [],
+            errors: [buildError('duplicate_conflict', `Section local id "${nextSection.localId}" already exists.`, operation)],
+        };
+    }
+
     const nextSections = cloneSections(currentState.sectionsDraft);
     const afterSectionId = typeof operation.afterSectionId === 'string' && operation.afterSectionId.trim() !== ''
         ? operation.afterSectionId.trim()
@@ -745,12 +878,19 @@ function applyInsertSectionOperation(
     const requestedInsertIndex = Number.isInteger(operation.insertIndex)
         ? Number(operation.insertIndex)
         : null;
-    const insertIndex = afterSectionId
-        ? Math.max(0, nextSections.findIndex((section) => section.localId === afterSectionId) + 1)
+    const afterSectionIndex = afterSectionId
+        ? nextSections.findIndex((section) => section.localId === afterSectionId)
+        : -1;
+    const insertIndex = afterSectionIndex >= 0
+        ? afterSectionIndex + 1
         : requestedInsertIndex !== null
             ? Math.max(0, Math.min(requestedInsertIndex, nextSections.length))
             : nextSections.length;
     nextSections.splice(insertIndex, 0, nextSection);
+
+    const selectionState = operation.selectInserted
+        ? buildSelectionStateForSection(nextSection)
+        : refreshSelectionState(currentState, nextSections);
 
     return {
         ok: true,
@@ -759,8 +899,7 @@ function applyInsertSectionOperation(
         immediatePreviewRefresh: false,
         state: {
             sectionsDraft: nextSections,
-            selectedSectionLocalId: currentState.selectedSectionLocalId,
-            selectedBuilderTarget: refreshSelectedTarget(currentState.selectedBuilderTarget, nextSections),
+            ...selectionState,
         },
         appliedOperations: [operation],
         errors: [],
@@ -771,8 +910,8 @@ function applyDeleteSectionOperation(
     currentState: BuilderUpdateStateSnapshot,
     operation: BuilderDeleteSectionOperation
 ): BuilderUpdatePipelineResult {
-    const sectionExists = currentState.sectionsDraft.some((section) => section.localId === operation.sectionLocalId);
-    if (!sectionExists) {
+    const deletedIndex = currentState.sectionsDraft.findIndex((section) => section.localId === operation.sectionLocalId);
+    if (deletedIndex < 0) {
         return {
             ok: false,
             changed: false,
@@ -785,12 +924,11 @@ function applyDeleteSectionOperation(
     }
 
     const nextSections = currentState.sectionsDraft.filter((section) => section.localId !== operation.sectionLocalId);
-    const selectedBuilderTarget = currentState.selectedBuilderTarget?.sectionLocalId === operation.sectionLocalId
-        ? null
-        : refreshSelectedTarget(currentState.selectedBuilderTarget, nextSections);
-    const selectedSectionLocalId = currentState.selectedSectionLocalId === operation.sectionLocalId
-        ? null
-        : currentState.selectedSectionLocalId;
+    const selectionAffected = currentState.selectedSectionLocalId === operation.sectionLocalId
+        || currentState.selectedBuilderTarget?.sectionLocalId === operation.sectionLocalId;
+    const selectionState = selectionAffected
+        ? resolveNearestSectionSelection(nextSections, deletedIndex)
+        : refreshSelectionState(currentState, nextSections);
 
     return {
         ok: true,
@@ -799,8 +937,61 @@ function applyDeleteSectionOperation(
         immediatePreviewRefresh: false,
         state: {
             sectionsDraft: nextSections,
-            selectedSectionLocalId,
-            selectedBuilderTarget,
+            ...selectionState,
+        },
+        appliedOperations: [operation],
+        errors: [],
+    };
+}
+
+function applyDuplicateSectionOperation(
+    currentState: BuilderUpdateStateSnapshot,
+    operation: BuilderDuplicateSectionOperation
+): BuilderUpdatePipelineResult {
+    const sourceIndex = currentState.sectionsDraft.findIndex((section) => section.localId === operation.sectionLocalId);
+    if (sourceIndex < 0) {
+        return {
+            ok: false,
+            changed: false,
+            structuralChange: false,
+            immediatePreviewRefresh: false,
+            state: currentState,
+            appliedOperations: [],
+            errors: [buildError('section_not_found', 'The section to duplicate could not be found.', operation)],
+        };
+    }
+
+    const normalizedLocalId = operation.newLocalId.trim();
+    if (normalizedLocalId === '' || currentState.sectionsDraft.some((section) => section.localId === normalizedLocalId)) {
+        return {
+            ok: false,
+            changed: false,
+            structuralChange: false,
+            immediatePreviewRefresh: false,
+            state: currentState,
+            appliedOperations: [],
+            errors: [buildError('duplicate_conflict', `Section local id "${normalizedLocalId}" already exists.`, operation)],
+        };
+    }
+
+    const nextSections = cloneSections(currentState.sectionsDraft);
+    const duplicatedSection: BuilderSection = {
+        ...nextSections[sourceIndex],
+        localId: normalizedLocalId,
+    };
+    nextSections.splice(sourceIndex + 1, 0, duplicatedSection);
+    const selectionState = operation.selectDuplicate
+        ? buildSelectionStateForSection(duplicatedSection)
+        : refreshSelectionState(currentState, nextSections);
+
+    return {
+        ok: true,
+        changed: true,
+        structuralChange: true,
+        immediatePreviewRefresh: false,
+        state: {
+            sectionsDraft: nextSections,
+            ...selectionState,
         },
         appliedOperations: [operation],
         errors: [],
@@ -827,6 +1018,17 @@ function applyReorderSectionOperation(
     const nextSections = cloneSections(currentState.sectionsDraft);
     const [movedSection] = nextSections.splice(currentIndex, 1);
     const boundedIndex = Math.max(0, Math.min(operation.toIndex, nextSections.length));
+    if (boundedIndex === currentIndex) {
+        return {
+            ok: true,
+            changed: false,
+            structuralChange: false,
+            immediatePreviewRefresh: false,
+            state: currentState,
+            appliedOperations: [],
+            errors: [],
+        };
+    }
     nextSections.splice(boundedIndex, 0, movedSection);
 
     return {
@@ -836,8 +1038,169 @@ function applyReorderSectionOperation(
         immediatePreviewRefresh: false,
         state: {
             sectionsDraft: nextSections,
-            selectedSectionLocalId: currentState.selectedSectionLocalId,
-            selectedBuilderTarget: refreshSelectedTarget(currentState.selectedBuilderTarget, nextSections),
+            ...refreshSelectionState(currentState, nextSections),
+        },
+        appliedOperations: [operation],
+        errors: [],
+    };
+}
+
+function applyInsertNestedSectionOperation(
+    currentState: BuilderUpdateStateSnapshot,
+    operation: BuilderInsertNestedSectionOperation
+): BuilderUpdatePipelineResult {
+    const normalizedSectionType = normalizeSectionTypeKey(operation.sectionType);
+    if (normalizedSectionType === '') {
+        return {
+            ok: false,
+            changed: false,
+            structuralChange: false,
+            immediatePreviewRefresh: false,
+            state: currentState,
+            appliedOperations: [],
+            errors: [buildError('insert_failed', 'Nested section type is required.', operation)],
+        };
+    }
+
+    const target = resolveSectionTarget(
+        currentState.sectionsDraft,
+        operation.sectionLocalId,
+        normalizeNestedPath(operation.nestedSectionPath),
+    );
+    if (!target) {
+        return {
+            ok: false,
+            changed: false,
+            structuralChange: false,
+            immediatePreviewRefresh: false,
+            state: currentState,
+            appliedOperations: [],
+            errors: [buildError('nested_section_not_found', 'The target nested container could not be found.', operation)],
+        };
+    }
+
+    const nextSectionsList = Array.isArray(target.props.sections)
+        ? target.props.sections.filter((entry): entry is Record<string, unknown> => isRecord(entry))
+        : [];
+    const nextProps = {
+        ...target.props,
+        sections: [
+            ...nextSectionsList,
+            {
+                type: normalizedSectionType,
+                props: isRecord(operation.props) ? operation.props : {},
+            },
+        ],
+    };
+    const nextSections = target.writeProps(cloneSections(currentState.sectionsDraft), nextProps);
+
+    return {
+        ok: true,
+        changed: true,
+        structuralChange: true,
+        immediatePreviewRefresh: false,
+        state: {
+            sectionsDraft: nextSections,
+            ...refreshSelectionState(currentState, nextSections),
+        },
+        appliedOperations: [operation],
+        errors: [],
+    };
+}
+
+function applyDeleteNestedSectionOperation(
+    currentState: BuilderUpdateStateSnapshot,
+    operation: BuilderDeleteNestedSectionOperation
+): BuilderUpdatePipelineResult {
+    const resolvedTarget = resolveNestedSiblingTarget(
+        currentState.sectionsDraft,
+        operation.sectionLocalId,
+        operation.nestedSectionPath,
+    );
+    if (!resolvedTarget) {
+        return {
+            ok: false,
+            changed: false,
+            structuralChange: false,
+            immediatePreviewRefresh: false,
+            state: currentState,
+            appliedOperations: [],
+            errors: [buildError('nested_section_not_found', 'The nested section to delete could not be found.', operation)],
+        };
+    }
+
+    const nextSiblings = [...resolvedTarget.siblings];
+    nextSiblings.splice(resolvedTarget.itemIndex, 1);
+    const nextProps = {
+        ...resolvedTarget.target.props,
+        sections: nextSiblings,
+    };
+    const nextSections = resolvedTarget.target.writeProps(cloneSections(currentState.sectionsDraft), nextProps);
+
+    return {
+        ok: true,
+        changed: true,
+        structuralChange: true,
+        immediatePreviewRefresh: false,
+        state: {
+            sectionsDraft: nextSections,
+            ...refreshSelectionState(currentState, nextSections),
+        },
+        appliedOperations: [operation],
+        errors: [],
+    };
+}
+
+function applyReorderNestedSectionOperation(
+    currentState: BuilderUpdateStateSnapshot,
+    operation: BuilderReorderNestedSectionOperation
+): BuilderUpdatePipelineResult {
+    const resolvedTarget = resolveNestedSiblingTarget(
+        currentState.sectionsDraft,
+        operation.sectionLocalId,
+        operation.nestedSectionPath,
+    );
+    if (!resolvedTarget) {
+        return {
+            ok: false,
+            changed: false,
+            structuralChange: false,
+            immediatePreviewRefresh: false,
+            state: currentState,
+            appliedOperations: [],
+            errors: [buildError('nested_section_not_found', 'The nested section to reorder could not be found.', operation)],
+        };
+    }
+
+    const nextSiblings = [...resolvedTarget.siblings];
+    const [movedSection] = nextSiblings.splice(resolvedTarget.itemIndex, 1);
+    const boundedIndex = Math.max(0, Math.min(operation.toIndex, nextSiblings.length));
+    if (boundedIndex === resolvedTarget.itemIndex) {
+        return {
+            ok: true,
+            changed: false,
+            structuralChange: false,
+            immediatePreviewRefresh: false,
+            state: currentState,
+            appliedOperations: [],
+            errors: [],
+        };
+    }
+    nextSiblings.splice(boundedIndex, 0, movedSection);
+    const nextProps = {
+        ...resolvedTarget.target.props,
+        sections: nextSiblings,
+    };
+    const nextSections = resolvedTarget.target.writeProps(cloneSections(currentState.sectionsDraft), nextProps);
+
+    return {
+        ok: true,
+        changed: true,
+        structuralChange: true,
+        immediatePreviewRefresh: false,
+        state: {
+            sectionsDraft: nextSections,
+            ...refreshSelectionState(currentState, nextSections),
         },
         appliedOperations: [operation],
         errors: [],
@@ -859,8 +1222,16 @@ function applySingleOperation(
             return applyInsertSectionOperation(currentState, operation, createSection);
         case 'delete-section':
             return applyDeleteSectionOperation(currentState, operation);
+        case 'duplicate-section':
+            return applyDuplicateSectionOperation(currentState, operation);
         case 'reorder-section':
             return applyReorderSectionOperation(currentState, operation);
+        case 'insert-nested-section':
+            return applyInsertNestedSectionOperation(currentState, operation);
+        case 'delete-nested-section':
+            return applyDeleteNestedSectionOperation(currentState, operation);
+        case 'reorder-nested-section':
+            return applyReorderNestedSectionOperation(currentState, operation);
         default:
             return {
                 ok: false,

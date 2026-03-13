@@ -1686,7 +1686,7 @@ export default function Chat({
         if (viewMode === 'inspect') {
             return {
                 onClick: handleBuilderSaveDraft,
-                disabled: !isBuilderSidebarReady || isSavingBuilderDraft,
+                disabled: isSavingBuilderDraft,
                 busy: isSavingBuilderDraft,
                 title: t('Save draft'),
             };
@@ -1702,7 +1702,7 @@ export default function Chat({
         }
 
         return null;
-    }, [handleBuilderSaveDraft, isBuilderSidebarReady, isSavingBuilderDraft, t, viewMode]);
+    }, [handleBuilderSaveDraft, isSavingBuilderDraft, t, viewMode]);
 
     const handleBuilderStructureToggle = useCallback(() => {
         preferPersistedStructureStateRef.current = false;

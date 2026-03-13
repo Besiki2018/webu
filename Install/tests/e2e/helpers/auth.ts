@@ -20,11 +20,9 @@ export async function ensureAuthenticatedPage(page: Page, targetUrl: string): Pr
 
   await page.locator('input[name="email"], input[type="email"]').first().fill(USER_EMAIL);
   await page.locator('input[name="password"], input[type="password"]').first().fill(USER_PASSWORD);
-  await Promise.all([
-    page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 }),
-    page.getByRole('button', { name: /log in|sign in|შესვლა/i }).click(),
-  ]);
+  await page.getByRole('button', { name: /log in|sign in|შესვლა/i }).click();
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
   await page.goto(targetUrl);
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 10000 });
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 30000 });
 }

@@ -25481,18 +25481,21 @@ ${showRules}
             ? cloneRecord(templateDefaults)
             : buildPropsFromSchema(templateSchema);
         const hydratedDefaultProps = hydrateSectionDefaultsFromCms(normalizedKey, defaultProps);
-        const newItem = { type: sectionKey, props: hydratedDefaultProps };
-
-        if (path.length === 0) {
-            handleAddSectionInside(parentLocalId, sectionKey);
-            return;
+        const result = applyBuilderMutationPipeline([{
+            kind: 'insert-nested-section',
+            source: 'sidebar',
+            sectionLocalId: parentLocalId,
+            nestedSectionPath: path,
+            sectionType: normalizedKey,
+            props: hydratedDefaultProps,
+        }], {
+            scheduleAutoSave: true,
+            scheduleStructuralPersist: true,
+        });
+        if (result.ok && result.changed) {
+            toast.success(t('Section added inside'));
         }
-        updateNestedSectionPropsObject(parentLocalId, path, (currentProps) => ({
-            ...currentProps,
-            sections: [...(Array.isArray(currentProps.sections) ? currentProps.sections : []), newItem],
-        }));
-        toast.success(t('Section added inside'));
-    }, [handleAddSectionInside, hydrateSectionDefaultsFromCms, sectionSchemaByKey, t, templateSectionPreviewByKey, updateNestedSectionPropsObject]);
+    }, [applyBuilderMutationPipeline, hydrateSectionDefaultsFromCms, sectionSchemaByKey, t, templateSectionPreviewByKey]);
     const updateFixedSectionPathProp = useCallback((fixedSectionKey: string, path: string[], value: unknown) => {
         if (path.length === 0) {
             return;

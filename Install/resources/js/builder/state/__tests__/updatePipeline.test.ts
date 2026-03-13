@@ -69,6 +69,69 @@ function makeRepeatedItemStateSnapshot(): BuilderUpdateStateSnapshot {
     };
 }
 
+function makeMultiSectionStateSnapshot(): BuilderUpdateStateSnapshot {
+    const heroOne = {
+        localId: 'hero-1',
+        type: 'webu_general_hero_01',
+        propsText: JSON.stringify({ title: 'Hero 1' }),
+        propsError: null,
+    };
+    const heroTwo = {
+        localId: 'hero-2',
+        type: 'webu_general_hero_01',
+        propsText: JSON.stringify({ title: 'Hero 2' }),
+        propsError: null,
+    };
+
+    return {
+        sectionsDraft: [heroOne, heroTwo],
+        selectedSectionLocalId: 'hero-1',
+        selectedBuilderTarget: buildEditableTargetFromMessagePayload({
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+            componentName: 'Hero',
+            props: JSON.parse(heroOne.propsText) as Record<string, unknown>,
+        }),
+    };
+}
+
+function makeNestedLayoutStateSnapshot(): BuilderUpdateStateSnapshot {
+    const layoutSection = {
+        localId: 'layout-1',
+        type: 'container',
+        propsText: JSON.stringify({
+            sections: [
+                {
+                    type: 'webu_general_text_01',
+                    props: {
+                        content: 'Alpha',
+                    },
+                },
+                {
+                    type: 'webu_general_text_01',
+                    props: {
+                        content: 'Beta',
+                    },
+                },
+            ],
+        }),
+        propsError: null,
+    };
+
+    return {
+        sectionsDraft: [layoutSection],
+        selectedSectionLocalId: 'layout-1',
+        selectedBuilderTarget: buildEditableTargetFromMessagePayload({
+            sectionLocalId: 'layout-1',
+            sectionKey: 'container',
+            componentType: 'container',
+            componentName: 'Container',
+            props: JSON.parse(layoutSection.propsText) as Record<string, unknown>,
+        }),
+    };
+}
+
 describe('updatePipeline', () => {
     it('updates sidebar field edits through one validated pipeline and keeps selected target props in sync', () => {
         const initialState = makeStateSnapshot();
@@ -219,6 +282,22 @@ describe('updatePipeline', () => {
         expect(nextProps.buttonLink).toBe('/collections/new');
     });
 
+    it('updates image fields through the same validated sidebar pipeline path', () => {
+        const initialState = makeStateSnapshot();
+        const result = applyBuilderUpdatePipeline(initialState, [{
+            kind: 'set-field',
+            source: 'sidebar',
+            sectionLocalId: 'hero-1',
+            path: ['image'],
+            value: '/storage/uploads/hero-direct-upload.svg',
+        }]);
+
+        expect(result.ok).toBe(true);
+        expect(result.changed).toBe(true);
+        expect(result.state.selectedBuilderTarget?.props?.image).toBe('/storage/uploads/hero-direct-upload.svg');
+        expect(JSON.parse(result.state.sectionsDraft[0]?.propsText ?? '{}').image).toBe('/storage/uploads/hero-direct-upload.svg');
+    });
+
     it('supports structural chat operations through the same pipeline entrypoint', () => {
         const initialState = makeStateSnapshot();
         const result = applyBuilderChangeSetPipeline(initialState, {
@@ -245,6 +324,89 @@ describe('updatePipeline', () => {
         expect(result.structuralChange).toBe(true);
         expect(result.state.sectionsDraft).toHaveLength(2);
         expect(result.state.sectionsDraft[1]?.localId).toBe('inserted-1');
+    });
+
+    it('selects the inserted duplicate through the canonical structural pipeline', () => {
+        const initialState = makeMultiSectionStateSnapshot();
+        const result = applyBuilderUpdatePipeline(initialState, [{
+            kind: 'duplicate-section',
+            source: 'toolbar',
+            sectionLocalId: 'hero-1',
+            newLocalId: 'hero-1-copy',
+            selectDuplicate: true,
+        }]);
+
+        expect(result.ok).toBe(true);
+        expect(result.structuralChange).toBe(true);
+        expect(result.state.sectionsDraft.map((section) => section.localId)).toEqual([
+            'hero-1',
+            'hero-1-copy',
+            'hero-2',
+        ]);
+        expect(result.state.selectedSectionLocalId).toBe('hero-1-copy');
+        expect(result.state.selectedBuilderTarget?.sectionLocalId).toBe('hero-1-copy');
+    });
+
+    it('repairs selection to the nearest valid sibling when deleting the selected section', () => {
+        const initialState = makeMultiSectionStateSnapshot();
+        const result = applyBuilderUpdatePipeline(initialState, [{
+            kind: 'delete-section',
+            source: 'toolbar',
+            sectionLocalId: 'hero-1',
+        }]);
+
+        expect(result.ok).toBe(true);
+        expect(result.structuralChange).toBe(true);
+        expect(result.state.sectionsDraft.map((section) => section.localId)).toEqual(['hero-2']);
+        expect(result.state.selectedSectionLocalId).toBe('hero-2');
+        expect(result.state.selectedBuilderTarget?.sectionLocalId).toBe('hero-2');
+    });
+
+    it('routes nested insert/delete/reorder through the same structural pipeline', () => {
+        const initialState = makeNestedLayoutStateSnapshot();
+        const insertResult = applyBuilderUpdatePipeline(initialState, [{
+            kind: 'insert-nested-section',
+            source: 'toolbar',
+            sectionLocalId: 'layout-1',
+            nestedSectionPath: [],
+            sectionType: 'webu_general_text_01',
+            props: {
+                content: 'Gamma',
+            },
+        }]);
+        expect(insertResult.ok).toBe(true);
+        expect(insertResult.structuralChange).toBe(true);
+        expect((JSON.parse(insertResult.state.sectionsDraft[0]?.propsText ?? '{}').sections as Array<{ props?: { content?: string } }>).map((entry) => entry.props?.content)).toEqual([
+            'Alpha',
+            'Beta',
+            'Gamma',
+        ]);
+
+        const reorderResult = applyBuilderUpdatePipeline(insertResult.state, [{
+            kind: 'reorder-nested-section',
+            source: 'toolbar',
+            sectionLocalId: 'layout-1',
+            nestedSectionPath: [2],
+            toIndex: 0,
+        }]);
+        expect(reorderResult.ok).toBe(true);
+        expect((JSON.parse(reorderResult.state.sectionsDraft[0]?.propsText ?? '{}').sections as Array<{ props?: { content?: string } }>).map((entry) => entry.props?.content)).toEqual([
+            'Gamma',
+            'Alpha',
+            'Beta',
+        ]);
+
+        const deleteResult = applyBuilderUpdatePipeline(reorderResult.state, [{
+            kind: 'delete-nested-section',
+            source: 'toolbar',
+            sectionLocalId: 'layout-1',
+            nestedSectionPath: [1],
+        }]);
+        expect(deleteResult.ok).toBe(true);
+        expect((JSON.parse(deleteResult.state.sectionsDraft[0]?.propsText ?? '{}').sections as Array<{ props?: { content?: string } }>).map((entry) => entry.props?.content)).toEqual([
+            'Gamma',
+            'Beta',
+        ]);
     });
 
     it('updateComponentProps (unified entry) validates component, field, patches props, and returns new state', () => {
@@ -306,7 +468,7 @@ describe('updatePipeline', () => {
         expect(variantResult.immediatePreviewRefresh).toBe(true);
     });
 
-    it('clears selected target cleanly when the selected section is deleted', () => {
+    it('clears selected target cleanly when the selected section is deleted and no fallback section remains', () => {
         const initialState = makeStateSnapshot();
         const result = applyBuilderUpdatePipeline(initialState, [{
             kind: 'delete-section',

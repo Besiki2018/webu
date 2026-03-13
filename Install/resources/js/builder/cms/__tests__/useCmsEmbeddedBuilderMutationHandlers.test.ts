@@ -133,4 +133,37 @@ describe('useCmsEmbeddedBuilderMutationHandlers', () => {
             changed: true,
         }));
     });
+
+    it('routes move-section through the canonical reorder pipeline and applies one structural state update', () => {
+        const options = buildOptions({
+            selectedSectionLocalId: 'hero-1',
+        });
+        const emit = vi.fn();
+        const { result } = renderHook(() => useCmsEmbeddedBuilderMutationHandlers(options));
+
+        act(() => {
+            result.current.handleEmbeddedBuilderMoveSection({
+                requestId: 'req-move-1',
+                sectionLocalId: 'hero-1',
+                targetSectionLocalId: 'hero-2',
+                position: 'after',
+            }, emit);
+        });
+
+        expect(options.applyMutationState).toHaveBeenCalledTimes(1);
+        const nextState = (options.applyMutationState as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+            sectionsDraft: SectionDraft[];
+            selectedSectionLocalId: string | null;
+        };
+        expect(nextState.sectionsDraft.map((section) => section.localId)).toEqual(['hero-2', 'hero-1']);
+        expect(nextState.selectedSectionLocalId).toBe('hero-1');
+        expect(options.scheduleStructuralDraftPersistRef.current).toHaveBeenCalledTimes(1);
+        expect(emit).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'builder:mutation-result',
+            requestId: 'req-move-1',
+            mutation: 'move-section',
+            success: true,
+            changed: true,
+        }));
+    });
 });
