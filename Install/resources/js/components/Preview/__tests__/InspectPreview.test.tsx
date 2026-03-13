@@ -667,6 +667,251 @@ describe('InspectPreview', () => {
         expect(new Set(mentions.map((mention) => mention.targetId)).size).toBe(3);
     });
 
+    it('reconciles real preview text, image, and link nodes from live structure props without reload', async () => {
+        const { rerender } = render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: {
+                        title: 'Launch faster',
+                        image: '/hero.jpg',
+                        buttonText: 'Shop now',
+                        buttonLink: '/shop',
+                    },
+                }]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc, titleEl, imageEl, buttonLabel } = createHeroPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            expect(iframeDoc.querySelector('[data-webu-field], [data-webu-field-url]')).toBeTruthy();
+        });
+
+        rerender(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: {
+                        title: 'Mutation Smoke Title',
+                        image: '/hero-updated.jpg',
+                        buttonText: 'Read more',
+                        buttonLink: '/offers',
+                    },
+                }]}
+            />
+        );
+
+        await waitFor(() => {
+            expect(titleEl.textContent).toContain('Mutation Smoke Title');
+            expect(imageEl.getAttribute('src')).toBe('/hero-updated.jpg');
+            expect(buttonLabel.textContent).toContain('Read more');
+            expect(buttonLabel.closest('a')?.getAttribute('href')).toBe('/offers');
+        });
+    });
+
+    it('falls back to visible preview content when exact data-webu-field nodes are hidden shims', async () => {
+        const { rerender } = render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: {
+                        title: 'Draft title',
+                    },
+                }]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const iframeDoc = document.implementation.createHTMLDocument('');
+        const section = iframeDoc.createElement('section');
+        section.setAttribute('data-webu-section', 'webu_general_hero_01');
+        section.setAttribute('data-webu-section-local-id', 'hero-1');
+
+        const hiddenAnnotatedTitle = iframeDoc.createElement('h2');
+        hiddenAnnotatedTitle.setAttribute('data-webu-field', 'title');
+        hiddenAnnotatedTitle.textContent = 'Hidden title';
+        hiddenAnnotatedTitle.hidden = true;
+
+        const visibleTitle = iframeDoc.createElement('h2');
+        visibleTitle.textContent = 'Visible stale title';
+
+        section.append(hiddenAnnotatedTitle, visibleTitle);
+        iframeDoc.body.appendChild(section);
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        rerender(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: {
+                        title: 'Visible synced title',
+                    },
+                }]}
+            />
+        );
+
+        await waitFor(() => {
+            expect(hiddenAnnotatedTitle.textContent).toContain('Visible synced title');
+            expect(visibleTitle.textContent).toContain('Visible synced title');
+        });
+    });
+
+    it('keeps the canonical title value on preview headings when alias fields disagree', async () => {
+        const { rerender } = render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Initial title',
+                    props: {
+                        title: 'Initial title',
+                        headline: 'Legacy headline',
+                    },
+                }]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const iframeDoc = document.implementation.createHTMLDocument('');
+        const section = iframeDoc.createElement('section');
+        section.setAttribute('data-webu-section', 'webu_general_hero_01');
+        section.setAttribute('data-webu-section-local-id', 'hero-1');
+
+        const hiddenTitle = iframeDoc.createElement('h2');
+        hiddenTitle.setAttribute('data-webu-field', 'title');
+        hiddenTitle.textContent = 'Legacy headline';
+
+        const visibleTitle = iframeDoc.createElement('h2');
+        visibleTitle.textContent = 'Legacy headline';
+        visibleTitle.getBoundingClientRect = () => ({
+            left: 0,
+            top: 0,
+            width: 320,
+            height: 48,
+            right: 320,
+            bottom: 48,
+            x: 0,
+            y: 0,
+            toJSON: () => ({}),
+        });
+
+        section.append(hiddenTitle, visibleTitle);
+        iframeDoc.body.appendChild(section);
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        rerender(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Canonical title',
+                    props: {
+                        title: 'Canonical title',
+                        headline: 'Legacy headline',
+                    },
+                }]}
+            />
+        );
+
+        await waitFor(() => {
+            expect(hiddenTitle.textContent).toContain('Canonical title');
+            expect(visibleTitle.textContent).toContain('Canonical title');
+        });
+    });
+
+    it('mirrors secondary button aliases onto visible CTA bindings', async () => {
+        const { rerender } = render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: {
+                        secondaryButtonText: 'Legacy CTA',
+                        secondaryButtonLink: '/legacy',
+                    },
+                }]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const iframeDoc = document.implementation.createHTMLDocument('');
+        const section = iframeDoc.createElement('section');
+        section.setAttribute('data-webu-section', 'webu_general_hero_01');
+        section.setAttribute('data-webu-section-local-id', 'hero-1');
+
+        const cta = iframeDoc.createElement('a');
+        cta.setAttribute('data-webu-field', 'secondary_cta.text');
+        cta.setAttribute('data-webu-field-url', 'secondary_cta.href');
+        cta.setAttribute('href', '/legacy');
+        cta.textContent = 'Legacy CTA';
+        section.appendChild(cta);
+        iframeDoc.body.appendChild(section);
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        rerender(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: {
+                        secondaryButtonText: 'Updated CTA',
+                        secondaryButtonLink: '/offers',
+                    },
+                }]}
+            />
+        );
+
+        await waitFor(() => {
+            expect(cta.textContent).toContain('Updated CTA');
+            expect(cta.getAttribute('href')).toBe('/offers');
+        });
+    });
+
     it('reconciles optimistic placeholders instead of stacking duplicates on repeated unsaved syncs', async () => {
         const { rerender } = render(
             <InspectPreview

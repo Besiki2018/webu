@@ -259,6 +259,25 @@ function isMeaningfulTextCandidate(node: HTMLElement): boolean {
   return meaningfulChildren.length === 0;
 }
 
+function isRenderableHostCandidate(node: HTMLElement): boolean {
+  if (node.hidden || node.getAttribute('aria-hidden') === 'true') {
+    return false;
+  }
+
+  const ownerWindow = node.ownerDocument?.defaultView ?? null;
+  const style = ownerWindow?.getComputedStyle(node);
+  if (style && (style.display === 'none' || style.visibility === 'hidden')) {
+    return false;
+  }
+
+  if (typeof node.getBoundingClientRect !== 'function') {
+    return true;
+  }
+
+  const rect = node.getBoundingClientRect();
+  return rect.width > 0 || rect.height > 0;
+}
+
 function collectHostCandidates(host: HTMLElement): HostCandidateBuckets {
   const inHost = (node: Element) => !isNestedInsideOtherSection(host, node);
 
@@ -652,7 +671,11 @@ function annotateSectionHost(host: HTMLElement, snapshot: DOMMapperSectionSnapsh
   let annotatedCount = 0;
 
   fields.forEach((field) => {
-    if (host.querySelector(`[data-webu-field="${escapeAttributeValue(field.path)}"], [data-webu-field-url="${escapeAttributeValue(field.path)}"]`)) {
+    const existingFieldNodes = Array.from(
+      host.querySelectorAll<HTMLElement>(`[data-webu-field="${escapeAttributeValue(field.path)}"], [data-webu-field-url="${escapeAttributeValue(field.path)}"]`)
+    ).filter((node) => !isNestedInsideOtherSection(host, node));
+
+    if (existingFieldNodes.some((node) => isRenderableHostCandidate(node))) {
       return;
     }
 

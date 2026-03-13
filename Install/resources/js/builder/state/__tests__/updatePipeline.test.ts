@@ -111,11 +111,25 @@ describe('updatePipeline', () => {
         expect(JSON.parse(result.state.sectionsDraft[0]?.propsText ?? '{}').buttonText).toBe('Shop now');
     });
 
-    it('rejects broader same-section edits when an exact child target is selected', () => {
+    it('allows broader sidebar section edits even when an exact child target is selected', () => {
         const initialState = makeRepeatedItemStateSnapshot();
         const result = applyBuilderUpdatePipeline(initialState, [{
             kind: 'set-field',
             source: 'sidebar',
+            sectionLocalId: 'header-1',
+            path: ['logoText'],
+            value: 'Updated logo',
+        }]);
+
+        expect(result.ok).toBe(true);
+        expect(JSON.parse(result.state.sectionsDraft[0]?.propsText ?? '{}').logoText).toBe('Updated logo');
+    });
+
+    it('keeps exact child target validation for non-sidebar edits', () => {
+        const initialState = makeRepeatedItemStateSnapshot();
+        const result = applyBuilderUpdatePipeline(initialState, [{
+            kind: 'set-field',
+            source: 'chat',
             sectionLocalId: 'header-1',
             path: ['logoText'],
             value: 'This should be rejected',

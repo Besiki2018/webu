@@ -97,7 +97,7 @@ describe('useCmsSelectionStateSync', () => {
         }));
     });
 
-    it('collapses stale field-level target state back to the full selected section target', async () => {
+    it('preserves the selected target identity while refreshing props from the selected section draft', async () => {
         const section = {
             ...makeSection('hero-1'),
             props: { headline: 'Updated headline' },
@@ -129,10 +129,11 @@ describe('useCmsSelectionStateSync', () => {
         const updater = options.setSelectedBuilderTarget.mock.calls.at(-1)?.[0];
         expect(typeof updater).toBe('function');
         expect(updater(staleTarget)).toEqual(expect.objectContaining({
+            targetId: staleTarget?.targetId,
             sectionLocalId: 'hero-1',
             sectionKey: 'webu_general_hero_01',
-            path: null,
-            componentPath: null,
+            path: 'headline',
+            componentPath: 'headline',
             props: { headline: 'Updated headline' },
             responsiveContext: expect.objectContaining({
                 currentBreakpoint: 'tablet',

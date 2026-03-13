@@ -809,23 +809,6 @@ export function useChatEmbeddedBuilderBridge({
                 }
 
                 if (Array.isArray(payload.payload.structureSections)) {
-                    const snapshotSignature = buildBuilderBridgeEventSignature({
-                        pageId: payload.pageId,
-                        pageSlug: payload.pageSlug,
-                        stateVersion: payload.payload.stateVersion ?? null,
-                        revisionVersion: payload.payload.revisionVersion ?? null,
-                        structureHash: payload.payload.structureHash ?? null,
-                    });
-                    if (lastBuilderSnapshotSignatureRef.current === snapshotSignature) {
-                        logChatBridge({
-                            phase: 'ignore',
-                            target: 'chat',
-                            message: payload,
-                            reason: 'duplicate-structure-snapshot',
-                        });
-                        return;
-                    }
-
                     const nextItems: BuilderStructureItem[] = [];
                     const nextCodeSections: BuilderCodeSection[] = [];
                     const snapshotPage = normalizeBuilderBridgePageIdentity({
@@ -866,6 +849,30 @@ export function useChatEmbeddedBuilderBridge({
                             propsText: propsText !== '' ? propsText : stringifySectionProps(props),
                         });
                     });
+
+                    const snapshotSignature = JSON.stringify({
+                        event: buildBuilderBridgeEventSignature({
+                            pageId: payload.pageId,
+                            pageSlug: payload.pageSlug,
+                            stateVersion: payload.payload.stateVersion ?? null,
+                            revisionVersion: payload.payload.revisionVersion ?? null,
+                            structureHash: payload.payload.structureHash ?? null,
+                        }),
+                        pageId: snapshotPage.pageId ?? null,
+                        pageSlug: snapshotPage.pageSlug ?? null,
+                        pageTitle: snapshotPage.pageTitle ?? null,
+                        items: nextItems,
+                        codeSections: nextCodeSections,
+                    });
+                    if (lastBuilderSnapshotSignatureRef.current === snapshotSignature) {
+                        logChatBridge({
+                            phase: 'ignore',
+                            target: 'chat',
+                            message: payload,
+                            reason: 'duplicate-structure-snapshot',
+                        });
+                        return;
+                    }
 
                     structureSnapshotPageRef.current = snapshotPage;
                     setStructureSnapshotPageIdentity(snapshotPage);

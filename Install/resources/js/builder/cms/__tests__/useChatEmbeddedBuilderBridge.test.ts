@@ -286,6 +286,77 @@ describe('useChatEmbeddedBuilderBridge', () => {
         });
     });
 
+    it('applies changed structure snapshots even when state metadata stays the same', async () => {
+        const options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            selectedBuilderTarget: {
+                targetId: 'hero-1::section',
+                sectionLocalId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                componentType: 'webu_general_hero_01',
+                componentName: 'Old Hero',
+                path: null,
+                elementId: null,
+                selector: '[data-webu-section-local-id="hero-1"]',
+                textPreview: 'Old hero',
+                props: { title: 'Old hero' },
+            },
+            selectedBuilderSectionLocalId: 'hero-1',
+        });
+
+        renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        const baseInput = buildSidebarInput('req-sync-meta-1');
+        const firstSnapshot = buildBuilderSyncStateMessage({
+            stateVersion: 9,
+            revisionVersion: 4,
+            structureHash: 'hash-9',
+            structureSections: [{
+                localId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                type: 'webu_general_hero_01',
+                label: 'Hero',
+                previewText: 'Fresh preview',
+                propsText: JSON.stringify({ title: 'Fresh preview' }),
+                props: { title: 'Fresh preview' },
+            }],
+        }, baseInput);
+        const secondSnapshot = buildBuilderSyncStateMessage({
+            stateVersion: 9,
+            revisionVersion: 4,
+            structureHash: 'hash-9',
+            structureSections: [{
+                localId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                type: 'webu_general_hero_01',
+                label: 'Hero',
+                previewText: 'Fresh preview 2',
+                propsText: JSON.stringify({ title: 'Fresh preview 2' }),
+                props: { title: 'Fresh preview 2' },
+            }],
+        }, buildSidebarInput('req-sync-meta-2'));
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: firstSnapshot,
+        }));
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: secondSnapshot,
+        }));
+
+        await waitFor(() => {
+            expect(options.setBuilderStructureItems).toHaveBeenCalledTimes(2);
+            expect(options.selectBuilderTarget).toHaveBeenLastCalledWith(expect.objectContaining({
+                sectionLocalId: 'hero-1',
+                componentName: 'Hero',
+                textPreview: 'Fresh preview 2',
+                props: { title: 'Fresh preview 2' },
+            }));
+        });
+    });
+
     it('adopts sidebar visual state without echoing the same sync state back to the sidebar iframe', async () => {
         const postMessage = vi.fn();
         let options = buildOptions({

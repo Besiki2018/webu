@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 
 import {
+    buildEditableTargetFromMessagePayload,
     buildEditableTargetFromSection,
+    editableTargetToMessagePayload,
     type BuilderEditableTarget,
 } from '@/builder/editingState';
 import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
@@ -35,7 +37,36 @@ function syncSelectedSectionTarget(
         return nextBase;
     }
 
-    return {
+    const currentPayload = editableTargetToMessagePayload(current);
+    if (!currentPayload) {
+        return {
+            ...nextBase,
+            pageId: current.pageId ?? nextBase.pageId ?? null,
+            pageSlug: current.pageSlug ?? nextBase.pageSlug ?? null,
+            pageTitle: current.pageTitle ?? nextBase.pageTitle ?? null,
+            textPreview: current.textPreview ?? nextBase.textPreview ?? null,
+            responsiveContext: current.responsiveContext ?? nextBase.responsiveContext ?? null,
+        };
+    }
+
+    const rebuiltCurrentTarget = buildEditableTargetFromMessagePayload({
+        ...currentPayload,
+        pageId: current.pageId ?? nextBase.pageId ?? null,
+        pageSlug: current.pageSlug ?? nextBase.pageSlug ?? null,
+        pageTitle: current.pageTitle ?? nextBase.pageTitle ?? null,
+        sectionLocalId: nextBase.sectionLocalId,
+        sectionKey: nextBase.sectionKey,
+        componentType: nextBase.componentType,
+        componentName: current.componentName ?? nextBase.componentName ?? null,
+        selector: current.selector ?? nextBase.selector ?? null,
+        textPreview: current.textPreview ?? nextBase.textPreview ?? null,
+        props: nextBase.props ?? current.props ?? null,
+        editableFields: current.editableFields ?? nextBase.editableFields ?? [],
+        currentBreakpoint: current.responsiveContext?.currentBreakpoint ?? null,
+        currentInteractionState: current.responsiveContext?.currentInteractionState ?? null,
+    });
+
+    return rebuiltCurrentTarget ?? {
         ...nextBase,
         pageId: current.pageId ?? nextBase.pageId ?? null,
         pageSlug: current.pageSlug ?? nextBase.pageSlug ?? null,

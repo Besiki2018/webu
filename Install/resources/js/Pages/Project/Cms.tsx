@@ -25990,7 +25990,7 @@ ${showRules}
                 void saveDraftRevisionInternalRef.current({
                     silent: true,
                     refreshAfterSave: false,
-                    notifyParentPreviewRefresh: false,
+                    notifyParentPreviewRefresh: true,
                 });
             }, 1500);
     }, [activeTab, effectivePageEditorMode, selectedPageId, previewRefreshScheduler]);
@@ -26003,7 +26003,7 @@ ${showRules}
                 void saveDraftRevisionInternalRef.current({
                     silent: true,
                     refreshAfterSave: false,
-                    notifyParentPreviewRefresh: false,
+                    notifyParentPreviewRefresh: true,
                 });
             }, 0);
     }, [activeTab, effectivePageEditorMode, selectedPageId, previewRefreshScheduler]);
@@ -26016,7 +26016,7 @@ ${showRules}
                 void saveDraftRevisionInternalRef.current({
                     silent: true,
                     refreshAfterSave: false,
-                    notifyParentPreviewRefresh: false,
+                    notifyParentPreviewRefresh: true,
                 });
         });
     }, [activeTab, effectivePageEditorMode, selectedPageId, structuralDraftPersistScheduler]);

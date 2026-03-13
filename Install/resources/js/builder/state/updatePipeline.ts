@@ -427,7 +427,13 @@ function validateTargetSelection(
         );
     }
 
-    if (path && target.path && Array.isArray(target.allowedUpdates?.fieldPaths) && target.allowedUpdates.fieldPaths.length > 0) {
+    if (
+        operation.source !== 'sidebar'
+        && path
+        && target.path
+        && Array.isArray(target.allowedUpdates?.fieldPaths)
+        && target.allowedUpdates.fieldPaths.length > 0
+    ) {
         const nextPath = path.join('.');
         const allowed = target.allowedUpdates.fieldPaths.some((candidate) => (
             candidate === nextPath

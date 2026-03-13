@@ -115,6 +115,36 @@ describe('domMapper', () => {
       expect(map.elementsById.get('HeroSection.primary_cta.link')).toBeDefined();
     });
 
+    it('does not let hidden exact shims block visible inferred field bindings', () => {
+      const doc = document.implementation.createHTMLDocument('');
+      const section = doc.createElement('section');
+      section.setAttribute('data-webu-section', 'webu_general_hero_01');
+      section.setAttribute('data-webu-section-local-id', 'hero-hidden-shim');
+
+      const hiddenTitle = doc.createElement('h2');
+      hiddenTitle.setAttribute('data-webu-field', 'title');
+      hiddenTitle.textContent = 'Legacy title';
+      hiddenTitle.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON: () => ({}) });
+
+      const visibleTitle = doc.createElement('h2');
+      visibleTitle.textContent = 'Runtime title';
+      visibleTitle.getBoundingClientRect = () => ({ left: 0, top: 0, width: 320, height: 48, right: 320, bottom: 48, x: 0, y: 0, toJSON: () => ({}) });
+
+      section.append(hiddenTitle, visibleTitle);
+      doc.body.appendChild(section);
+
+      annotateEditableElements(doc, [{
+        localId: 'hero-hidden-shim',
+        sectionKey: 'webu_general_hero_01',
+        props: {
+          title: 'Runtime title',
+        },
+      }]);
+
+      expect(hiddenTitle.getAttribute('data-webu-field')).toBe('title');
+      expect(visibleTitle.getAttribute('data-webu-field')).toBe('title');
+    });
+
     it('annotates component scopes for compound and repeated child targets', () => {
       const doc = document.implementation.createHTMLDocument('');
       const section = doc.createElement('section');
