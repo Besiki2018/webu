@@ -157,6 +157,8 @@ export function useChatEmbeddedBuilderBridge({
     t,
 }: UseChatEmbeddedBuilderBridgeOptions): UseChatEmbeddedBuilderBridgeResult {
     const hasRequestedSidebarStateRef = useRef(false);
+    const lastSidebarStateRequestAtRef = useRef<number>(0);
+    const sidebarStateRetryTimeoutsRef = useRef<number[]>([]);
     const lastSelectionCommandSignatureRef = useRef<string | null>(null);
     const lastVisualStateCommandSignatureRef = useRef<string | null>(null);
     const lastReceivedSidebarVisualStateSignatureRef = useRef<string | null>(null);
@@ -175,6 +177,77 @@ export function useChatEmbeddedBuilderBridge({
             ...input,
         });
     }, []);
+
+    const clearSidebarStateRetryTimeouts = useCallback(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        sidebarStateRetryTimeoutsRef.current.forEach((timeoutId) => {
+            window.clearTimeout(timeoutId);
+        });
+        sidebarStateRetryTimeoutsRef.current = [];
+    }, []);
+
+    const requestSidebarState = useCallback((reason: string, force = false) => {
+        if (typeof window === 'undefined') {
+            return false;
+        }
+
+        if (isBuilderSidebarReady || lastBuilderReadySignatureRef.current) {
+            return false;
+        }
+
+        const frameWindow = builderSidebarFrameRef.current?.contentWindow;
+        if (!frameWindow) {
+            return false;
+        }
+
+        const now = Date.now();
+        if (!force && now - lastSidebarStateRequestAtRef.current < 250) {
+            return false;
+        }
+
+        hasRequestedSidebarStateRef.current = true;
+        lastSidebarStateRequestAtRef.current = now;
+
+        const requestStateMessage = buildBuilderRequestStateMessage({
+            reason,
+        }, {
+            source: 'chat',
+            projectId,
+            page: activeBuilderPageIdentity,
+        });
+        logChatBridge({
+            phase: 'send',
+            target: 'sidebar',
+            message: requestStateMessage,
+            reason,
+        });
+        postBuilderBridgeEnvelope(frameWindow, window.location.origin, requestStateMessage);
+        return true;
+    }, [
+        activeBuilderPageIdentity,
+        builderSidebarFrameRef,
+        isBuilderSidebarReady,
+        lastBuilderReadySignatureRef,
+        logChatBridge,
+        projectId,
+    ]);
+
+    const scheduleSidebarStateRetries = useCallback((reasonPrefix: string) => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        clearSidebarStateRetryTimeouts();
+        [350, 1200].forEach((delay, index) => {
+            const timeoutId = window.setTimeout(() => {
+                requestSidebarState(`${reasonPrefix}-retry-${index + 1}`);
+            }, delay);
+            sidebarStateRetryTimeoutsRef.current.push(timeoutId);
+        });
+    }, [clearSidebarStateRetryTimeouts, requestSidebarState]);
 
     const createBridgeMessageFromPayload = useCallback((payload: Record<string, unknown>): BuilderBridgeMessage | null => {
         const type = typeof payload.type === 'string' ? payload.type : null;
@@ -343,6 +416,7 @@ export function useChatEmbeddedBuilderBridge({
         const frameWindow = builderSidebarFrameRef.current?.contentWindow;
         if (!frameWindow || !isBuilderSidebarReady || !isBuilderPreviewReady) {
             builderSidebarCommandQueueRef.current.push(message);
+            requestSidebarState('queued-command');
             return;
         }
 
@@ -358,6 +432,7 @@ export function useChatEmbeddedBuilderBridge({
         isBuilderPreviewReady,
         isBuilderSidebarReady,
         logChatBridge,
+        requestSidebarState,
     ]);
 
     const postBuilderCommand = useCallback((payload: Record<string, unknown>) => {
@@ -521,31 +596,22 @@ export function useChatEmbeddedBuilderBridge({
 
     const handleBuilderSidebarFrameLoad = useCallback(() => {
         markBuilderSidebarReady(false);
+        clearSidebarStateRetryTimeouts();
         preferPersistedStructureStateRef.current = true;
         requestAnimationFrame(() => {
-            const frameWindow = builderSidebarFrameRef.current?.contentWindow;
-            if (typeof window !== 'undefined' && frameWindow && !hasRequestedSidebarStateRef.current) {
-                hasRequestedSidebarStateRef.current = true;
-                const requestStateMessage = buildBuilderRequestStateMessage({
-                    reason: 'sidebar-frame-load',
-                }, {
-                    source: 'chat',
-                    projectId,
-                    page: activeBuilderPageIdentity,
-                });
-                logChatBridge({
-                    phase: 'send',
-                    target: 'sidebar',
-                    message: requestStateMessage,
-                    reason: 'sidebar-frame-load',
-                });
-                postBuilderBridgeEnvelope(frameWindow, window.location.origin, requestStateMessage);
-            }
+            requestSidebarState('sidebar-frame-load', true);
+            scheduleSidebarStateRetries('sidebar-frame-load');
             window.setTimeout(() => {
                 preferPersistedStructureStateRef.current = false;
             }, 0);
         });
-    }, [activeBuilderPageIdentity, builderSidebarFrameRef, hasRequestedSidebarStateRef, logChatBridge, markBuilderSidebarReady, preferPersistedStructureStateRef, projectId]);
+    }, [
+        clearSidebarStateRetryTimeouts,
+        markBuilderSidebarReady,
+        preferPersistedStructureStateRef,
+        requestSidebarState,
+        scheduleSidebarStateRetries,
+    ]);
 
     useEffect(() => {
         if (viewMode !== 'inspect' || typeof window === 'undefined') {
@@ -967,6 +1033,8 @@ export function useChatEmbeddedBuilderBridge({
                 latestBuilderStateCursorRef.current = nextBuilderStateCursor;
                 lastBuilderReadySignatureRef.current = readySignature;
                 hasRequestedSidebarStateRef.current = false;
+                lastSidebarStateRequestAtRef.current = 0;
+                clearSidebarStateRetryTimeouts();
                 markBuilderSidebarReady(true);
                 requestAnimationFrame(() => {
                     if (isBuilderPreviewReady) {
@@ -990,6 +1058,7 @@ export function useChatEmbeddedBuilderBridge({
         lastBuilderReadySignatureRef,
         lastBuilderSnapshotSignatureRef,
         latestBuilderStateCursorRef,
+        clearSidebarStateRetryTimeouts,
         pendingBuilderChangeSetRequestIdRef,
         pendingBuilderStructureMutation,
         postBuilderCommand,
@@ -1030,15 +1099,18 @@ export function useChatEmbeddedBuilderBridge({
         lastBuilderSnapshotSignatureRef.current = null;
         latestBuilderStateCursorRef.current = null;
         hasRequestedSidebarStateRef.current = false;
+        lastSidebarStateRequestAtRef.current = 0;
         lastSelectionCommandSignatureRef.current = null;
         lastVisualStateCommandSignatureRef.current = null;
         lastReceivedSidebarVisualStateSignatureRef.current = null;
         lastReceivedSidebarSelectionSignatureRef.current = null;
         processedSidebarEnvelopeSignaturesRef.current.clear();
+        clearSidebarStateRetryTimeouts();
         markBuilderSidebarReady(false);
     }, [
         activeBuilderPageIdentity.pageId,
         activeBuilderPageIdentity.pageSlug,
+        clearSidebarStateRetryTimeouts,
         viewMode,
     ]);
 
@@ -1046,50 +1118,27 @@ export function useChatEmbeddedBuilderBridge({
         if (viewMode !== 'inspect' || typeof window === 'undefined') {
             return;
         }
-        const sendPing = () => {
-            if (isBuilderSidebarReady || lastBuilderReadySignatureRef.current) {
-                return;
-            }
-            if (hasRequestedSidebarStateRef.current) {
-                return;
-            }
-            const frameWindow = builderSidebarFrameRef.current?.contentWindow;
-            if (frameWindow) {
-                hasRequestedSidebarStateRef.current = true;
-                const requestStateMessage = buildBuilderRequestStateMessage({
-                    reason: 'inspect-open',
-                }, {
-                    source: 'chat',
-                    projectId,
-                    page: activeBuilderPageIdentity,
-                });
-                logChatBridge({
-                    phase: 'send',
-                    target: 'sidebar',
-                    message: requestStateMessage,
-                    reason: 'inspect-open',
-                });
-                postBuilderBridgeEnvelope(frameWindow, window.location.origin, requestStateMessage);
-            }
-        };
-        const t1 = window.setTimeout(sendPing, 200);
-        const t2 = window.setTimeout(sendPing, 800);
+        const timeoutId = window.setTimeout(() => {
+            requestSidebarState('inspect-open');
+        }, 1500);
         return () => {
-            window.clearTimeout(t1);
-            window.clearTimeout(t2);
+            window.clearTimeout(timeoutId);
         };
     }, [
         activeBuilderPageIdentity.pageId,
         activeBuilderPageIdentity.pageSlug,
         activeBuilderPageIdentity.pageTitle,
-        builderSidebarFrameRef,
-        hasRequestedSidebarStateRef,
         isBuilderSidebarReady,
         lastBuilderReadySignatureRef,
-        logChatBridge,
-        projectId,
+        requestSidebarState,
         viewMode,
     ]);
+
+    useEffect(() => {
+        return () => {
+            clearSidebarStateRetryTimeouts();
+        };
+    }, [clearSidebarStateRetryTimeouts]);
 
     useEffect(() => {
         if (viewMode !== 'inspect') {

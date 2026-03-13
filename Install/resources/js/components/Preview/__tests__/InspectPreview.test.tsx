@@ -449,6 +449,59 @@ describe('InspectPreview', () => {
         });
     });
 
+    it('keeps section selection working when the live structure snapshot is stale', async () => {
+        const onElementSelect = vi.fn();
+        render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                onElementSelect={onElementSelect}
+                liveStructureItems={[{
+                    localId: 'cards-2',
+                    sectionKey: 'webu_general_cards_01',
+                    label: 'Cards',
+                    previewText: 'Cards',
+                    props: {
+                        title: 'Other cards',
+                    },
+                }]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc, section, blankChild } = createRepeatedCardsPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            expect(iframeDoc.querySelector('[data-webu-section-local-id="cards-1"]')).toBeTruthy();
+        });
+
+        const hitLayer = iframe.parentElement?.querySelector<HTMLDivElement>('div[aria-hidden="true"]');
+        expect(hitLayer).toBeTruthy();
+
+        Object.defineProperty(iframeDoc, 'elementsFromPoint', {
+            configurable: true,
+            value: vi.fn(() => [blankChild, section]),
+        });
+        Object.defineProperty(iframeDoc, 'elementFromPoint', {
+            configurable: true,
+            value: vi.fn(() => blankChild),
+        });
+
+        fireEvent.click(hitLayer!, { clientX: 24, clientY: 24 });
+
+        await waitFor(() => {
+            expect(onElementSelect).toHaveBeenCalledTimes(1);
+            expect(onElementSelect).toHaveBeenCalledWith(expect.objectContaining({
+                sectionLocalId: 'cards-1',
+                parameterName: undefined,
+                targetId: 'cards-1::section',
+            }));
+        });
+    });
+
     it('clicks a repeated child area and resolves a stable repeater scope target', async () => {
         const onElementSelect = vi.fn();
         const props = {

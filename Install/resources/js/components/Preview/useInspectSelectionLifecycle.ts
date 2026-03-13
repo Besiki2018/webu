@@ -429,15 +429,9 @@ export function useInspectSelectionLifecycle(
         const resolvedTarget = pointResolution.status === 'resolved'
             ? pointResolution.target
             : null;
-
-        if (resolvedTarget && !hasBackingStructureTarget(resolvedTarget, liveStructureItems)) {
-            inspectLifecycleLog('ignored-click-target-without-live-structure-node', {
-                targetId: resolvedTarget.targetId,
-                sectionLocalId: resolvedTarget.sectionLocalId,
-                parameterPath: resolvedTarget.parameterPath,
-            });
-            return;
-        }
+        const hasResolvedBackingTarget = resolvedTarget
+            ? hasBackingStructureTarget(resolvedTarget, liveStructureItems)
+            : false;
 
         const selectedSection = resolvedTarget?.section
             ?? (pointResolution.status === 'missing-backing-node'
@@ -453,8 +447,19 @@ export function useInspectSelectionLifecycle(
                     clientX: event.clientX,
                     clientY: event.clientY,
                 }));
-        const mention = buildElementMentionFromResolvedTarget(resolvedTarget)
-            ?? (selectedSection ? buildSectionElementMention(selectedSection) : null);
+        if (resolvedTarget && !hasResolvedBackingTarget) {
+            inspectLifecycleLog('fallback-click-target-without-live-structure-node', {
+                targetId: resolvedTarget.targetId,
+                sectionLocalId: resolvedTarget.sectionLocalId,
+                parameterPath: resolvedTarget.parameterPath,
+            });
+        }
+
+        const mention = (
+            resolvedTarget && hasResolvedBackingTarget
+                ? buildElementMentionFromResolvedTarget(resolvedTarget)
+                : null
+        ) ?? (selectedSection ? buildSectionElementMention(selectedSection) : null);
         inspectLifecycleLog('handleInspectClick', {
             clientX: event.clientX,
             clientY: event.clientY,

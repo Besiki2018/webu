@@ -195,17 +195,32 @@ const BUILDER_BRIDGE_TRACKED_SIGNATURE_LIMIT = 200;
 
 function readBuilderBridgeDebugFlag(): boolean {
     try {
-        if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
-            return true;
+        const isDevelopment = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
+        if (!isDevelopment) {
+            return false;
         }
     } catch {
         // Ignore environments without process.
     }
 
     try {
-        return typeof import.meta !== 'undefined'
+        const isViteDev = typeof import.meta !== 'undefined'
             && Boolean(import.meta.env?.DEV)
             && import.meta.env?.MODE !== 'test';
+        if (!isViteDev) {
+            return false;
+        }
+
+        if (typeof window === 'undefined') {
+            return false;
+        }
+
+        const search = window.location.search;
+        if (search.includes('debug=bridge') || search.includes('debug=inspect')) {
+            return true;
+        }
+
+        return window.localStorage.getItem('webu:debug:builder-bridge') === '1';
     } catch {
         return false;
     }

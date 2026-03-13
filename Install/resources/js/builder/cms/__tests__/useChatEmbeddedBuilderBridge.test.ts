@@ -109,6 +109,40 @@ describe('useChatEmbeddedBuilderBridge', () => {
         }));
     });
 
+    it('re-requests sidebar state when commands are queued before sidebar readiness is acknowledged', () => {
+        const postMessage = vi.fn();
+        const options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: false,
+            builderSidebarFrameRef: {
+                current: {
+                    contentWindow: { postMessage },
+                } as unknown as HTMLIFrameElement,
+            },
+        });
+        const { result } = renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        result.current.postBuilderCommand({
+            type: 'builder:set-selected-target',
+            sectionLocalId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            componentType: 'webu_general_hero_01',
+        });
+
+        expect(options.builderSidebarCommandQueueRef.current).toContainEqual(expect.objectContaining({
+            type: 'BUILDER_SELECT_TARGET',
+            source: 'chat',
+        }));
+        expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'BUILDER_REQUEST_STATE',
+            source: 'chat',
+            projectId: 'project-1',
+            payload: expect.objectContaining({
+                reason: 'queued-command',
+            }),
+        }), window.location.origin);
+    });
+
     it('maps section-level select messages into canonical builder selection state', async () => {
         const options = buildOptions({
             isBuilderPreviewReady: true,
