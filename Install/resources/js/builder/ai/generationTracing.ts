@@ -4,6 +4,7 @@ import type {
   BlueprintGenerationStep,
   BuildGenerationDiagnostics,
 } from './blueprintTypes'
+import type { DesignQualityReport } from './designQuality/types'
 
 export function createGenerationLogEntry(
   step: BlueprintGenerationStep,
@@ -24,30 +25,39 @@ export function buildGenerationDiagnostics(input: {
   generationMode?: BuildGenerationDiagnostics['generationMode']
   selectedProjectType?: string | null
   selectedBusinessType?: string | null
+  detectedDomain?: BuildGenerationDiagnostics['detectedDomain']
+  selectedLayoutTemplate?: string | null
   selectedSectionTypes?: string[]
+  finalSections?: string[]
   selectedSections?: string[]
   selectedComponentKeys?: string[]
   validationPassed?: boolean
   emergencyFallbackUsed?: boolean
   fallbackUsed?: boolean
+  designQualityReport?: DesignQualityReport | null
   failedStep?: BlueprintGenerationStep | null
   rootCause?: string | null
   events?: BlueprintGenerationLogEntry[]
 }): BuildGenerationDiagnostics {
   const selectedSectionTypes = input.selectedSectionTypes ?? input.selectedSections ?? []
   const emergencyFallbackUsed = input.emergencyFallbackUsed ?? input.fallbackUsed ?? false
+  const finalSections = input.finalSections ?? selectedSectionTypes
 
   return {
     prompt: input.prompt ?? null,
     generationMode: input.generationMode ?? (emergencyFallbackUsed ? 'emergency-fallback' : 'blueprint'),
     selectedProjectType: input.selectedProjectType ?? null,
     selectedBusinessType: input.selectedBusinessType ?? null,
+    detectedDomain: input.detectedDomain ?? null,
+    selectedLayoutTemplate: input.selectedLayoutTemplate ?? null,
     selectedSectionTypes,
+    finalSections,
     validationPassed: input.validationPassed === true,
     emergencyFallbackUsed,
     selectedSections: selectedSectionTypes,
     selectedComponentKeys: input.selectedComponentKeys ?? [],
     fallbackUsed: emergencyFallbackUsed,
+    designQualityReport: input.designQualityReport ?? null,
     failedStep: input.failedStep ?? null,
     rootCause: input.rootCause ?? null,
     events: input.events ? [...input.events] : [],

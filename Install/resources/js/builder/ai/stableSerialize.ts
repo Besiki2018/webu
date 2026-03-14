@@ -1,3 +1,5 @@
+import { cloneData } from '../runtime/clone'
+
 function normalizeForStableSerialization(value: unknown, seen: WeakSet<object>): unknown {
   if (
     value === null
@@ -42,9 +44,5 @@ export function stableSerialize(value: unknown): string {
 }
 
 export function clonePlainData<T>(value: T): T {
-  if (typeof globalThis.structuredClone === 'function') {
-    return globalThis.structuredClone(value)
-  }
-
-  return JSON.parse(stableSerialize(value)) as T
+  return cloneData(value)
 }

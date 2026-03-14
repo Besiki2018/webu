@@ -181,6 +181,7 @@ describe('useBuilderChat generate_site handling', () => {
                 selectedSections: ['header', 'hero', 'footer'],
                 selectedComponentKeys: ['webu_header_01', 'broken_hero', 'webu_footer_01'],
                 fallbackUsed: false,
+                designQualityReport: null,
                 failedStep: 'validation',
                 rootCause: 'Generated site validation failed: Unknown component key "broken_hero" at planned section 2.',
                 events: [],
@@ -241,6 +242,7 @@ describe('useBuilderChat generate_site handling', () => {
                 selectedSections: ['header', 'hero', 'features', 'footer'],
                 selectedComponentKeys: ['webu_header_01', 'webu_general_hero_01', 'webu_general_features_01', 'webu_footer_01'],
                 fallbackUsed: false,
+                designQualityReport: null,
                 failedStep: null,
                 rootCause: null,
                 events: [
@@ -309,6 +311,7 @@ describe('useBuilderChat generate_site handling', () => {
                 selectedSections: ['header', 'hero', 'footer'],
                 selectedComponentKeys: ['webu_header_01', 'webu_general_hero_01', 'webu_footer_01'],
                 fallbackUsed: false,
+                designQualityReport: null,
                 failedStep: null,
                 rootCause: null,
                 events: [],

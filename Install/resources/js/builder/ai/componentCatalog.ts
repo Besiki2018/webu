@@ -11,6 +11,7 @@ import {
     mapAiProjectTypeToSiteType,
     type AiProjectType,
 } from './projectTypeDetector';
+import { buildRegistryIndex, type RegistryIndex } from '../runtime/registryIndex';
 
 export type AiComponentCategory = 'ecommerce' | 'booking' | 'landing' | 'marketing' | 'blog' | 'general';
 export type AiComponentLayoutType =
@@ -55,6 +56,14 @@ export interface AiComponentCatalogEntry {
     supportsVisibility: boolean;
     capabilities: string[];
 }
+
+export type AiComponentCatalogIndex = RegistryIndex<AiComponentCatalogEntry>;
+
+let componentCatalogCache: AiComponentCatalogEntry[] | null = null;
+let componentCatalogIndexCache: AiComponentCatalogIndex | null = null;
+const allowedComponentCatalogCache = new Map<string, AiComponentCatalogEntry[]>();
+const allowedComponentCatalogIndexCache = new Map<string, AiComponentCatalogIndex>();
+const catalogEntryCache = new Map<string, AiComponentCatalogEntry | null>();
 
 function normalizeCategory(category: string): AiComponentCategory {
     switch (category) {
@@ -138,13 +147,19 @@ function extractVariantOptions(schema: BuilderComponentSchema): AiComponentVaria
 }
 
 function buildCatalogEntry(componentKey: string): AiComponentCatalogEntry | null {
+    const cached = catalogEntryCache.get(componentKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
     const runtimeEntry = getComponentRuntimeEntry(componentKey);
     if (!runtimeEntry) {
+        catalogEntryCache.set(componentKey, null);
         return null;
     }
 
     const category = normalizeCategory(runtimeEntry.category);
-    return {
+    const entry = {
         componentKey: runtimeEntry.componentKey,
         label: runtimeEntry.displayName,
         category,
@@ -162,12 +177,18 @@ function buildCatalogEntry(componentKey: string): AiComponentCatalogEntry | null
         supportsVisibility: runtimeEntry.schema.responsiveSupport?.supportsVisibility ?? false,
         capabilities: [...(runtimeEntry.schema.capabilities ?? [])],
     };
+    catalogEntryCache.set(componentKey, entry);
+    return entry;
 }
 
 export function getComponentCatalog(): AiComponentCatalogEntry[] {
-    return getGovernedComponentCatalog()
-        .map((entry) => buildCatalogEntry(entry.type))
-        .filter((entry): entry is AiComponentCatalogEntry => entry !== null);
+    if (!componentCatalogCache) {
+        componentCatalogCache = getGovernedComponentCatalog()
+            .map((entry) => buildCatalogEntry(entry.type))
+            .filter((entry): entry is AiComponentCatalogEntry => entry !== null);
+    }
+
+    return componentCatalogCache;
 }
 
 export function getAllowedComponentCatalog(projectType: AiProjectType | ProjectSiteType | string): AiComponentCatalogEntry[] {
@@ -179,11 +200,47 @@ export function getAllowedComponentCatalog(projectType: AiProjectType | ProjectS
         return mapAiProjectTypeToSiteType(projectType as AiProjectType);
     })();
 
-    return getAllowedComponents(siteType)
+    const cacheKey = String(siteType);
+    const cached = allowedComponentCatalogCache.get(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    const catalog = getAllowedComponents(siteType)
         .map((component) => buildCatalogEntry(component.type))
         .filter((entry): entry is AiComponentCatalogEntry => entry !== null);
+    allowedComponentCatalogCache.set(cacheKey, catalog);
+    return catalog;
+}
+
+export function getAllowedComponentCatalogIndex(projectType: AiProjectType | ProjectSiteType | string): AiComponentCatalogIndex {
+    const siteType = ((): ProjectSiteType => {
+        if (projectType === 'ecommerce' || projectType === 'booking' || projectType === 'landing' || projectType === 'website') {
+            return projectType;
+        }
+
+        return mapAiProjectTypeToSiteType(projectType as AiProjectType);
+    })();
+
+    const cacheKey = String(siteType);
+    const cached = allowedComponentCatalogIndexCache.get(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    const index = buildRegistryIndex(getAllowedComponentCatalog(siteType));
+    allowedComponentCatalogIndexCache.set(cacheKey, index);
+    return index;
 }
 
 export function getCatalogEntry(componentKey: string): AiComponentCatalogEntry | null {
     return buildCatalogEntry(componentKey);
+}
+
+export function getComponentCatalogIndex(): AiComponentCatalogIndex {
+    if (!componentCatalogIndexCache) {
+        componentCatalogIndexCache = buildRegistryIndex(getComponentCatalog());
+    }
+
+    return componentCatalogIndexCache;
 }

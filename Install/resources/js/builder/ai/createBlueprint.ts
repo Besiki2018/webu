@@ -3,6 +3,7 @@ import { analyzePrompt, type SectionSlug } from './promptAnalyzer'
 import { detectProjectType } from './projectTypeDetector'
 import type { BlueprintProjectType, ProjectBlueprint, ProjectBlueprintSection } from './blueprintTypes'
 import { clonePlainData, stableSerialize } from './stableSerialize'
+import { enhanceBlueprintWithLayout } from './blueprint/enhanceBlueprintWithLayout'
 
 export interface CreateBlueprintInput {
   prompt: string
@@ -450,6 +451,34 @@ function mergeSections(
   return Array.from(new Set(merged))
 }
 
+function buildRequestedSections(
+  requiredSections: SectionSlug[],
+  businessType: string,
+  audience: string,
+  tone: string,
+  styleKeywords: string[],
+  pageGoal: string,
+): ProjectBlueprintSection[] {
+  const requestedSections = Array.from(new Set(requiredSections.map(mapSectionSlugToBlueprintSection)))
+  const orderIndex = new Map<string, number>(SECTION_PRIORITY_ORDER.map((sectionType, index) => [sectionType, index]))
+
+  return requestedSections
+    .sort((left, right) => (orderIndex.get(left) ?? 999) - (orderIndex.get(right) ?? 999))
+    .map((sectionType, index) => ({
+      sectionType,
+      priority: (index + 1) * 10,
+      required: true,
+      contentBrief: buildSectionContentBrief(
+        sectionType,
+        businessType,
+        audience,
+        tone,
+        styleKeywords,
+        pageGoal,
+      ),
+    }))
+}
+
 function isSectionExplicitlyRequested(sectionType: string, requiredSections: SectionSlug[]): boolean {
   return requiredSections.map(mapSectionSlugToBlueprintSection).includes(sectionType)
 }
@@ -590,27 +619,29 @@ export function createBlueprint(input: CreateBlueprintInput): ProjectBlueprint {
   const tone = resolveTone(projectType, styleKeywords, promptAnalysis.tone)
   const effectiveStyleKeywords = Array.from(new Set(styleKeywords.length > 0 ? styleKeywords : [tone]))
   const pageGoal = resolvePageGoal(projectType, businessType, audience, normalizedPrompt)
-  const sections = buildSections(
-    projectType,
-    promptAnalysis.requiredSections,
+  const sections = buildRequestedSections(
+    promptAnalysis.explicitSections,
     businessType,
     audience,
     tone,
     effectiveStyleKeywords,
     pageGoal,
-    normalizedPrompt,
   )
 
-  const blueprint: ProjectBlueprint = {
-    projectType,
-    businessType,
-    audience,
-    tone,
-    styleKeywords: effectiveStyleKeywords,
-    pageGoal,
-    sections,
-    restrictions: buildRestrictions(projectType, normalizedPrompt),
-  }
+  const blueprint = enhanceBlueprintWithLayout({
+    blueprint: {
+      projectType,
+      businessType,
+      audience,
+      tone,
+      styleKeywords: effectiveStyleKeywords,
+      pageGoal,
+      sections,
+      restrictions: buildRestrictions(projectType, normalizedPrompt),
+      sourcePrompt: input.prompt,
+    },
+    prompt: input.prompt,
+  })
 
   rememberCacheEntry(blueprintCache, cacheKey, clonePlainData(blueprint))
 

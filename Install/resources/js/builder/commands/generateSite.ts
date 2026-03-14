@@ -21,7 +21,10 @@ import {
   GenerationTraceError,
   isGenerationTraceError,
 } from '../ai/generationTracing';
-import { getCatalogEntry } from '../ai/componentCatalog';
+import {
+  getAllowedComponentCatalogIndex,
+  type AiComponentCatalogIndex,
+} from '../ai/componentCatalog';
 import {
   buildTreeFromStructure,
   type SiteStructureSection,
@@ -31,6 +34,7 @@ import {
   formatGeneratedSiteValidationIssues,
   validateGeneratedSite,
 } from '../ai/validateGeneratedSite';
+import { resolveComponentRegistryKey } from '../componentRegistry';
 import type { ProjectType } from '../projectTypes';
 import { isProjectType } from '../projectTypes';
 import { useBuilderStore } from '../store/builderStore';
@@ -115,6 +119,10 @@ function hasStructure(structure: SiteStructureSection[] | undefined): structure 
 }
 
 function blueprintToPrompt(blueprint: ProjectBlueprint): string {
+  if (typeof blueprint.sourcePrompt === 'string' && blueprint.sourcePrompt.trim() !== '') {
+    return blueprint.sourcePrompt
+  }
+
   return [
     blueprint.tone,
     blueprint.projectType,
@@ -160,13 +168,15 @@ function logGenerateSiteTrace(message: string, trace: GenerateSiteTrace, extra?:
 
 function buildDirectStructureDiagnostics(input: {
   projectType: ProjectType
+  registryIndex: AiComponentCatalogIndex
   structure?: SiteStructureSection[]
   generationLog?: BlueprintGenerationLogEntry[]
   rootCause?: string | null
 }): BuildGenerationDiagnostics {
   const sections = Array.isArray(input.structure) ? input.structure : []
   const selectedSectionTypes = sections.map((section) => (
-    getCatalogEntry(section.componentKey)?.sectionType ?? section.componentKey
+    input.registryIndex.byKey[resolveComponentRegistryKey(section.componentKey) ?? section.componentKey]?.sectionType
+      ?? section.componentKey
   ))
 
   return buildGenerationDiagnostics({
@@ -316,10 +326,15 @@ function failGenerateSite(
   params: GenerateSiteParams,
   projectType: ProjectType,
   error: string,
+  registryIndex?: AiComponentCatalogIndex,
   diagnostics?: BuildGenerationDiagnostics,
 ): GenerateSiteResult {
+  const effectiveRegistryIndex = registryIndex ?? getAllowedComponentCatalogIndex(projectType);
   const selectedSectionTypes = hasStructure(params.structure)
-    ? params.structure.map((section) => getCatalogEntry(section.componentKey)?.sectionType ?? section.componentKey)
+    ? params.structure.map((section) => (
+      effectiveRegistryIndex.byKey[resolveComponentRegistryKey(section.componentKey) ?? section.componentKey]?.sectionType
+        ?? section.componentKey
+    ))
     : [];
   const resolvedDiagnostics = diagnostics ?? buildGenerationDiagnostics({
     generationMode: resolveDiagnosticsGenerationMode(params),
@@ -351,13 +366,14 @@ function failGenerateSite(
  * Builds a component tree from explicit structure or a normalized blueprint and sets store state.
  * Silent fallback is intentionally disabled: callers must provide structure, blueprint, or opt into emergency fallback.
  */
-export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult {
+export async function runGenerateSite(params: GenerateSiteParams): Promise<GenerateSiteResult> {
   const projectType = resolveProjectType(params.projectType, params.blueprint);
   const state = useBuilderStore.getState();
   const { setProjectType, setComponentTree } = state;
 
   try {
     if (hasStructure(params.structure)) {
+      const registryIndex = getAllowedComponentCatalogIndex(projectType);
       const trace = buildTrace(params, projectType, 'direct-structure');
       const tree = buildTreeFromStructure({ projectType, structure: params.structure });
       const generationLog: BlueprintGenerationLogEntry[] = [
@@ -370,6 +386,7 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
       const validation = validateGeneratedSite({
         projectType,
         tree,
+        registryIndex,
         generationMode: 'direct-structure',
       });
       if (!validation.ok) {
@@ -381,8 +398,10 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
           params,
           projectType,
           error,
+          registryIndex,
           buildDirectStructureDiagnostics({
             projectType,
+            registryIndex,
             structure: params.structure,
             generationLog,
             rootCause: error,
@@ -395,6 +414,7 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
         tree,
         diagnostics: buildDirectStructureDiagnostics({
           projectType,
+          registryIndex,
           structure: params.structure,
           generationLog,
         }),
@@ -416,7 +436,7 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
     }
 
     if (params.blueprint) {
-      const blueprintResult = buildSiteFromBlueprint({
+      const blueprintResult = await buildSiteFromBlueprint({
         prompt: blueprintToPrompt(params.blueprint),
         blueprint: params.blueprint,
         builderProjectTypeOverride: isProjectType(params.projectType) ? params.projectType : null,
@@ -429,6 +449,7 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
           params,
           blueprintResult.projectType,
           error,
+          undefined,
           {
             ...blueprintResult.diagnostics,
             failedStep: 'fallback',
@@ -467,7 +488,7 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
       const fallbackBlueprint = createEmergencyFallbackBlueprint(
         mapBuilderProjectTypeToBlueprintProjectType(projectType)
       );
-      const fallbackResult = buildSiteFromBlueprint({
+      const fallbackResult = await buildSiteFromBlueprint({
         prompt: `emergency fallback ${projectType}`,
         blueprint: fallbackBlueprint,
         builderProjectTypeOverride: projectType,
@@ -499,6 +520,7 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
       params,
       projectType,
       'Generation failed: no site blueprint or direct structure was provided. Emergency fallback must be requested explicitly.',
+      undefined,
     );
   } catch (err) {
     if (isGenerationTraceError(err)) {
@@ -506,10 +528,11 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
         params,
         projectType,
         err.message,
+        undefined,
         err.diagnostics,
       );
     }
     const message = err instanceof Error ? err.message : String(err);
-    return failGenerateSite(params, projectType, message);
+    return failGenerateSite(params, projectType, message, undefined);
   }
 }

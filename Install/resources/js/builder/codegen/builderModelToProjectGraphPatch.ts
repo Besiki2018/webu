@@ -1,19 +1,12 @@
 import { resolveComponentRegistryKey } from '@/builder/componentRegistry';
+import { cloneRecordData } from '@/builder/runtime/clone';
 import { normalizePath, setValueAtPath } from '@/builder/state/sectionProps';
 import type { BuilderUpdateOperation } from '@/builder/state/updatePipeline';
 import { resolveGeneratedSectionKindFromRegistryKey } from './projectGraph';
 import type { GeneratedPage, GeneratedSectionInput, ProjectGraphPatchInstruction } from './types';
 
 function cloneRecord(value: Record<string, unknown> | null | undefined): Record<string, unknown> {
-    if (!value) {
-        return {};
-    }
-
-    try {
-        return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
-    } catch {
-        return { ...value };
-    }
+    return cloneRecordData(value);
 }
 
 function normalizeGeneratedSectionInput(sectionType: string, localId: string | null | undefined, props: Record<string, unknown> = {}): GeneratedSectionInput {

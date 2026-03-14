@@ -107,7 +107,7 @@ export async function generateSiteFromPrompt(
     prompt,
     projectType: explicitProjectType,
   });
-  const blueprintSite = buildSiteFromBlueprint({
+  const blueprintSite = await buildSiteFromBlueprint({
     prompt,
     blueprint,
     brandName,
@@ -133,27 +133,46 @@ export async function generateSiteFromPrompt(
       brandName,
     };
 
-    for (let i = 0; i < plannedSections.length; i++) {
-      const section = plannedSections[i]!;
+    const generatedPropsByIndex = await Promise.all(plannedSections.map(async (section, index) => {
       const contentType = COMPONENT_KEY_TO_CONTENT_TYPE[section.componentKey];
-      if (!contentType) continue;
+      if (!contentType) {
+        return null;
+      }
 
       try {
         const content = await generateContent(
           { ...contentInput, sectionType: contentType },
           contentProvider
         );
+
         if (contentType === 'hero' && 'title' in content && 'cta' in content) {
-          propsByIndex[i] = contentToHeroProps(content);
-        } else if (contentType === 'features' && 'items' in content) {
-          propsByIndex[i] = contentToFeaturesProps(content as import('./contentGenerator').FeaturesContentResult);
-        } else if (contentType === 'cta' && 'buttonLabel' in content) {
-          propsByIndex[i] = contentToCtaProps(content);
+          return { index, props: contentToHeroProps(content) };
+        }
+
+        if (contentType === 'features' && 'items' in content) {
+          return {
+            index,
+            props: contentToFeaturesProps(content as import('./contentGenerator').FeaturesContentResult),
+          };
+        }
+
+        if (contentType === 'cta' && 'buttonLabel' in content) {
+          return { index, props: contentToCtaProps(content) };
         }
       } catch {
         // Keep registry defaults if content generation fails
       }
-    }
+
+      return null;
+    }));
+
+    generatedPropsByIndex.forEach((entry) => {
+      if (!entry) {
+        return;
+      }
+
+      propsByIndex[entry.index] = entry.props;
+    });
   }
 
   // Optional: AI image for first hero section (insert URL into props)

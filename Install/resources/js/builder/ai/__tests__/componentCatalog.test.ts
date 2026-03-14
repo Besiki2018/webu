@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   getAllowedComponentCatalog,
+  getAllowedComponentCatalogIndex,
   getCatalogEntry,
   getComponentCatalog,
 } from '../componentCatalog';
@@ -34,5 +35,12 @@ describe('componentCatalog', () => {
 
   it('exposes a non-empty catalog for AI planning', () => {
     expect(getComponentCatalog().length).toBeGreaterThan(10);
+  });
+
+  it('builds a stable index for O(1) key and section lookups', () => {
+    const index = getAllowedComponentCatalogIndex('business');
+
+    expect(index.byKey.webu_general_hero_01?.componentKey).toBe('webu_general_hero_01');
+    expect(index.bySectionType.hero?.some((entry) => entry.componentKey === 'webu_general_hero_01')).toBe(true);
   });
 });

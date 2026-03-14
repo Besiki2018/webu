@@ -42,6 +42,8 @@ export interface ElementMention {
     id: string;
     /** Stable builder target id derived from section + parameter path */
     targetId?: string | null;
+    /** Stable AI targeting id derived from section local id + parameter path */
+    aiNodeId?: string | null;
     /** HTML tag name */
     tagName: string;
     /** CSS selector for identifying the element */
@@ -56,10 +58,16 @@ export interface ElementMention {
     placement?: 'before' | 'after' | 'inside' | null;
     /** Editable parameter name (e.g. headline, title, buttonText) for AI element targeting */
     parameterName?: string | null;
+    /** Aliased prop name for AI targeting payloads */
+    propName?: string | null;
     /** Broader component/item scope path when the exact field is nested inside a compound target */
     componentPath?: string | null;
     /** Element id for chat: ComponentName.parameterName (e.g. HeroSection.title) */
     elementId?: string | null;
+    /** Section/component registry key */
+    componentKey?: string | null;
+    /** Current visible value */
+    currentValue?: string | null;
 }
 
 /**

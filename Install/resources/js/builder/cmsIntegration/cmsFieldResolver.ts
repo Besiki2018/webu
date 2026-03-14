@@ -1,4 +1,5 @@
 import { normalizePath, setValueAtPath } from '@/builder/state/sectionProps';
+import { cloneRecordData } from '@/builder/runtime/clone';
 
 import type { CmsFieldBinding } from './types';
 
@@ -7,11 +8,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneRecord<T extends Record<string, unknown>>(value: T): T {
-    try {
-        return JSON.parse(JSON.stringify(value)) as T;
-    } catch {
-        return { ...value };
-    }
+    return cloneRecordData(value);
 }
 
 export function getCmsFieldValue(

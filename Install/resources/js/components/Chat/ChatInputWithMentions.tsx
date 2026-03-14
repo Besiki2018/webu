@@ -36,8 +36,12 @@ interface ChatInputWithMentionsProps {
     disabled?: boolean;
     /** Currently selected element to mention */
     selectedElement: ElementMention | null;
+    /** Explicit multi-node AI targets */
+    selectedElements?: ElementMention[];
     /** Called to clear the selected element */
     onClearElement: () => void;
+    /** Called to remove one selected element */
+    onRemoveElement?: (targetId: string) => void;
     /** Placeholder text */
     placeholder?: string;
     /** Whether a build is in progress (shows stop button) */
@@ -151,7 +155,9 @@ export function ChatInputWithMentions({
     onSubmit,
     disabled = false,
     selectedElement,
+    selectedElements = [],
     onClearElement,
+    onRemoveElement,
     placeholder,
     isLoading = false,
     onCancel,
@@ -212,7 +218,7 @@ export function ChatInputWithMentions({
     }, [disabled, isListening, startListening, stopListening, value]);
 
     const handleSubmit = useCallback(() => {
-        if (!value.trim() && !selectedElement) {
+        if (!value.trim() && selectedElements.length === 0 && !selectedElement) {
             return;
         }
 
@@ -229,6 +235,10 @@ export function ChatInputWithMentions({
         onError,
     };
 
+    const activeSelectedElements = selectedElements.length > 0
+        ? selectedElements
+        : (selectedElement ? [selectedElement] : []);
+
     return (
         <div
             className={cn(
@@ -239,9 +249,23 @@ export function ChatInputWithMentions({
             )}
         >
                 {/* Element mention chip */}
-                {selectedElement && (
+                {activeSelectedElements.length > 0 && (
                     <div className={cn(isWorkspaceVariant ? 'workspace-composer-chip-row' : 'px-4 pt-3 pb-1')}>
-                        <ElementChip element={selectedElement} onRemove={onClearElement} />
+                        {activeSelectedElements.map((element) => (
+                            <ElementChip
+                                key={element.aiNodeId ?? element.targetId ?? element.id}
+                                element={element}
+                                onRemove={() => {
+                                    const targetId = element.aiNodeId ?? element.targetId ?? element.id;
+                                    if (onRemoveElement && activeSelectedElements.length > 1) {
+                                        onRemoveElement(targetId);
+                                        return;
+                                    }
+
+                                    onClearElement();
+                                }}
+                            />
+                        ))}
                     </div>
                 )}
 
@@ -336,7 +360,7 @@ export function ChatInputWithMentions({
                             <Button
                                 type="button"
                                 size="icon"
-                                disabled={(!value.trim() && !selectedElement) || disabled}
+                                disabled={(!value.trim() && activeSelectedElements.length === 0) || disabled}
                                 onClick={handleSubmit}
                                 className={cn(
                                     'h-9 w-9 rounded-full text-white',
@@ -371,20 +395,11 @@ interface ElementChipProps {
 }
 
 function ElementChip({ element, onRemove }: ElementChipProps) {
-    // Extract class from selector for display
-    const getDisplaySelector = () => {
-        if (element.selector.startsWith('#')) {
-            return element.selector;
-        }
-        const match = element.selector.match(/\.([^:\s>]+)/);
-        return match ? `.${match[1]}` : '';
-    };
-
     return (
         <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
             <MousePointerClick className="h-3 w-3" />
             <span className="font-mono">
-                {element.tagName}{getDisplaySelector()}
+                {element.aiNodeId ? `@node(${element.aiNodeId})` : element.tagName}
             </span>
             {element.textPreview && (
                 <span className="text-muted-foreground truncate max-w-[150px]" title={element.textPreview}>

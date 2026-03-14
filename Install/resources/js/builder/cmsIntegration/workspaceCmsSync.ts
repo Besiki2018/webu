@@ -5,21 +5,14 @@ import type {
     WorkspaceManifest,
     WorkspaceManifestFileOwnership,
 } from '@/builder/codegen/types';
+import { cloneRecordData } from '@/builder/runtime/clone';
 
 import { CMS_PAGE_BINDING_EXTRA_CONTENT_KEY } from './cmsPageBinding';
 import type { CmsBindingModel, CmsBoundSection, CmsFieldOwner } from './types';
 import { serializeCmsBindingModel } from './cmsBindingModel';
 
 function cloneRecord<T extends Record<string, unknown>>(value: T | null | undefined): T {
-    if (!value) {
-        return {} as T;
-    }
-
-    try {
-        return JSON.parse(JSON.stringify(value)) as T;
-    } catch {
-        return { ...value };
-    }
+    return cloneRecordData(value);
 }
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {

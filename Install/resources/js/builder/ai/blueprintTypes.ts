@@ -1,4 +1,5 @@
 import type { AiComponentLayoutType } from './componentCatalog'
+import type { DesignQualityReport } from './designQuality/types'
 
 export const BLUEPRINT_PROJECT_TYPES = [
   'landing',
@@ -10,6 +11,7 @@ export const BLUEPRINT_PROJECT_TYPES = [
 ] as const
 
 export type BlueprintProjectType = (typeof BLUEPRINT_PROJECT_TYPES)[number]
+export type LayoutDomain = 'vet_clinic' | 'restaurant' | 'saas' | 'agency' | 'portfolio' | 'ecommerce' | 'unknown'
 
 export interface ProjectBlueprintRestrictions {
   noPricing?: boolean
@@ -33,6 +35,20 @@ export type ProjectBlueprint = {
   pageGoal: string
   sections: ProjectBlueprintSection[]
   restrictions?: ProjectBlueprintRestrictions
+  sourcePrompt?: string
+  layoutDiagnostics?: BlueprintLayoutDiagnostics
+}
+
+export interface DetectedLayoutDomain {
+  domain: LayoutDomain
+  confidence: number
+  keywords: string[]
+}
+
+export interface BlueprintLayoutDiagnostics {
+  detectedDomain: DetectedLayoutDomain
+  selectedLayoutTemplate: string
+  finalSections: string[]
 }
 
 export interface NormalizedBlueprintSection extends ProjectBlueprintSection {
@@ -57,10 +73,13 @@ export type BlueprintGenerationStep =
   | 'session'
   | 'prompt'
   | 'blueprint'
+  | 'layout'
   | 'sections'
   | 'component_scores'
   | 'components'
   | 'content'
+  | 'design_quality'
+  | 'design_improvement'
   | 'validation'
   | 'tree'
   | 'preview'
@@ -81,12 +100,16 @@ export interface BuildGenerationDiagnostics {
   generationMode: BuildGenerationMode
   selectedProjectType: string | null
   selectedBusinessType: string | null
+  detectedDomain: DetectedLayoutDomain | null
+  selectedLayoutTemplate: string | null
   selectedSectionTypes: string[]
+  finalSections: string[]
   validationPassed: boolean
   emergencyFallbackUsed: boolean
   selectedSections: string[]
   selectedComponentKeys: string[]
   fallbackUsed: boolean
+  designQualityReport: DesignQualityReport | null
   failedStep: BlueprintGenerationStep | null
   rootCause: string | null
   events: BlueprintGenerationLogEntry[]

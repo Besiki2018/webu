@@ -1,4 +1,5 @@
 import { resolveComponentProps } from '@/builder/componentRegistry';
+import { cloneRecordData } from '@/builder/runtime/clone';
 import { isRecord, parseSectionProps, stringifySectionProps } from '@/builder/state/sectionProps';
 import type { BuilderSection } from '@/builder/visual/treeUtils';
 
@@ -35,15 +36,7 @@ export interface BuilderPageModelOptions {
 }
 
 function cloneRecord(value: Record<string, unknown> | null | undefined): Record<string, unknown> {
-    if (!value) {
-        return {};
-    }
-
-    try {
-        return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
-    } catch {
-        return { ...value };
-    }
+    return cloneRecordData(value);
 }
 
 function normalizeSectionTypeKey(value: string | null | undefined, fallback: string): string {

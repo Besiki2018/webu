@@ -5,6 +5,7 @@
  */
 
 import { buildElementId, getComponentParameterMeta, getComponentShortName } from '../componentParameterMetadata';
+import { AI_NODE_ID_ATTRIBUTE, buildAiNodeId } from '@/builder/runtime/elementHover';
 
 export interface DOMMapperSectionSnapshot {
   localId: string;
@@ -723,6 +724,40 @@ function annotateSectionHost(host: HTMLElement, snapshot: DOMMapperSectionSnapsh
   return annotatedCount;
 }
 
+function annotateAiNodeIdentifiers(host: HTMLElement): number {
+  const sectionKey = host.getAttribute('data-webu-section');
+  const sectionLocalId = host.getAttribute('data-webu-section-local-id');
+  let annotatedCount = 0;
+
+  const sectionAiNodeId = buildAiNodeId(sectionLocalId, null, sectionKey);
+  if (sectionAiNodeId && host.getAttribute(AI_NODE_ID_ATTRIBUTE) !== sectionAiNodeId) {
+    host.setAttribute(AI_NODE_ID_ATTRIBUTE, sectionAiNodeId);
+    annotatedCount += 1;
+  }
+
+  const fieldNodes = [
+    ...(host.matches('[data-webu-field], [data-webu-field-url], [data-webu-field-scope]') ? [host] : []),
+    ...Array.from(host.querySelectorAll<HTMLElement>('[data-webu-field], [data-webu-field-url], [data-webu-field-scope]')),
+  ].filter((node) => !isNestedInsideOtherSection(host, node));
+
+  fieldNodes.forEach((node) => {
+    const parameterPath = (
+      node.getAttribute('data-webu-field')
+      ?? node.getAttribute('data-webu-field-url')
+      ?? node.getAttribute('data-webu-field-scope')
+    );
+    const aiNodeId = buildAiNodeId(sectionLocalId, parameterPath, sectionKey);
+    if (!aiNodeId || node.getAttribute(AI_NODE_ID_ATTRIBUTE) === aiNodeId) {
+      return;
+    }
+
+    node.setAttribute(AI_NODE_ID_ATTRIBUTE, aiNodeId);
+    annotatedCount += 1;
+  });
+
+  return annotatedCount;
+}
+
 /**
  * Infer missing editable field markers from live builder props so the preview supports
  * field-level hover, click selection, sidebar focus, and AI chat targeting.
@@ -742,6 +777,7 @@ export function annotateEditableElements(
 
     annotatedCount += annotateSectionHost(host, section);
     annotatedCount += annotateComponentScopes(host);
+    annotatedCount += annotateAiNodeIdentifiers(host);
   });
 
   return annotatedCount;

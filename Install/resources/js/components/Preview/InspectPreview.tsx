@@ -10,6 +10,13 @@ import { useThumbnailCapture } from '@/hooks/useThumbnailCapture';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { observeDOMMapInvalidation } from '@/builder/domMapper';
+import {
+    AI_NODE_FLASH_ATTRIBUTE,
+    AI_NODE_FLASH_DURATION_MS,
+    AI_NODE_HOVER_OUTLINE,
+    AI_NODE_TOOLTIP_LABEL,
+    flashAiNodes,
+} from '@/builder/runtime/elementHover';
 import { applyPreviewAnnotationEngine } from '@/builder/preview/previewAnnotationEngine';
 import {
     createPreviewPlaceholderSection,
@@ -35,6 +42,15 @@ function inspectLog(..._args: unknown[]) {
 
 function escapeCssContent(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function trimOverlayValue(value: string | null | undefined): string | null {
+    const normalized = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+    if (normalized === '') {
+        return null;
+    }
+
+    return normalized.length > 88 ? `${normalized.slice(0, 85)}...` : normalized;
 }
 
 /** Fixed device widths so canvas always shows real desktop/tablet/mobile layout */
@@ -74,6 +90,9 @@ export interface InspectPreviewProps {
     pendingLibraryItem?: { key: string; label: string } | null;
     onLibraryItemPlace?: (sectionKey: string, target: ElementMention | null) => void;
     onPreviewReadyChange?: (ready: boolean) => void;
+    aiFlashNodeIds?: string[];
+    aiFlashNonce?: number;
+    onAiFlashComplete?: () => void;
 }
 
 /** Minimal loader during build (Lovable-style). */
@@ -127,6 +146,9 @@ export function InspectPreview({
     pendingLibraryItem = null,
     onLibraryItemPlace,
     onPreviewReadyChange,
+    aiFlashNodeIds = [],
+    aiFlashNonce = 0,
+    onAiFlashComplete,
 }: InspectPreviewProps) {
     const { t } = useTranslation();
     const tt = useCallback((key: string, fallback: string) => {
@@ -565,6 +587,10 @@ html[data-webu-chat-placement="true"] [data-webu-section][data-webu-chat-drop-po
   outline: none !important;
   box-shadow: none !important;
 }
+[data-ai-node-id][${AI_NODE_FLASH_ATTRIBUTE}="true"] {
+  background: rgba(79, 70, 229, 0.15) !important;
+  transition: background 120ms ease;
+}
 html[data-webu-chat-inspect="true"] a,
 html[data-webu-chat-inspect="true"] button,
 html[data-webu-chat-inspect="true"] input,
@@ -686,6 +712,22 @@ html[data-webu-chat-inspect="true"] [role="button"] {
             clearHoveredSection();
         }
     }, [clearHoveredSection, pendingLibraryItem]);
+
+    useEffect(() => {
+        const iframeDoc = iframeRef.current?.contentDocument;
+        if (!iframeReady || !iframeDoc || aiFlashNodeIds.length === 0) {
+            return;
+        }
+
+        flashAiNodes(iframeDoc, aiFlashNodeIds);
+        const timeoutId = window.setTimeout(() => {
+            onAiFlashComplete?.();
+        }, AI_NODE_FLASH_DURATION_MS + 32);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [aiFlashNodeIds, aiFlashNonce, iframeReady, onAiFlashComplete]);
 
     useEffect(() => {
         if (!selectionEnabled || !iframeReady) {
@@ -983,13 +1025,44 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                                     top: `${hoveredOverlay.top}px`,
                                     width: `${hoveredOverlay.width}px`,
                                     height: `${hoveredOverlay.height}px`,
-                                    outline: pendingLibraryItem ? undefined : '2px dashed #6366f1',
+                                    outline: pendingLibraryItem ? undefined : AI_NODE_HOVER_OUTLINE,
                                     outlineOffset: pendingLibraryItem ? undefined : '-2px',
                                 }}
                             >
-                                {!pendingLibraryItem && formatPreviewOverlayLabel(hoveredOverlay.label) ? (
-                                    <div className="pointer-events-none absolute -top-7 left-0 rounded bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm">
-                                        {formatPreviewOverlayLabel(hoveredOverlay.label)}
+                                {!pendingLibraryItem ? (
+                                    <div className="pointer-events-none absolute bottom-full left-0 mb-2 w-[260px] rounded-[18px] bg-slate-950/94 px-3 py-3 text-[11px] text-white shadow-[0_18px_40px_rgba(15,23,42,0.24)]">
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+                                            {t('AI Inspect')}
+                                        </div>
+                                        <div className="mt-2 space-y-1.5">
+                                            <div>
+                                                <span className="text-white/60">{t('Component')}: </span>
+                                                <span className="font-medium">{hoveredOverlay.componentKey ?? t('Section')}</span>
+                                            </div>
+                                            {hoveredOverlay.propName || formatPreviewOverlayLabel(hoveredOverlay.label) ? (
+                                                <div>
+                                                    <span className="text-white/60">{t('Prop')}: </span>
+                                                    <span className="font-medium">{hoveredOverlay.propName ?? formatPreviewOverlayLabel(hoveredOverlay.label)}</span>
+                                                </div>
+                                            ) : null}
+                                            {trimOverlayValue(hoveredOverlay.currentValue) ? (
+                                                <div>
+                                                    <span className="text-white/60">{t('Value')}: </span>
+                                                    <span className="font-medium">{trimOverlayValue(hoveredOverlay.currentValue)}</span>
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-1.5">
+                                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px]">{t('Text')}</span>
+                                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px]">{t('Styles')}</span>
+                                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px]">{t('Component settings')}</span>
+                                        </div>
+                                        {hoveredOverlay.aiNodeId ? (
+                                            <div className="mt-3 rounded-xl bg-white/8 px-2 py-1 font-mono text-[10px] text-white/88">
+                                                {hoveredOverlay.aiNodeId}
+                                            </div>
+                                        ) : null}
+                                        <div className="mt-2 text-white/70">{AI_NODE_TOOLTIP_LABEL}</div>
                                     </div>
                                 ) : null}
                                 {pendingLibraryItem && hoveredOverlay.placement === 'inside' ? (
@@ -1023,8 +1096,13 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                                 }}
                             >
                                 {formatPreviewOverlayLabel(selectedOverlay.label) ? (
-                                    <div className="pointer-events-none absolute -top-7 left-0 rounded bg-slate-900 px-2 py-1 text-[11px] font-medium text-white shadow-sm">
-                                        {formatPreviewOverlayLabel(selectedOverlay.label)}
+                                    <div className="pointer-events-none absolute bottom-full left-0 mb-2 rounded-[14px] bg-slate-900 px-3 py-2 text-[11px] font-medium text-white shadow-sm">
+                                        <div>{formatPreviewOverlayLabel(selectedOverlay.label)}</div>
+                                        {selectedOverlay.aiNodeId ? (
+                                            <div className="mt-1 font-mono text-[10px] text-white/70">
+                                                {selectedOverlay.aiNodeId}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 ) : null}
                             </div>

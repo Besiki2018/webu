@@ -13,6 +13,7 @@ import {
     type InspectPreviewDropPlacement,
 } from './inspectPreviewTargets';
 import type { ElementMention } from '@/types/inspector';
+import { buildAiNodeId } from '@/builder/runtime/elementHover';
 
 export type DropPlacement = InspectPreviewDropPlacement;
 
@@ -33,6 +34,10 @@ export interface PreviewOverlayBox {
     height: number;
     placement: DropPlacement | null;
     label: string | null;
+    aiNodeId: string | null;
+    componentKey: string | null;
+    propName: string | null;
+    currentValue: string | null;
 }
 
 export interface LiveStructureItem {
@@ -77,15 +82,19 @@ function buildElementMentionFromResolvedTarget(
     return {
         id: target.targetId,
         targetId: target.targetId,
+        aiNodeId: buildAiNodeId(target.sectionLocalId, target.parameterPath, target.sectionKey),
         tagName: target.node.tagName.toLowerCase(),
         selector: target.selector,
         textPreview,
+        currentValue: textPreview,
         sectionKey: target.sectionKey ?? undefined,
         sectionLocalId: target.sectionLocalId ?? undefined,
         placement,
         parameterName: target.kind === 'section' ? undefined : (target.parameterPath ?? undefined),
+        propName: target.kind === 'section' ? undefined : (target.parameterPath ?? undefined),
         componentPath: target.kind === 'section' ? undefined : (target.componentPath ?? undefined),
         elementId: target.elementId ?? undefined,
+        componentKey: target.sectionKey ?? undefined,
     };
 }
 
@@ -229,10 +238,18 @@ export function useInspectSelectionLifecycle(
             left.left === right.left && left.top === right.top
             && left.width === right.width && left.height === right.height
             && left.placement === right.placement && left.label === right.label
+            && left.aiNodeId === right.aiNodeId
+            && left.componentKey === right.componentKey
+            && left.propName === right.propName
+            && left.currentValue === right.currentValue
         );
     }, []);
 
-    const measureSectionOverlay = useCallback((section: Element, placement: DropPlacement | null = null): PreviewOverlayBox | null => {
+    const measureSectionOverlay = useCallback((
+        section: Element,
+        placement: DropPlacement | null = null,
+        mention: ElementMention | null = null,
+    ): PreviewOverlayBox | null => {
         const frame = frameRef.current;
         const iframe = getActiveIframe();
         if (!frame || !iframe) return null;
@@ -252,12 +269,26 @@ export function useInspectSelectionLifecycle(
             width: Math.round(sectionRect.width),
             height: Math.round(sectionRect.height),
             placement,
-            label: section.getAttribute('data-webu-field-scope') ?? section.getAttribute('data-webu-field') ?? section.getAttribute('data-webu-field-url') ?? section.getAttribute('data-webu-section'),
+            label: mention?.propName
+                ?? mention?.parameterName
+                ?? mention?.componentPath
+                ?? section.getAttribute('data-webu-field-scope')
+                ?? section.getAttribute('data-webu-field')
+                ?? section.getAttribute('data-webu-field-url')
+                ?? section.getAttribute('data-webu-section'),
+            aiNodeId: mention?.aiNodeId ?? null,
+            componentKey: mention?.componentKey ?? null,
+            propName: mention?.propName ?? mention?.parameterName ?? null,
+            currentValue: mention?.currentValue ?? mention?.textPreview ?? null,
         };
     }, [frameRef, getActiveIframe]);
 
-    const setHoveredOverlayFromSection = useCallback((section: Element | null, placement: DropPlacement | null = null) => {
-        const nextOverlay = section ? measureSectionOverlay(section, placement) : null;
+    const setHoveredOverlayFromSection = useCallback((
+        section: Element | null,
+        placement: DropPlacement | null = null,
+        mention: ElementMention | null = null,
+    ) => {
+        const nextOverlay = section ? measureSectionOverlay(section, placement, mention) : null;
         setHoveredOverlay((current) => (overlaysMatch(current, nextOverlay) ? current : nextOverlay));
     }, [measureSectionOverlay, overlaysMatch]);
 
@@ -320,13 +351,17 @@ export function useInspectSelectionLifecycle(
         setHoveredOverlay(null);
     }, []);
 
-    const updateHoveredSection = useCallback((nextSection: Element | null, placement: DropPlacement | null = null) => {
+    const updateHoveredSection = useCallback((
+        nextSection: Element | null,
+        placement: DropPlacement | null = null,
+        mention: ElementMention | null = null,
+    ) => {
         if (hoveredSectionRef.current === nextSection) {
             if (nextSection) {
                 if (placement) nextSection.setAttribute('data-webu-chat-drop-position', placement);
                 else nextSection.removeAttribute('data-webu-chat-drop-position');
             }
-            setHoveredOverlayFromSection(nextSection, placement);
+            setHoveredOverlayFromSection(nextSection, placement, mention);
             return;
         }
         hoveredSectionRef.current?.removeAttribute('data-webu-chat-hovered');
@@ -337,7 +372,7 @@ export function useInspectSelectionLifecycle(
             if (placement) nextSection.setAttribute('data-webu-chat-drop-position', placement);
             else nextSection.removeAttribute('data-webu-chat-drop-position');
         }
-        setHoveredOverlayFromSection(nextSection, placement);
+        setHoveredOverlayFromSection(nextSection, placement, mention);
     }, [setHoveredOverlayFromSection]);
 
     const resolvePlacementTarget = useCallback((target: EventTarget | null, clientX: number, clientY: number) => {
@@ -403,15 +438,18 @@ export function useInspectSelectionLifecycle(
                 event.clientX,
                 event.clientY,
             );
-            updateHoveredSection(fallbackSection);
+            updateHoveredSection(fallbackSection, null, fallbackSection ? buildSectionElementMention(fallbackSection) : null);
             return;
         }
 
         const hoveredSection = pointResolution.status === 'resolved'
-            ? pointResolution.target?.section ?? null
+            ? (pointResolution.target?.node ?? pointResolution.target?.section ?? null)
             : resolveSectionOnlyFallbackTarget({ target: event.target, clientX: event.clientX, clientY: event.clientY });
-        updateHoveredSection(hoveredSection);
-    }, [getActiveIframe, isBuilding, resolveSectionOnlyFallbackTarget, scale, selectionEnabled, updateHoveredSection]);
+        const hoveredMention = pointResolution.status === 'resolved'
+            ? buildElementMentionFromResolvedTarget(pointResolution.target)
+            : (hoveredSection ? buildSectionElementMention(hoveredSection) : null);
+        updateHoveredSection(hoveredSection, null, hoveredMention);
+    }, [buildSectionElementMention, getActiveIframe, isBuilding, resolveSectionOnlyFallbackTarget, scale, selectionEnabled, updateHoveredSection]);
 
     const handleInspectPointerLeave = useCallback(() => {
         if (!selectionEnabled) return;
@@ -478,7 +516,9 @@ export function useInspectSelectionLifecycle(
             return;
         }
         setSelectedOverlay((current) => {
-            const nextOverlay = selectedSection ? measureSectionOverlay(selectedSection) : null;
+            const nextOverlay = (resolvedTarget?.node ?? selectedSection)
+                ? measureSectionOverlay((resolvedTarget?.node ?? selectedSection) as Element, null, mention)
+                : null;
             return overlaysMatch(current, nextOverlay) ? current : nextOverlay;
         });
         clearHoveredSection();

@@ -93,7 +93,7 @@ class GenerateWebsiteController extends Controller
 
         RunProjectGeneration::dispatchAfterResponse((string) $generationRun->id);
 
-        $url = route('project.generation', [
+        $url = route('chat', [
             'project' => $project,
         ]);
         $request->session()->put(self::PENDING_REDIRECT_URL_SESSION_KEY, $url);

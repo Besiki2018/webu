@@ -2,11 +2,11 @@ import { promptToSite } from '../aiPromptToSite';
 
 describe('aiPromptToSite', () => {
   describe('promptToSite', () => {
-    it('adapts prompts through the blueprint pipeline', () => {
-      const vet = promptToSite({
+    it('adapts prompts through the blueprint pipeline', async () => {
+      const vet = await promptToSite({
         userPrompt: 'Create a modern vet clinic website for premium pet care',
       });
-      const saas = promptToSite({
+      const saas = await promptToSite({
         userPrompt: 'Create a minimalist SaaS landing page for finance teams',
       });
 

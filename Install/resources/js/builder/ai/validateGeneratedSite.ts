@@ -7,7 +7,7 @@ import {
 import type { ProjectType } from '../projectTypes'
 import { normalizeProjectSiteType } from '../projectTypes'
 import { isHiddenAtBreakpoint } from '../responsiveProps'
-import { getCatalogEntry } from './componentCatalog'
+import type { AiComponentCatalogIndex } from './componentCatalog'
 
 export type GeneratedSiteValidationMode = 'blueprint' | 'direct-structure' | 'emergency-fallback'
 
@@ -30,6 +30,7 @@ export interface ValidateGeneratedSiteInput {
   projectType: ProjectType
   tree: BuilderComponentInstance[]
   supportedComponentKeys?: string[]
+  registryIndex?: AiComponentCatalogIndex | null
   plannedSections?: Array<{
     componentKey: string
     props?: Record<string, unknown>
@@ -235,6 +236,7 @@ function validateComponentReference(input: {
   componentKey: string
   projectType: ProjectType
   supportedComponentKeys: Set<string>
+  registryIndex?: AiComponentCatalogIndex | null
   location: string
   sectionId?: string
 }): {
@@ -287,7 +289,7 @@ function validateComponentReference(input: {
   return {
     issues: [],
     canonicalKey,
-    layoutType: getCatalogEntry(canonicalKey)?.layoutType
+    layoutType: input.registryIndex?.byKey[canonicalKey]?.layoutType
       ?? runtimeEntry.schema.sectionType
       ?? runtimeEntry.schema.category,
   }
@@ -323,7 +325,9 @@ export function validateGeneratedSite(input: ValidateGeneratedSiteInput): Valida
   const seenIds = new Set<string>()
   const siteType = normalizeProjectSiteType(input.projectType)
   const supportedComponentKeys = new Set(
-    (input.supportedComponentKeys ?? getAllowedComponents(siteType).map((entry) => entry.type))
+    (input.supportedComponentKeys
+      ?? input.registryIndex?.entries.map((entry) => entry.componentKey)
+      ?? getAllowedComponents(siteType).map((entry) => entry.type))
       .map((key) => resolveComponentRegistryKey(key) ?? key)
   )
 
@@ -337,6 +341,7 @@ export function validateGeneratedSite(input: ValidateGeneratedSiteInput): Valida
       componentKey: section.componentKey,
       projectType: input.projectType,
       supportedComponentKeys,
+      registryIndex: input.registryIndex,
       location,
       sectionId: section.sectionId,
     })
@@ -361,6 +366,7 @@ export function validateGeneratedSite(input: ValidateGeneratedSiteInput): Valida
       componentKey: node.componentKey,
       projectType: input.projectType,
       supportedComponentKeys,
+      registryIndex: input.registryIndex,
       location: context.location,
       sectionId: node.id,
     })

@@ -240,8 +240,35 @@ function scoreSectionOrderCompatibility(
   if ((requested === 'header' || requested === 'navigation') && sectionIndex === 0) return entry === requested ? 12 : 9
   if (requested === 'hero' && sectionIndex <= 1) return entry === 'hero' ? 12 : 9
   if (requested === 'footer' && sectionIndex === lastIndex) return entry === 'footer' ? 12 : 8
-  if (requested === 'cta' && sectionIndex >= Math.max(lastIndex - 1, 0)) return ['cta', 'banner', 'form', 'newsletter'].includes(entry) ? 12 : 7
-  if (['features', 'pricing', 'productGrid', 'grid', 'cards', 'testimonials', 'faq'].includes(requested)) {
+  if (['cta', 'contact', 'appointment_booking', 'reservation', 'booking'].includes(requested) && sectionIndex >= Math.max(lastIndex - 2, 0)) {
+    return ['cta', 'banner', 'form', 'newsletter'].includes(entry) ? 12 : 7
+  }
+  if ([
+    'problem',
+    'solution',
+    'services',
+    'features',
+    'process',
+    'pricing',
+    'productGrid',
+    'product_demo',
+    'categories',
+    'featured_products',
+    'grid',
+    'cards',
+    'testimonials',
+    'reviews',
+    'faq',
+    'portfolio_gallery',
+    'case_studies',
+    'gallery',
+    'menu',
+    'chef',
+    'doctors',
+    'skills',
+    'about',
+    'location',
+  ].includes(requested)) {
     return sectionIndex > 0 && sectionIndex < lastIndex ? 8 : 4
   }
 

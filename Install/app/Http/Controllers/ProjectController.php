@@ -196,7 +196,7 @@ class ProjectController extends Controller
 
         RunProjectGeneration::dispatchAfterResponse((string) $generationRun->id);
 
-        return $this->inertiaAwareRedirect($request, route('project.generation', [
+        return $this->inertiaAwareRedirect($request, route('chat', [
             'project' => $project,
         ]));
     }

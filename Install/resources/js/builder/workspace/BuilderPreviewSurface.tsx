@@ -8,6 +8,7 @@ interface BuilderPreviewSurfaceProps {
     settingsContent: ReactNode;
     codeContent: ReactNode;
     previewContent: ReactNode;
+    overlayContent?: ReactNode;
 }
 
 export function BuilderPreviewSurface({
@@ -16,6 +17,7 @@ export function BuilderPreviewSurface({
     settingsContent,
     codeContent,
     previewContent,
+    overlayContent,
 }: BuilderPreviewSurfaceProps) {
     return (
         <div
@@ -30,6 +32,7 @@ export function BuilderPreviewSurface({
                     : viewMode === 'code'
                         ? codeContent
                         : previewContent}
+                {viewMode !== 'settings' && viewMode !== 'code' ? overlayContent : null}
             </div>
         </div>
     );

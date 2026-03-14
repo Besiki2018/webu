@@ -1,4 +1,5 @@
 import { createGenerationRunState } from './generationPhases';
+import { cloneData, cloneRecordData } from '../runtime/clone';
 import type {
     ComponentProvenance,
     GeneratedAsset,
@@ -20,15 +21,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneRecord<T extends Record<string, unknown>>(value: T | null | undefined): T {
-    if (!value) {
-        return {} as T;
-    }
-
-    try {
-        return JSON.parse(JSON.stringify(value)) as T;
-    } catch {
-        return { ...value };
-    }
+    return cloneRecordData(value);
 }
 
 function normalizeText(value: string | null | undefined, fallback = ''): string {
@@ -373,7 +366,7 @@ export function buildDefaultProjectGraphPageRoute(page: Pick<GeneratedPage, 'id'
 }
 
 export function cloneGeneratedProjectGraph(graph: GeneratedProjectGraph): GeneratedProjectGraph {
-    return createGeneratedProjectGraph(JSON.parse(JSON.stringify(graph)) as GeneratedProjectGraph);
+    return createGeneratedProjectGraph(cloneData(graph));
 }
 
 export function getGeneratedSectionPrimaryProps(section: GeneratedSection): Record<string, unknown> {

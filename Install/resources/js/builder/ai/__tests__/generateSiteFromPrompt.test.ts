@@ -37,19 +37,25 @@ describe('generateSiteFromPrompt', () => {
     }
   });
 
-  it('"Create a modern SaaS landing page" generates Header, Hero, Features, Pricing, Testimonials, CTA, Footer', async () => {
+  it('"Create a modern SaaS landing page" generates a SaaS-specific layout plan before component selection', async () => {
     const result = await generateSiteFromPrompt('Create a modern SaaS landing page');
     expect(result.projectType).toBe('saas');
     expect(result.project.type).toBe('website');
-    expect(result.blueprint.sections.map((section) => section.sectionType)).toEqual(expect.arrayContaining([
+    expect(result.blueprint.layoutDiagnostics?.detectedDomain.domain).toBe('saas');
+    expect(result.blueprint.layoutDiagnostics?.selectedLayoutTemplate).toBe('saas');
+    expect(result.blueprint.sections.map((section) => section.sectionType)).toEqual([
       'header',
       'hero',
+      'problem',
+      'solution',
       'features',
+      'product_demo',
       'pricing',
       'testimonials',
+      'faq',
       'cta',
       'footer',
-    ]));
+    ]);
     const keys = result.tree.map((n) => n.componentKey);
     expect(keys).toContain('webu_header_01');
     expect(keys).toContain('webu_general_hero_01');
@@ -57,12 +63,44 @@ describe('generateSiteFromPrompt', () => {
     expect(keys).toContain('webu_general_testimonials_01');
     expect(keys).toContain('webu_general_cta_01');
     expect(keys).toContain('webu_footer_01');
-    const pricingIndex = result.blueprint.sections.findIndex((section) => section.sectionType === 'pricing');
-    expect(pricingIndex).toBeGreaterThanOrEqual(0);
-    expect(result.sitePlan.pages[0]?.sections[pricingIndex]).toMatchObject({
-      componentKey: expect.any(String),
-      layoutType: expect.stringMatching(/pricing|cards|features|banner|grid/),
-    });
+    expect(result.sitePlan.pages[0]?.sections.some((section) => (
+      ['grid', 'features', 'cards', 'banner'].includes(section.layoutType)
+      && section.componentKey !== 'webu_general_cta_01'
+    ))).toBe(true);
+  });
+
+  it('plans a vet clinic layout with domain-specific sections', async () => {
+    const result = await generateSiteFromPrompt('Create a veterinary clinic website');
+
+    expect(result.blueprint.layoutDiagnostics?.detectedDomain.domain).toBe('vet_clinic');
+    expect(result.blueprint.sections.map((section) => section.sectionType)).toEqual([
+      'header',
+      'hero',
+      'services',
+      'doctors',
+      'appointment_booking',
+      'testimonials',
+      'faq',
+      'contact',
+      'footer',
+    ]);
+  });
+
+  it('plans a restaurant layout with domain-specific sections', async () => {
+    const result = await generateSiteFromPrompt('Create a restaurant website');
+
+    expect(result.blueprint.layoutDiagnostics?.detectedDomain.domain).toBe('restaurant');
+    expect(result.blueprint.sections.map((section) => section.sectionType)).toEqual([
+      'header',
+      'hero',
+      'menu',
+      'chef',
+      'gallery',
+      'reservation',
+      'reviews',
+      'location',
+      'footer',
+    ]);
   });
 
   it('with content provider merges generated props into tree', async () => {
@@ -78,6 +116,53 @@ describe('generateSiteFromPrompt', () => {
     const hero = result.tree.find((n) => n.componentKey === 'webu_general_hero_01');
     expect(hero?.props?.title).toBe('Test Hero Title');
     expect(hero?.props?.buttonText).toBe('Shop Now');
+  });
+
+  it('runs provider-backed section content generation concurrently', async () => {
+    let activeCalls = 0;
+    let maxActiveCalls = 0;
+
+    const concurrentProvider = async (prompt: string) => {
+      activeCalls += 1;
+      maxActiveCalls = Math.max(maxActiveCalls, activeCalls);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      activeCalls -= 1;
+
+      if (prompt.includes('Generate hero section content')) {
+          return JSON.stringify({
+            title: 'Concurrent hero',
+            subtitle: 'Concurrent subtitle',
+            cta: 'Concurrent CTA',
+          });
+      }
+
+      if (prompt.includes('Generate features section content')) {
+          return JSON.stringify({
+            title: 'Concurrent features',
+            items: [
+              { title: 'Approval flows', description: 'Faster approvals' },
+            ],
+          });
+      }
+
+      if (prompt.includes('Generate call-to-action section content')) {
+          return JSON.stringify({
+            title: 'Concurrent CTA title',
+            subtitle: 'Concurrent CTA subtitle',
+            buttonLabel: 'Book demo',
+          });
+      }
+
+      return JSON.stringify({});
+    };
+
+    await generateSiteFromPrompt('Create a modern SaaS landing page', {
+      contentProvider: concurrentProvider,
+    });
+
+    expect(maxActiveCalls).toBeGreaterThan(1);
   });
 
   it('respects an explicit project type override and only plans allowed components for it', async () => {
@@ -172,6 +257,15 @@ describe('generateSiteFromPrompt', () => {
         '[builder.ai] blueprint created',
         expect.objectContaining({
           projectType: 'saas',
+        }),
+      );
+      expect(infoSpy).toHaveBeenCalledWith(
+        '[builder.ai] layout plan created',
+        expect.objectContaining({
+          detectedDomain: expect.objectContaining({
+            domain: 'saas',
+          }),
+          selectedLayoutTemplate: 'saas',
         }),
       );
     } finally {

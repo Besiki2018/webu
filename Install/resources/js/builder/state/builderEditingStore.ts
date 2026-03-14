@@ -1,5 +1,6 @@
 import type { SetStateAction } from 'react';
 import { create } from 'zustand';
+import type { ElementMention } from '@/types/inspector';
 
 import type {
     BuilderBreakpoint,
@@ -194,6 +195,9 @@ export interface BuilderEditingStoreState {
     selectedComponentName: string | null;
     selectedPath: string | null;
     selectedComponentProps: Record<string, unknown> | null;
+    selectedAiTargetMentions: ElementMention[];
+    aiFlashNodeIds: string[];
+    aiFlashNonce: number;
     hoveredElementId: string | null;
     activeDragId: string | null;
     builderHoveredElementId: string | null;
@@ -212,6 +216,11 @@ export interface BuilderEditingStoreState {
     setSelectedSectionLocalId: (next: SetStateActionLike<string | null>) => void;
     setSelectedBuilderTarget: (next: SetStateActionLike<BuilderEditableTarget | null>) => void;
     setHoveredBuilderTarget: (next: SetStateActionLike<BuilderEditableTarget | null>) => void;
+    upsertAiTargetMention: (mention: ElementMention) => void;
+    removeAiTargetMention: (targetId: string) => void;
+    clearAiTargetMentions: () => void;
+    flashAiTargetNodes: (nodeIds: string[]) => void;
+    clearAiTargetFlash: () => void;
     setActiveDragId: (next: SetStateActionLike<string | null>) => void;
     setBuilderHoveredElementId: (next: SetStateActionLike<string | null>) => void;
     setBuilderCurrentDropTarget: (next: SetStateActionLike<DropTarget | null>) => void;
@@ -276,6 +285,9 @@ export const createInitialBuilderEditingState = () => ({
     selectedComponentName: null,
     selectedPath: null,
     selectedComponentProps: null,
+    selectedAiTargetMentions: [] as ElementMention[],
+    aiFlashNodeIds: [] as string[],
+    aiFlashNonce: 0,
     hoveredElementId: null,
     activeDragId: null,
     builderHoveredElementId: null,
@@ -440,6 +452,56 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
                 ...deriveHoveredState(hoveredBuilderTarget, builderHoveredElementId),
             };
         });
+    },
+    upsertAiTargetMention: (mention) => {
+        set((state) => {
+            const nextIdentity = mention.aiNodeId ?? mention.targetId ?? mention.id;
+            if (!nextIdentity) {
+                return state;
+            }
+
+            const nextMentions = [...state.selectedAiTargetMentions];
+            const existingIndex = nextMentions.findIndex((candidate) => (
+                (candidate.aiNodeId ?? candidate.targetId ?? candidate.id) === nextIdentity
+            ));
+
+            if (existingIndex >= 0) {
+                nextMentions[existingIndex] = mention;
+            } else {
+                nextMentions.push(mention);
+            }
+
+            return {
+                selectedAiTargetMentions: nextMentions,
+            };
+        });
+    },
+    removeAiTargetMention: (targetId) => {
+        set((state) => ({
+            selectedAiTargetMentions: state.selectedAiTargetMentions.filter((mention) => (
+                (mention.aiNodeId ?? mention.targetId ?? mention.id) !== targetId
+            )),
+        }));
+    },
+    clearAiTargetMentions: () => {
+        set((state) => (
+            state.selectedAiTargetMentions.length === 0
+                ? state
+                : { selectedAiTargetMentions: [] }
+        ));
+    },
+    flashAiTargetNodes: (nodeIds) => {
+        set((state) => ({
+            aiFlashNodeIds: Array.from(new Set(nodeIds.filter((value) => value.trim() !== ''))),
+            aiFlashNonce: state.aiFlashNonce + 1,
+        }));
+    },
+    clearAiTargetFlash: () => {
+        set((state) => (
+            state.aiFlashNodeIds.length === 0
+                ? state
+                : { aiFlashNodeIds: [] }
+        ));
     },
     hoverTarget: (target) => {
         set((state) => {
@@ -739,6 +801,7 @@ export const useBuilderEditingStore = create<BuilderEditingStoreState>((set) => 
         set(() => ({
             selectedSectionLocalId: null,
             selectedBuilderTarget: null,
+            selectedAiTargetMentions: [],
             hoveredBuilderTarget: null,
             builderHoveredElementId: null,
             builderCurrentDropTarget: null,

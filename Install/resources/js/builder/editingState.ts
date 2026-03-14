@@ -11,6 +11,7 @@ import {
 import { isRecord, parseSectionProps } from '@/builder/state/sectionProps';
 import type { BuilderSection } from '@/builder/visual/treeUtils';
 import type { ElementMention } from '@/types/inspector';
+import { buildAiNodeId } from '@/builder/runtime/elementHover';
 import type {
     BuilderComponentSchema,
     BuilderFieldDefinition,
@@ -970,14 +971,19 @@ export function editableTargetToMention(target: BuilderEditableTarget | null): E
 
     return {
         id: target.targetId,
+        targetId: target.targetId,
+        aiNodeId: buildAiNodeId(target.sectionLocalId, target.path, target.sectionKey),
         tagName: target.path ? 'div' : 'section',
         selector,
         textPreview: target.textPreview ?? '',
+        currentValue: target.textPreview ?? '',
         sectionKey: target.sectionKey,
         sectionLocalId: target.sectionLocalId,
         parameterName: target.path,
+        propName: target.path,
         componentPath: target.componentPath ?? null,
         elementId: target.elementId,
+        componentKey: target.componentType ?? target.sectionKey,
     };
 }
 

@@ -6,6 +6,7 @@ import { getComponentSchema, resolveComponentProps } from '@/builder/componentRe
 import { collectBuilderSchemaPrimitiveFieldDescriptors } from '@/lib/schemaPrimitiveFields';
 import { filterInspectorSchemaFields, type InspectorSchemaField } from '@/builder/inspector/filterInspectorSchemaFields';
 import type { ElementMention, PendingEdit, InspectorElement } from '@/types/inspector';
+import { AI_NODE_FLASH_ATTRIBUTE } from '@/builder/runtime/elementHover';
 
 vi.mock('canvas-confetti', () => ({
     default: {
@@ -509,6 +510,87 @@ describe('InspectPreview', () => {
         });
     });
 
+    it('shows ai inspect hover metadata for the hovered canvas node', async () => {
+        render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                onElementSelect={vi.fn()}
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: {
+                        title: 'Launch faster',
+                        image: '/hero.jpg',
+                        buttonText: 'Shop now',
+                        buttonLink: '/shop',
+                    },
+                }]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc } = createHeroPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            expect(iframeDoc.querySelector('[data-webu-field="title"]')).toBeTruthy();
+        });
+
+        const hitLayer = iframe.parentElement?.querySelector<HTMLDivElement>('div[aria-hidden="true"]');
+        const titleTarget = iframeDoc.querySelector<HTMLElement>('[data-webu-field="title"]');
+        const sectionTarget = iframeDoc.querySelector<HTMLElement>('[data-webu-section-local-id="hero-1"]');
+        expect(hitLayer).toBeTruthy();
+        expect(titleTarget).toBeTruthy();
+        expect(sectionTarget).toBeTruthy();
+
+        titleTarget!.getBoundingClientRect = () => ({
+            left: 24,
+            top: 32,
+            width: 360,
+            height: 64,
+            right: 384,
+            bottom: 96,
+            x: 24,
+            y: 32,
+            toJSON: () => ({}),
+        });
+        sectionTarget!.getBoundingClientRect = () => ({
+            left: 16,
+            top: 16,
+            width: 960,
+            height: 420,
+            right: 976,
+            bottom: 436,
+            x: 16,
+            y: 16,
+            toJSON: () => ({}),
+        });
+
+        Object.defineProperty(iframeDoc, 'elementsFromPoint', {
+            configurable: true,
+            value: vi.fn(() => titleTarget ? [titleTarget] : []),
+        });
+        Object.defineProperty(iframeDoc, 'elementFromPoint', {
+            configurable: true,
+            value: vi.fn(() => titleTarget ?? null),
+        });
+
+        fireEvent.mouseMove(hitLayer!, { clientX: 24, clientY: 24 });
+
+        await waitFor(() => {
+            expect(screen.getByText('AI Inspect')).toBeInTheDocument();
+            expect(screen.getByText('webu_general_hero_01')).toBeInTheDocument();
+            expect(screen.getByText('title')).toBeInTheDocument();
+            expect(screen.getByText('Launch faster')).toBeInTheDocument();
+            expect(screen.getByText('hero-1.title')).toBeInTheDocument();
+        });
+    });
+
     it('keeps section selection working when the live structure snapshot is stale', async () => {
         const onElementSelect = vi.fn();
         render(
@@ -721,10 +803,42 @@ describe('InspectPreview', () => {
         expect(mentions[0]?.sectionLocalId).toBe('hero-1');
         expect(mentions[1]?.sectionLocalId).toBe('hero-1');
         expect(mentions[2]?.sectionLocalId).toBe('hero-1');
+        expect(mentions[0]?.aiNodeId).toBeTruthy();
         expect(mentions[0]?.parameterName).toBeTruthy();
         expect(mentions[1]?.parameterName).toBeTruthy();
         expect(mentions[2]?.parameterName).toBeTruthy();
         expect(new Set(mentions.map((mention) => mention.targetId)).size).toBe(3);
+    });
+
+    it('applies ai update flash to the targeted node id', async () => {
+        render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: {
+                        title: 'Launch faster',
+                    },
+                }]}
+                aiFlashNodeIds={['hero-1.title']}
+                aiFlashNonce={1}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc, titleEl } = createHeroPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            expect(titleEl.getAttribute('data-ai-node-id')).toBe('hero-1.title');
+            expect(titleEl.getAttribute(AI_NODE_FLASH_ATTRIBUTE)).toBe('true');
+        });
     });
 
     it('reconciles real preview text, image, and link nodes from live structure props without reload', async () => {

@@ -21,6 +21,7 @@ import {
     applyCmsBindingModelToProjectGraph,
 } from '@/builder/cmsIntegration/workspaceCmsSync';
 import type { ProjectType } from '@/builder/projectTypes';
+import { cloneData } from '@/builder/runtime/clone';
 
 import { createImageImportDesignExtraction, type CreateImageImportDesignExtractionOptions } from './designExtractionContract';
 import { inferImageImportLayout } from './layoutInference';
@@ -55,7 +56,7 @@ function toPascalCase(value: string): string {
 }
 
 function sanitizeForJson<T>(value: T): T {
-    return JSON.parse(JSON.stringify(value)) as T;
+    return cloneData(value);
 }
 
 function inferSectionKind(nodeKind: ImageImportLayoutNodeKind): GeneratedSectionKind {

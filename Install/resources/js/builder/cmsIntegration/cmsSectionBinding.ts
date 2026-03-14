@@ -7,6 +7,7 @@ import {
     buildCmsFieldOwnershipSnapshot,
     serializeFieldBindingForMetadata,
 } from './contentAuthorityRules';
+import { cloneRecordData } from '@/builder/runtime/clone';
 import type {
     CmsBindingConflictStatus,
     CmsBindingProvenance,
@@ -38,15 +39,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneRecord<T extends Record<string, unknown>>(value: T | null | undefined): T {
-    if (!value) {
-        return {} as T;
-    }
-
-    try {
-        return JSON.parse(JSON.stringify(value)) as T;
-    } catch {
-        return { ...value };
-    }
+    return cloneRecordData(value);
 }
 
 function normalizeText(value: string | null | undefined): string {

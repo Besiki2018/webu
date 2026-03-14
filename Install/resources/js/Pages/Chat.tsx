@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from '@/components/Chat/MessageBubble';
 import { PendingAssistantBubble } from '@/components/Chat/MessageBubble';
 import { GenerationDiagnosticsPanel } from '@/components/Chat/GenerationDiagnosticsPanel';
+import { AIGenerationOverlay } from '@/components/builder/AIGenerationOverlay';
 import { AgentProgressInline } from '@/components/Chat/AgentProgressInline';
 import type { CodeEditorHandle } from '@/components/Code/CodeEditor';
 import type { CodeFileSelectionMeta } from '@/components/Code/FileTree';
@@ -19,7 +20,7 @@ import { useTranslation } from '@/contexts/LanguageContext';
 import { PageProps, User } from '@/types';
 import type { ChatMessage } from '@/types/chat';
 import type { UserNotification } from '@/types/notifications';
-import { Code, Loader2, Globe, MousePointerClick, Palette, Sparkles, ChevronDown, History, Columns2, Cloud, BarChart3, Ellipsis, ArrowLeft, Share2, ExternalLink, CreditCard, RefreshCw, Layers, MessageSquare, GripVertical, ArrowUp, Trash2, Save, PanelLeft, CheckCircle2 } from 'lucide-react';
+import { Code, Loader2, Globe, MousePointerClick, Palette, Sparkles, ChevronDown, History, Columns2, BarChart3, Ellipsis, ArrowLeft, Share2, ExternalLink, CreditCard, RefreshCw, Layers, GripVertical, ArrowUp, Trash2, Save, PanelLeft, CheckCircle2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
@@ -39,8 +40,6 @@ import {
     getBuilderSyncableChangeSet,
     resolveChangeSetScopeLabel,
 } from '@/lib/agentChangeSet';
-import { resolveBuilderWidgetIcon } from '@/lib/resolveBuilderWidgetIcon';
-import { getShortDisplayName } from '@/builder/componentRegistry';
 import { getClarificationPrompt } from '@/lib/chatClarification';
 import {
     buildSectionPreviewText,
@@ -76,6 +75,11 @@ import {
     resolveMentionBuilderTarget,
 } from '@/builder/chat/chatBuilderSelection';
 import {
+    buildAiTargetPromptContext,
+    buildScopedSelectedTargetForAi,
+    resolveAiNodeTargets,
+} from '@/builder/chat/aiNodeTargeting';
+import {
     buildSelectedTargetContext,
     selectedTargetIsMappable,
     type SelectedTargetContext,
@@ -101,17 +105,28 @@ import { buildCanonicalBridgeSelectedTargetPayload } from '@/builder/cms/canonic
 import { BuilderWorkspaceShell } from '@/builder/workspace/BuilderWorkspaceShell';
 import { BuilderPreviewSurface } from '@/builder/workspace/BuilderPreviewSurface';
 import { createWorkspaceFileClient } from '@/builder/workspace/workspaceFileClient';
+import { AIInspectorPanel, type AIInspectorPanelField } from '@/builder/ui/AIInspectorPanel';
 import {
     BUILDER_GENERATION_STEPS,
     getBuilderGenerationDefaultProgressMessage,
     getBuilderGenerationHeadline,
     getBuilderGenerationStepStatus,
-    isBuilderGenerationBlocking,
     resolveBuilderGenerationState,
     type BuilderGenerationState,
 } from '@/builder/state/builderGenerationState';
+import { useBuilderStore } from '@/builder/store/builderStore';
 import { isGeneratedSiteValidationMessage } from '@/builder/ai/validateGeneratedSite';
 import { resolveWebuV2FeatureFlags } from '@/lib/webuV2FeatureFlags';
+import { resolveCmsSelectedSectionSchemaState } from '@/builder/cms/CmsSchemaResolver';
+import { buildCanonicalControlGroupFieldSets } from '@/builder/inspector/InspectorRenderer';
+import { getMinimalSchemaFieldLabel, type CanonicalControlGroup } from '@/builder/inspector/InspectorFieldResolver';
+import {
+    appendAiNodeTag,
+    buildAiNodeTag,
+    buildAiNodeId,
+    stripAiNodeTags,
+} from '@/builder/runtime/elementHover';
+import { resolveComponentRegistryKey } from '@/builder/componentRegistry';
 
 const FileTree = lazy(async () => ({ default: (await import('@/components/Code/FileTree')).FileTree }));
 const CodeEditor = lazy(async () => ({ default: (await import('@/components/Code/CodeEditor')).CodeEditor }));
@@ -197,7 +212,7 @@ interface Project {
     can_reconnect?: boolean;
     build_started_at?: string | null;
     project_generation_version?: string | null;
-    source_generation_type?: 'new' | 'resume' | 'template';
+    source_generation_type?: 'new' | 'resume' | 'template' | 'legacy';
     preview_build_id?: string | null;
     draft_source_id?: string | null;
     generation?: ProjectGenerationPayload | null;
@@ -220,7 +235,7 @@ interface ProjectGenerationPayload {
     is_active: boolean;
     ready_for_builder?: boolean;
     project_generation_version?: string | null;
-    source_generation_type?: 'new' | 'resume' | 'template';
+    source_generation_type?: 'new' | 'resume' | 'template' | 'legacy';
     workspace_manifest_exists?: boolean;
     workspace_preview_ready?: boolean;
     workspace_preview_phase?: string;
@@ -359,6 +374,103 @@ function inspectLog(..._args: unknown[]) {
     }
 }
 
+type AIInspectorFieldBucket = 'text' | 'style' | 'settings';
+
+function normalizeAiInspectorSectionKey(value: string | null | undefined): string {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    const trimmed = value.trim();
+    if (trimmed === '') {
+        return '';
+    }
+
+    return resolveComponentRegistryKey(trimmed) ?? trimmed.toLowerCase();
+}
+
+function readAiInspectorValueAtPath(value: unknown, path: string): unknown {
+    const segments = path.split('.').filter(Boolean);
+    if (segments.length === 0) {
+        return value;
+    }
+
+    let current: unknown = value;
+    for (const segment of segments) {
+        if (Array.isArray(current)) {
+            const index = Number(segment);
+            if (!Number.isInteger(index) || index < 0 || index >= current.length) {
+                return null;
+            }
+
+            current = current[index];
+            continue;
+        }
+
+        if (!current || typeof current !== 'object' || !(segment in (current as Record<string, unknown>))) {
+            return null;
+        }
+
+        current = (current as Record<string, unknown>)[segment];
+    }
+
+    return current;
+}
+
+function formatAiInspectorValue(value: unknown): string {
+    if (typeof value === 'string') {
+        const normalized = value.replace(/\s+/g, ' ').trim();
+        return normalized === '' ? '—' : (normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized);
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            return '—';
+        }
+
+        const preview = value.slice(0, 3).map((item) => formatAiInspectorValue(item));
+        return value.length > 3 ? `${preview.join(', ')}...` : preview.join(', ');
+    }
+
+    if (value && typeof value === 'object') {
+        try {
+            const serialized = JSON.stringify(value);
+            return serialized.length > 120 ? `${serialized.slice(0, 117)}...` : serialized;
+        } catch {
+            return '[object]';
+        }
+    }
+
+    return '—';
+}
+
+function mapCanonicalGroupToAiInspectorBucket(
+    group: CanonicalControlGroup,
+    path: string,
+): AIInspectorFieldBucket {
+    const leaf = path.split('.').filter(Boolean).pop()?.toLowerCase() ?? '';
+
+    if (
+        leaf.includes('variant')
+        || leaf.includes('background')
+        || leaf.includes('layout')
+        || group === 'layout'
+        || group === 'advanced'
+    ) {
+        return 'settings';
+    }
+
+    if (group === 'style' || group === 'responsive' || group === 'states') {
+        return 'style';
+    }
+
+    return 'text';
+}
+
 export default function Chat({
     project,
     user: _user,
@@ -483,6 +595,11 @@ export default function Chat({
     const [captureThumbnailTrigger, setCaptureThumbnailTrigger] = useState(0);
     const visualPreviewUrl = project.cms_preview_url ?? null;
     const [projectGeneration, setProjectGeneration] = useState<ProjectGenerationPayload | null>(project.generation ?? null);
+    const canvasGenerationStage = useBuilderStore((state) => state.generationStage);
+    const canvasGenerationProgress = useBuilderStore((state) => state.generationProgress);
+    const canvasGenerationDiagnostics = useBuilderStore((state) => state.diagnostics);
+    const setCanvasGenerationState = useBuilderStore((state) => state.setGenerationState);
+    const clearCanvasGenerationState = useBuilderStore((state) => state.clearGenerationState);
     const generationReloadRequestedRef = useRef(false);
     const hasExistingGeneratedSite = useMemo(() => (
         (Array.isArray(generatedPages) && generatedPages.some((page) => Array.isArray(page.sections) && page.sections.length > 0))
@@ -495,8 +612,7 @@ export default function Chat({
         }),
         [generationReadyForBuilder, projectGeneration?.status],
     );
-    const isProjectGenerationActive = Boolean(projectGeneration?.is_active);
-    const hasValidInitialGenerationPreview = Boolean(project.cms_preview_url ?? project.preview_url);
+    const hasValidInitialGenerationPreview = Boolean(project.cms_preview_url ?? project.preview_url ?? projectGeneration?.preview_url);
     const hasBlockingInitialGeneration = Boolean(projectGeneration)
         && builderGenerationState !== 'failed'
         && (!generationReadyForBuilder || !hasValidInitialGenerationPreview);
@@ -514,6 +630,10 @@ export default function Chat({
     useEffect(() => {
         setProjectGeneration(project.generation ?? null);
     }, [project.generation, project.id]);
+
+    useEffect(() => () => {
+        clearCanvasGenerationState();
+    }, [clearCanvasGenerationState]);
 
     const isGlobalThemeElementMention = useCallback((element: ElementMention | PendingEdit['element']) => {
         const selector = String('selector' in element ? element.selector : element.cssSelector || '').toLowerCase();
@@ -768,7 +888,7 @@ export default function Chat({
         };
     }, [agentHighlightLocalId]);
 
-    const effectivePreviewUrl = visualPreviewUrl || progress.previewUrl || null;
+    const effectivePreviewUrl = visualPreviewUrl || projectGeneration?.preview_url || progress.previewUrl || null;
     // Chat owns the inspect workspace shell and coordinates the embedded sidebar/preview runtime.
     const {
         previewViewport,
@@ -790,12 +910,19 @@ export default function Chat({
         pendingBuilderStructureMutation,
         setPendingBuilderStructureMutation,
         builderLibraryItems,
-        groupedBuilderLibraryItems,
         activeLibraryItem,
         setActiveLibraryItem,
         isSavingBuilderDraft,
         setIsSavingBuilderDraft,
         selectedElementMention,
+        selectedAiTargetMentions,
+        upsertAiTargetMention,
+        removeAiTargetMention,
+        clearAiTargetMentions,
+        aiFlashNodeIds,
+        aiFlashNonce,
+        flashAiTargetNodes,
+        clearAiTargetFlash,
         activeBuilderPageIdentity,
         visibleBuilderStructureItems,
         effectiveSelectedBuilderSectionLocalId,
@@ -946,6 +1073,58 @@ export default function Chat({
     }, [builderGenerationState, projectGeneration?.id, projectGeneration?.ready_for_builder, projectGeneration?.status_url]);
 
     useEffect(() => {
+        if (!projectGeneration) {
+            clearCanvasGenerationState();
+            return;
+        }
+
+        const stage = builderGenerationState;
+        const detail = (projectGeneration.progress_message ?? '').trim() !== ''
+            ? (projectGeneration.progress_message ?? '').trim()
+            : getBuilderGenerationDefaultProgressMessage(stage);
+        const errorMessage = stage === 'failed'
+            ? (projectGeneration.error_message || t('We could not finish creating this website.'))
+            : null;
+        const recoveryMessage = stage === 'failed' && isGeneratedSiteValidationMessage(projectGeneration.error_message)
+            ? t('The generated site failed validation before preview, so the builder stayed locked. Retry generation or repair the prompt.')
+            : null;
+
+        setCanvasGenerationState({
+            stage,
+            progress: {
+                rawStatus: projectGeneration.status ?? null,
+                headline: t(getBuilderGenerationHeadline(stage)),
+                detail,
+                isActive: stage !== 'failed' && projectGeneration.ready_for_builder !== true,
+                isFailed: stage === 'failed',
+                readyForBuilder: projectGeneration.ready_for_builder === true && hasExistingGeneratedSite,
+                locked: stage !== 'failed' && (projectGeneration.ready_for_builder !== true || !hasExistingGeneratedSite),
+                errorMessage,
+                recoveryMessage,
+                steps: BUILDER_GENERATION_STEPS.map((step) => {
+                    const status = getBuilderGenerationStepStatus(stage, step.key);
+
+                    return {
+                        key: step.key,
+                        label: t(step.label),
+                        status,
+                        detail: status === 'active' ? detail : null,
+                    };
+                }),
+            },
+            diagnostics: progress.generationDiagnostics,
+        });
+    }, [
+        builderGenerationState,
+        clearCanvasGenerationState,
+        hasExistingGeneratedSite,
+        progress.generationDiagnostics,
+        projectGeneration,
+        setCanvasGenerationState,
+        t,
+    ]);
+
+    useEffect(() => {
         setExpandedStructureItemIds((current) => current.filter((localId) => (
             builderStructureItems.some((item) => item.localId === localId)
         )));
@@ -971,7 +1150,7 @@ export default function Chat({
         ));
     }, []);
 
-    const visualBuilderLabel = t('Visual');
+    const aiInspectLabel = t('AI Inspect');
     const previewStatusLabel = isBuildingPreview
         ? t('Loading Live Preview...')
         : effectivePreviewUrl
@@ -1144,6 +1323,26 @@ export default function Chat({
 
     const handleSubmit = async (e?: React.FormEvent) => {
         e?.preventDefault();
+        if (showGenerationProgressInWorkspace) {
+            addMessage?.({
+                id: `generation-locked-${Date.now()}`,
+                type: 'assistant',
+                content: t('Initial AI generation is still running. I will unlock editing as soon as the preview is ready.'),
+                timestamp: new Date(),
+            });
+            return;
+        }
+        const trimmedPrompt = prompt.trim();
+        const {
+            resolvedTargets: resolvedAiTargets,
+            unresolvedNodeIds,
+        } = resolveAiNodeTargets({
+            message: prompt,
+            selectedMentions: selectedAiTargetMentions,
+            builderStructureItems,
+            currentBreakpoint: previewViewport,
+            currentInteractionState: previewInteractionState,
+        });
         const derivedSelectedTarget = selectedBuilderTarget ?? (
             selectedElementMention
                 ? resolveMentionBuilderTarget({
@@ -1162,11 +1361,39 @@ export default function Chat({
                 pageTitle: activeBuilderPageIdentity.pageTitle,
             }
             : null;
-        const activeSelectedElement = editableTargetToMention(pageAwareSelectedTarget) ?? selectedElementMention;
-        if ((!prompt.trim() && !activeSelectedElement) || isLoading) return;
+        const pageAwareAiTargets = resolvedAiTargets.map(({ aiNodeId, mention, target }) => ({
+            aiNodeId,
+            mention,
+            target: {
+                ...target,
+                pageId: activeBuilderPageIdentity.pageId,
+                pageSlug: activeBuilderPageIdentity.pageSlug,
+                pageTitle: activeBuilderPageIdentity.pageTitle,
+            },
+        }));
+        const targetedAiNodeIds = pageAwareAiTargets.map(({ aiNodeId }) => aiNodeId);
+        const activeSelectedElement = pageAwareAiTargets[0]?.mention ?? editableTargetToMention(pageAwareSelectedTarget) ?? selectedElementMention;
+        if ((!trimmedPrompt && !activeSelectedElement) || isLoading) return;
 
-        if (activeSelectedElement && !selectedTargetIsMappable(pageAwareSelectedTarget)) {
-            const replyLang = detectReplyLanguage(prompt.trim(), appLocale);
+        if (unresolvedNodeIds.length > 0) {
+            const replyLang = detectReplyLanguage(trimmedPrompt, appLocale);
+            const content = replyLang === 'ka'
+                ? `არჩეული node ვერ მოიძებნა: ${unresolvedNodeIds.join(', ')}`
+                : `Could not resolve the selected node: ${unresolvedNodeIds.join(', ')}`;
+            addMessage?.({
+                id: `agent-missing-node-${Date.now()}`,
+                type: 'assistant',
+                content,
+                timestamp: new Date(),
+            });
+            return;
+        }
+
+        if (
+            pageAwareAiTargets.some(({ target }) => !selectedTargetIsMappable(target))
+            || (pageAwareAiTargets.length === 0 && activeSelectedElement && !selectedTargetIsMappable(pageAwareSelectedTarget))
+        ) {
+            const replyLang = detectReplyLanguage(trimmedPrompt, appLocale);
             const content = replyLang === 'ka'
                 ? 'არჩეული ელემენტი ჯერ builder parameter-ზე არ არის მიბმული, ამიტომ ჩატი ამ ელემენტს ზუსტად ვერ შეცვლის.'
                 : 'The selected element is not mapped to a builder parameter yet, so chat cannot target it safely.';
@@ -1179,30 +1406,63 @@ export default function Chat({
             return;
         }
 
-        const msg = prompt.trim();
+        const msg = stripAiNodeTags(prompt).trim();
+        if (msg === '' && pageAwareAiTargets.length > 0) {
+            addMessage?.({
+                id: `agent-empty-node-instruction-${Date.now()}`,
+                type: 'assistant',
+                content: t('Select a node, then describe what should change.'),
+                timestamp: new Date(),
+            });
+            return;
+        }
         const replyLang = detectReplyLanguage(msg, appLocale);
         const commandLocale = resolveAiCommandLocale(msg, appLocale);
-        const elementContext = activeSelectedElement ? {
-            tagName: activeSelectedElement.tagName,
-            selector: activeSelectedElement.selector,
-            textPreview: activeSelectedElement.textPreview,
-            sectionLocalId: activeSelectedElement.sectionLocalId ?? undefined,
-            sectionKey: activeSelectedElement.sectionKey ?? undefined,
-            componentType: pageAwareSelectedTarget?.componentType ?? undefined,
-            componentPath: pageAwareSelectedTarget?.componentPath ?? pageAwareSelectedTarget?.path ?? undefined,
-            parameterName: activeSelectedElement.parameterName ?? undefined,
-            elementId: activeSelectedElement.elementId ?? undefined,
-            editableFields: pageAwareSelectedTarget?.editableFields ?? undefined,
-            variants: pageAwareSelectedTarget?.variants ?? undefined,
-            allowedUpdates: pageAwareSelectedTarget?.allowedUpdates ?? undefined,
-            currentBreakpoint: previewViewport,
-            currentInteractionState: previewInteractionState,
-            responsiveContext: pageAwareSelectedTarget?.responsiveContext ?? undefined,
-        } : undefined;
-        const selectedTargetContext = buildSelectedTargetContext(pageAwareSelectedTarget, {
+        const elementContexts = pageAwareAiTargets.length > 0
+            ? pageAwareAiTargets.map(({ aiNodeId, mention, target }) => ({
+                aiNodeId: mention.aiNodeId ?? aiNodeId,
+                tagName: mention.tagName,
+                selector: mention.selector,
+                textPreview: mention.currentValue ?? mention.textPreview,
+                currentValue: mention.currentValue ?? mention.textPreview,
+                sectionLocalId: mention.sectionLocalId ?? undefined,
+                sectionKey: mention.sectionKey ?? undefined,
+                componentType: target.componentType ?? undefined,
+                componentPath: target.componentPath ?? target.path ?? undefined,
+                parameterName: mention.parameterName ?? undefined,
+                elementId: mention.elementId ?? undefined,
+                editableFields: target.editableFields ?? undefined,
+                variants: target.variants ?? undefined,
+                allowedUpdates: target.allowedUpdates ?? undefined,
+                currentBreakpoint: previewViewport,
+                currentInteractionState: previewInteractionState,
+                responsiveContext: target.responsiveContext ?? undefined,
+            }))
+            : (activeSelectedElement && pageAwareSelectedTarget ? [{
+                aiNodeId: activeSelectedElement.aiNodeId ?? undefined,
+                tagName: activeSelectedElement.tagName,
+                selector: activeSelectedElement.selector,
+                textPreview: activeSelectedElement.textPreview,
+                currentValue: activeSelectedElement.currentValue ?? activeSelectedElement.textPreview,
+                sectionLocalId: activeSelectedElement.sectionLocalId ?? undefined,
+                sectionKey: activeSelectedElement.sectionKey ?? undefined,
+                componentType: pageAwareSelectedTarget.componentType ?? undefined,
+                componentPath: pageAwareSelectedTarget.componentPath ?? pageAwareSelectedTarget.path ?? undefined,
+                parameterName: activeSelectedElement.parameterName ?? undefined,
+                elementId: activeSelectedElement.elementId ?? undefined,
+                editableFields: pageAwareSelectedTarget.editableFields ?? undefined,
+                variants: pageAwareSelectedTarget.variants ?? undefined,
+                allowedUpdates: pageAwareSelectedTarget.allowedUpdates ?? undefined,
+                currentBreakpoint: previewViewport,
+                currentInteractionState: previewInteractionState,
+                responsiveContext: pageAwareSelectedTarget.responsiveContext ?? undefined,
+            }] : []);
+        const elementContext = elementContexts[0];
+        const selectedTargetContext = buildScopedSelectedTargetForAi(pageAwareAiTargets.map(({ target }) => target)) ?? buildSelectedTargetContext(pageAwareSelectedTarget, {
             currentBreakpoint: previewViewport,
             currentInteractionState: previewInteractionState,
         });
+        const targetPromptContext = buildAiTargetPromptContext(pageAwareAiTargets);
         const hasScopedSelectedTarget = Boolean(
             selectedTargetContext
             && (
@@ -1212,29 +1472,34 @@ export default function Chat({
             )
         );
         const selectedElementPayload =
-            pageAwareSelectedTarget?.sectionLocalId && pageAwareSelectedTarget.path && pageAwareSelectedTarget.elementId
+            pageAwareAiTargets.length === 1
+                && pageAwareAiTargets[0]?.target.sectionLocalId
+                && pageAwareAiTargets[0]?.target.path
+                && pageAwareAiTargets[0]?.target.elementId
                 ? {
-                    section_id: pageAwareSelectedTarget.sectionLocalId,
-                    parameter_path: pageAwareSelectedTarget.path,
-                    element_id: pageAwareSelectedTarget.elementId,
+                    section_id: pageAwareAiTargets[0].target.sectionLocalId,
+                    parameter_path: pageAwareAiTargets[0].target.path,
+                    element_id: pageAwareAiTargets[0].target.elementId,
                     page_id: activeBuilderPageIdentity.pageId,
                     page_slug: activeBuilderPageIdentity.pageSlug,
-                    component_path: pageAwareSelectedTarget.componentPath ?? pageAwareSelectedTarget.path ?? null,
-                    component_type: pageAwareSelectedTarget.componentType ?? null,
-                    component_name: pageAwareSelectedTarget.componentName ?? null,
-                    editable_fields: pageAwareSelectedTarget.editableFields ?? [],
-                    variants: pageAwareSelectedTarget.variants ?? null,
-                    allowed_updates: pageAwareSelectedTarget.allowedUpdates ?? null,
+                    component_path: pageAwareAiTargets[0].target.componentPath ?? pageAwareAiTargets[0].target.path ?? null,
+                    component_type: pageAwareAiTargets[0].target.componentType ?? null,
+                    component_name: pageAwareAiTargets[0].target.componentName ?? null,
+                    editable_fields: pageAwareAiTargets[0].target.editableFields ?? [],
+                    variants: pageAwareAiTargets[0].target.variants ?? null,
+                    allowed_updates: pageAwareAiTargets[0].target.allowedUpdates ?? null,
                     current_breakpoint: previewViewport,
                     current_interaction_state: previewInteractionState,
-                    responsive_context: pageAwareSelectedTarget.responsiveContext ?? null,
+                    responsive_context: pageAwareAiTargets[0].target.responsiveContext ?? null,
                 }
                 : null;
-        const scopedMsg = elementContext
-            ? `[PAGE_CONTENT_SCOPE] Update only page content elements for the current page. Do not modify global theme, header, footer, menus, or layout structure.\n${msg}`
+        const aiInstruction = targetPromptContext ? `${targetPromptContext}\n\n${msg}` : msg;
+        const scopedMsg = elementContext || targetPromptContext
+            ? `[PAGE_CONTENT_SCOPE] Update only page content elements for the current page. Do not modify global theme, header, footer, menus, or layout structure.\n${targetPromptContext ? `${targetPromptContext}\n\n` : ''}${msg}`
             : msg;
 
         setPrompt('');
+        clearAiTargetMentions();
 
         // Part 10 — Design upgrade: "Improve hero" → replace variant + regenerate content + adjust spacing.
         const designUpgradeKind = getDesignUpgradeSectionKind(msg);
@@ -1383,7 +1648,7 @@ export default function Chat({
                         no_change_reason?: string;
                         files_changed?: boolean;
                     }>(`/panel/projects/${project.id}/ai-project-edit`, {
-                        message: msg,
+                        message: aiInstruction,
                         ...(selectedElementPayload ? { selected_element: selectedElementPayload } : {}),
                     });
 
@@ -1418,7 +1683,7 @@ export default function Chat({
                 }
 
                 const route = routeAiEditIntent({
-                    message: msg,
+                    message: aiInstruction,
                     hasSelectedElement: selectedElementPayload !== null,
                     viewMode,
                     selectedFile,
@@ -1654,7 +1919,7 @@ export default function Chat({
                 return;
             }
 
-            if (!webuV2Flags.advancedAiWorkspaceEdits && shouldPreferProjectEdit(msg, {
+            if (!webuV2Flags.advancedAiWorkspaceEdits && pageAwareAiTargets.length <= 1 && shouldPreferProjectEdit(aiInstruction, {
                 hasSelectedElement: selectedElementPayload !== null,
                 viewMode,
             })) {
@@ -1692,6 +1957,9 @@ export default function Chat({
                         setLastAgentRecentEdits((summaryNote ?? actionLog.join('; ')).slice(0, 500));
                         await refreshWorkspaceAfterChange();
                     }
+                    if (targetedAiNodeIds.length > 0) {
+                        flashAiTargetNodes(targetedAiNodeIds);
+                    }
 
                     axios.post(`/panel/projects/${project.id}/chat-append`, {
                         entries: [{ role: 'user', content: msg }, { role: 'assistant', content: assistantContent }],
@@ -1716,7 +1984,7 @@ export default function Chat({
 
             const pageSlug = activeBuilderPageIdentity.pageSlug ?? 'home';
             const pageId = activeBuilderPageIdentity.pageId ?? undefined;
-            const result = await runUnifiedEdit(msg, {
+            const result = await runUnifiedEdit(aiInstruction, {
                 page_slug: pageSlug,
                 page_id: pageId,
                 locale: commandLocale,
@@ -1762,6 +2030,9 @@ export default function Chat({
                 setLastAgentRecentEdits((result.action_log?.join('; ') ?? result.summary?.join('; ') ?? '').slice(0, 500));
                 if (!syncedBuilderChangeSet || hasUnsyncedOps) {
                     setPreviewRefreshTrigger(Date.now());
+                }
+                if (targetedAiNodeIds.length > 0) {
+                    flashAiTargetNodes(targetedAiNodeIds);
                 }
                 if (result.highlight_section_ids?.length) setAgentHighlightLocalId(result.highlight_section_ids[0] ?? null);
                 axios.post(`/panel/projects/${project.id}/chat-append`, {
@@ -1811,7 +2082,10 @@ export default function Chat({
             return;
         }
 
-        await sendMessage(scopedMsg, { elementContext });
+        await sendMessage(scopedMsg, {
+            elementContext,
+            elementContexts,
+        });
     };
 
     const visibleMessages = messages.filter((msg) => msg.type === 'user' || msg.type === 'assistant');
@@ -1853,10 +2127,96 @@ export default function Chat({
         setTypingAssistantMessageIds((current) => current.filter((id) => id !== messageId));
     }, []);
 
+    const primaryAiInspectorMention = useMemo(() => (
+        selectedAiTargetMentions[0]
+        ?? editableTargetToMention(selectedBuilderTarget)
+        ?? selectedElementMention
+        ?? null
+    ), [selectedAiTargetMentions, selectedBuilderTarget, selectedElementMention]);
+    const primaryAiInspectorSection = useMemo(() => {
+        const targetSectionLocalId = primaryAiInspectorMention?.sectionLocalId ?? selectedBuilderTarget?.sectionLocalId ?? null;
+        if (targetSectionLocalId) {
+            return visibleBuilderStructureItems.find((item) => item.localId === targetSectionLocalId) ?? null;
+        }
+
+        const targetSectionKey = primaryAiInspectorMention?.sectionKey
+            ?? selectedBuilderTarget?.sectionKey
+            ?? selectedBuilderTarget?.componentType
+            ?? null;
+        if (!targetSectionKey) {
+            return null;
+        }
+
+        const normalizedTargetKey = normalizeAiInspectorSectionKey(targetSectionKey);
+        return visibleBuilderStructureItems.find((item) => (
+            normalizeAiInspectorSectionKey(item.sectionKey) === normalizedTargetKey
+        )) ?? null;
+    }, [primaryAiInspectorMention, selectedBuilderTarget, visibleBuilderStructureItems]);
+    const aiInspectorState = useMemo(() => {
+        if (!primaryAiInspectorSection) {
+            return null;
+        }
+
+        return resolveCmsSelectedSectionSchemaState({
+            selectedSectionDraft: {
+                localId: primaryAiInspectorSection.localId,
+                type: primaryAiInspectorSection.sectionKey,
+            },
+            selectedSectionEffectiveType: primaryAiInspectorSection.sectionKey,
+            selectedSectionEffectiveParsedProps: primaryAiInspectorSection.props ?? {},
+            selectedSectionSchemaProperties: null,
+            selectedSectionSchemaHtmlTemplate: '',
+            selectedBuilderTarget,
+            previewMode: previewViewport,
+            interactionState: previewInteractionState,
+            elementorLike: false,
+            normalizeSectionTypeKey: normalizeAiInspectorSectionKey,
+        });
+    }, [previewInteractionState, previewViewport, primaryAiInspectorSection, selectedBuilderTarget]);
+    const aiInspectorFieldBuckets = useMemo(() => {
+        const emptyBuckets: Record<AIInspectorFieldBucket, AIInspectorPanelField[]> = {
+            text: [],
+            style: [],
+            settings: [],
+        };
+
+        if (!aiInspectorState) {
+            return emptyBuckets;
+        }
+
+        const resolvedProps = aiInspectorState.resolvedProps ?? primaryAiInspectorSection?.props ?? null;
+        const seenPaths = new Set<string>();
+
+        buildCanonicalControlGroupFieldSets(aiInspectorState.editableSchemaFieldsForDisplay).forEach((fieldSet) => {
+            fieldSet.fields.forEach((field) => {
+                const path = field.path.join('.');
+                if (seenPaths.has(path)) {
+                    return;
+                }
+
+                seenPaths.add(path);
+                const bucket = mapCanonicalGroupToAiInspectorBucket(field.control_meta.group, path);
+                emptyBuckets[bucket].push({
+                    path,
+                    label: getMinimalSchemaFieldLabel(field),
+                    value: formatAiInspectorValue(readAiInspectorValueAtPath(resolvedProps, path)),
+                });
+            });
+        });
+
+        (Object.keys(emptyBuckets) as AIInspectorFieldBucket[]).forEach((bucket) => {
+            emptyBuckets[bucket] = emptyBuckets[bucket].slice(0, 6);
+        });
+
+        return emptyBuckets;
+    }, [aiInspectorState, primaryAiInspectorSection]);
+    const aiInspectManualEditDisabledReason = selectedAiTargetMentions.length > 1
+        ? t('Manual editing currently opens a single-target settings panel. Keep one selection active to continue.')
+        : (!selectedBuilderTarget ? t('Select an inspectable builder node first.') : null);
     const previewTarget = project.subdomain ? `https://${project.subdomain}.${baseDomain}` : effectivePreviewUrl;
     const toolbarTabs: Array<{ key: ViewMode; label: string; icon: LucideIcon }> = [
         { key: 'preview', label: t('Preview'), icon: Globe },
-        { key: 'inspect', label: visualBuilderLabel, icon: Cloud },
+        { key: 'inspect', label: aiInspectLabel, icon: MousePointerClick },
         { key: 'design', label: t('Theme'), icon: Palette },
         { key: 'code', label: t('Code'), icon: Code },
         { key: 'settings', label: t('Settings'), icon: BarChart3 },
@@ -1944,6 +2304,7 @@ export default function Chat({
         if (!element) {
             setActiveLibraryItem(null);
             clearBuilderSelection();
+            clearAiTargetMentions();
 
             if (viewMode === 'inspect') {
                 setBuilderPaneMode('elements');
@@ -1960,6 +2321,18 @@ export default function Chat({
         }
 
         inspectLog('handleElementSelect', element);
+        const aiNodeId = element.aiNodeId ?? buildAiNodeId(element.sectionLocalId, element.parameterName ?? element.componentPath, element.sectionKey);
+        const aiTargetMention = aiNodeId
+            ? {
+                ...element,
+                aiNodeId,
+            }
+            : element;
+
+        if (aiNodeId) {
+            upsertAiTargetMention(aiTargetMention);
+        }
+
         const {
             resolvedLocalId,
             resolvedSectionKey,
@@ -1985,11 +2358,6 @@ export default function Chat({
         }
 
         setActiveLibraryItem(null);
-        setBuilderPaneMode('settings');
-        postBuilderCommand({
-            type: 'builder:set-sidebar-mode',
-            mode: 'settings',
-        });
         const nextSelectionPayload = buildCanonicalBridgeSelectedTargetPayload({
             pageIdentity: activeBuilderPageIdentity,
             target: pageAwareTarget,
@@ -2010,7 +2378,76 @@ export default function Chat({
                 ...nextSelectionPayload,
             });
         }
-    }, [activeBuilderPageIdentity.pageId, activeBuilderPageIdentity.pageSlug, activeBuilderPageIdentity.pageTitle, builderStructureItems, clearBuilderSelection, postBuilderCommand, previewInteractionState, previewViewport, selectBuilderTarget, setActiveLibraryItem, viewMode]);
+    }, [activeBuilderPageIdentity.pageId, activeBuilderPageIdentity.pageSlug, activeBuilderPageIdentity.pageTitle, builderStructureItems, clearAiTargetMentions, clearBuilderSelection, postBuilderCommand, previewInteractionState, previewViewport, selectBuilderTarget, setActiveLibraryItem, upsertAiTargetMention, viewMode]);
+
+    const handleAiInspectorInsertNodeTag = useCallback((nodeId: string) => {
+        setPrompt((current) => appendAiNodeTag(current, nodeId));
+        toast.success(t('Node reference added to chat'));
+    }, [t]);
+
+    const handleAiInspectorEditWithAi = useCallback(() => {
+        const targetNodeIds = (selectedAiTargetMentions.length > 0
+            ? selectedAiTargetMentions.map((mention) => mention.aiNodeId ?? null)
+            : [primaryAiInspectorMention?.aiNodeId ?? null])
+            .filter((value): value is string => typeof value === 'string' && value.trim() !== '');
+
+        if (targetNodeIds.length === 0) {
+            toast.error(t('Select an inspectable element first.'));
+            return;
+        }
+
+        setPrompt((current) => targetNodeIds.reduce(
+            (nextPrompt, nodeId) => appendAiNodeTag(nextPrompt, nodeId),
+            current,
+        ));
+        toast.success(t('Node reference added to chat'));
+    }, [primaryAiInspectorMention?.aiNodeId, selectedAiTargetMentions, t]);
+
+    const handleAiInspectorEditManually = useCallback(() => {
+        if (selectedAiTargetMentions.length > 1 || !selectedBuilderTarget) {
+            return;
+        }
+
+        setBuilderPaneMode('settings');
+        postBuilderCommand({
+            type: 'builder:set-sidebar-mode',
+            mode: 'settings',
+        });
+
+        const nextSelectionPayload = buildCanonicalBridgeSelectedTargetPayload({
+            pageIdentity: activeBuilderPageIdentity,
+            target: selectedBuilderTarget,
+            fallback: selectedBuilderTarget.sectionLocalId || selectedBuilderTarget.sectionKey
+                ? {
+                    sectionLocalId: selectedBuilderTarget.sectionLocalId ?? null,
+                    sectionKey: selectedBuilderTarget.sectionKey ?? null,
+                    componentType: selectedBuilderTarget.sectionKey ?? selectedBuilderTarget.componentType ?? null,
+                }
+                : null,
+            currentBreakpoint: previewViewport,
+            currentInteractionState: previewInteractionState,
+        });
+
+        if (nextSelectionPayload) {
+            postBuilderCommand({
+                type: 'builder:set-selected-target',
+                ...nextSelectionPayload,
+            });
+        }
+    }, [activeBuilderPageIdentity, postBuilderCommand, previewInteractionState, previewViewport, selectedAiTargetMentions.length, selectedBuilderTarget, setBuilderPaneMode]);
+
+    const handleAiInspectorClose = useCallback(() => {
+        clearAiTargetMentions();
+        clearBuilderSelection();
+        setBuilderPaneMode('elements');
+        postBuilderCommand({
+            type: 'builder:set-sidebar-mode',
+            mode: 'elements',
+        });
+        postBuilderCommand({
+            type: 'builder:clear-selected-section',
+        });
+    }, [clearAiTargetMentions, clearBuilderSelection, postBuilderCommand, setBuilderPaneMode]);
 
     // Handler for inline edits from inspect mode
     const handleElementEdit = useCallback((edit: PendingEdit) => {
@@ -2077,11 +2514,6 @@ export default function Chat({
             type: 'builder:clear-selected-section',
         });
     }, [clearBuilderSelection, postBuilderCommand]);
-
-    const handleLibraryItemActivate = useCallback((item: BuilderLibraryItem) => {
-        setBuilderPaneMode('elements');
-        setActiveLibraryItem((current) => current?.key === item.key ? null : item);
-    }, []);
 
     const handleLibraryItemPlace = useCallback((sectionKey: string, target: ElementMention | null) => {
         if (pendingBuilderStructureMutation) {
@@ -2364,42 +2796,30 @@ export default function Chat({
         </div>
     );
     const prefersGeorgianGenerationCopy = appLocale.toLowerCase().startsWith('ka');
-    const shouldBlockBuilderDuringGeneration = hasBlockingInitialGeneration
-        || (isProjectGenerationActive && isBuilderGenerationBlocking(builderGenerationState));
-    const showGenerationProgressInWorkspace = shouldBlockBuilderDuringGeneration;
-    const showGenerationFailureInWorkspace = builderGenerationState === 'failed';
-    const generationFailureMessage = projectGeneration?.error_message || t('We could not finish creating this website.');
-    const generationFailureIsValidation = isGeneratedSiteValidationMessage(projectGeneration?.error_message);
-    const generationFailureRecoveryMessage = generationFailureIsValidation
-        ? t('The generated site failed validation before preview, so the builder stayed locked. Retry generation or repair the prompt.')
-        : null;
-    const isInspectBuilderMode = viewMode === 'inspect' && !showGenerationProgressInWorkspace && !showGenerationFailureInWorkspace;
-    const shouldRenderChatWorkspace = viewMode !== 'inspect' || showGenerationProgressInWorkspace || showGenerationFailureInWorkspace;
+    const showGenerationProgressInWorkspace = canvasGenerationProgress.locked;
+    const showGenerationFailureInWorkspace = canvasGenerationProgress.isFailed;
+    const shouldRenderGenerationOverlay = showGenerationProgressInWorkspace || showGenerationFailureInWorkspace;
+    const generationFailureMessage = canvasGenerationProgress.errorMessage || projectGeneration?.error_message || t('We could not finish creating this website.');
+    const generationFailureRecoveryMessage = canvasGenerationProgress.recoveryMessage;
+    const showManualBuilderSidebar = viewMode === 'inspect'
+        && builderPaneMode === 'settings'
+        && !showGenerationProgressInWorkspace
+        && !showGenerationFailureInWorkspace;
+    const shouldRenderChatWorkspace = true;
+    const showAiInspectorPanel = viewMode === 'inspect'
+        && !showGenerationProgressInWorkspace
+        && !showGenerationFailureInWorkspace
+        && Boolean(primaryAiInspectorMention || selectedBuilderTarget);
     const generationStatusCopy = useMemo(() => ({
         assistantLabel: prefersGeorgianGenerationCopy ? 'AI გენერაცია' : 'AI generation',
         chatHint: prefersGeorgianGenerationCopy
             ? 'საიტის გენერირება კანვასში მიმდინარეობს და ჩატი მიმდინარე ეტაპებს აქვე გაჩვენებს.'
             : 'Site generation is happening in the canvas and the chat mirrors each active step here.',
-        canvasHint: prefersGeorgianGenerationCopy
-            ? 'საიტის გენერირება პირდაპირ კანვასში მიმდინარეობს. ქვემოთ ყველა მიმდინარე ეტაპი ჩანს საბოლოო შედეგამდე.'
-            : 'Site generation is happening directly in the canvas. The current stages stay here until the site is ready.',
-        completed: prefersGeorgianGenerationCopy ? 'შესრულებულია' : 'Completed',
-        active: prefersGeorgianGenerationCopy ? 'მიმდინარეობს' : 'In progress',
-        pending: prefersGeorgianGenerationCopy ? 'მომლოდინე' : 'Pending',
         generationInputPlaceholder: prefersGeorgianGenerationCopy ? 'საიტის გენერირება მიმდინარეობს...' : 'Site generation is in progress...',
     }), [prefersGeorgianGenerationCopy]);
-    const generationHeadline = t(getBuilderGenerationHeadline(builderGenerationState));
-    const generationProgressDetail = (projectGeneration?.progress_message ?? '').trim() !== ''
-        ? (projectGeneration?.progress_message ?? '').trim()
-        : getBuilderGenerationDefaultProgressMessage(builderGenerationState);
-    const generationTimelineSteps = useMemo(() => (
-        BUILDER_GENERATION_STEPS.map((step) => ({
-            ...step,
-            translatedLabel: t(step.label),
-            status: getBuilderGenerationStepStatus(builderGenerationState, step.key),
-        }))
-    ), [builderGenerationState, t]);
-    const activeGenerationTimelineStep = generationTimelineSteps.find((step) => step.status === 'active') ?? null;
+    const generationHeadline = canvasGenerationProgress.headline ?? t(getBuilderGenerationHeadline(canvasGenerationStage));
+    const generationProgressDetail = canvasGenerationProgress.detail ?? getBuilderGenerationDefaultProgressMessage(canvasGenerationStage);
+    const activeGenerationTimelineStep = canvasGenerationProgress.steps.find((step) => step.status === 'active') ?? null;
 
     const workspaceSidebarContent = (
         <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col md:w-auto">
@@ -2419,94 +2839,17 @@ export default function Chat({
                 </div>
             )}
 
-            {SHOW_GENERATION_DIAGNOSTICS && progress.generationDiagnostics && (
+            {SHOW_GENERATION_DIAGNOSTICS && canvasGenerationDiagnostics && (
                 <div className="mx-6 mt-4 shrink-0">
-                    <GenerationDiagnosticsPanel diagnostics={progress.generationDiagnostics} />
+                    <GenerationDiagnosticsPanel diagnostics={canvasGenerationDiagnostics} />
                 </div>
             )}
 
             <div className="workspace-sidebar-content">
-                {isInspectBuilderMode ? (
+                {showManualBuilderSidebar ? (
                     <div className="workspace-builder-pane">
                         <div className="workspace-builder-inline-shell">
-                            <div
-                                className={cn(
-                                    'workspace-builder-library-shell',
-                                    builderPaneMode !== 'elements' && 'workspace-builder-library-shell--hidden',
-                                )}
-                            >
-                                {groupedBuilderLibraryItems.length > 0 ? (
-                                    <div className="workspace-builder-library-list">
-                                        {groupedBuilderLibraryItems.map((group) => (
-                                            <section key={group.category} className="workspace-builder-library-group">
-                                                <div className="workspace-builder-library-group-header">
-                                                    <div className="workspace-builder-library-group-title">
-                                                        <Layers className="h-4 w-4" />
-                                                        <span>{group.categoryLabel}</span>
-                                                    </div>
-                                                    <span className="workspace-builder-library-group-count">
-                                                        {group.items.length}
-                                                    </span>
-                                                </div>
-
-                                                <div className="workspace-builder-library-grid">
-                                                    {group.items.map((item) => {
-                                                        const IconComponent = resolveBuilderWidgetIcon(item.key, item.category);
-
-                                                        return (
-                                                            <button
-                                                                key={item.key}
-                                                                type="button"
-                                                                draggable
-                                                                onPointerDown={(event) => {
-                                                                    if (event.button === 0) {
-                                                                        inspectLog('sidebar: setActiveLibraryItem (pointer)', item.key);
-                                                                        setActiveLibraryItem(item);
-                                                                    }
-                                                                }}
-                                                                onClick={() => handleLibraryItemActivate(item)}
-                                                                onDragStart={(event) => {
-                                                                    event.dataTransfer.effectAllowed = 'copy';
-                                                                    event.dataTransfer.setData('text/plain', item.key);
-                                                                    inspectLog('sidebar: dragStart', item.key);
-                                                                    setActiveLibraryItem(item);
-                                                                }}
-                                                                onDragEnd={() => {
-                                                                    inspectLog('sidebar: dragEnd');
-                                                                    setActiveLibraryItem(null);
-                                                                }}
-                                                                className={cn(
-                                                                    'workspace-builder-library-card flex flex-col items-center justify-center text-center gap-1.5 min-h-[72px]',
-                                                                    activeLibraryItem?.key === item.key && 'workspace-builder-library-card--active',
-                                                                )}
-                                                                title={item.label}
-                                                            >
-                                                                <span className="workspace-builder-library-card-icon shrink-0">
-                                                                    <IconComponent className="h-4 w-4" />
-                                                                </span>
-                                                                <span className="workspace-builder-library-card-label text-center text-xs leading-tight line-clamp-2 w-full min-w-0">
-                                                                    {getShortDisplayName(item.key, item.label || item.key)}
-                                                                </span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </section>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="workspace-builder-library-empty">
-                                        {t('Components loading...')}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div
-                                className={cn(
-                                    'workspace-builder-settings-shell',
-                                    builderPaneMode !== 'settings' && 'workspace-builder-settings-shell--hidden',
-                                )}
-                            >
+                            <div className="workspace-builder-settings-shell">
                                 <div className="workspace-builder-settings-toolbar">
                                     <button
                                         type="button"
@@ -2514,7 +2857,7 @@ export default function Chat({
                                         className="workspace-builder-settings-back"
                                     >
                                         <ArrowLeft className="h-3.5 w-3.5" />
-                                        <span>{t('Components')}</span>
+                                        <span>{aiInspectLabel}</span>
                                     </button>
                                 </div>
                                 <iframe
@@ -2573,7 +2916,7 @@ export default function Chat({
                                                             {activeGenerationTimelineStep ? (
                                                                 <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-950">
                                                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                                    <span>{activeGenerationTimelineStep.translatedLabel}</span>
+                                                                    <span>{activeGenerationTimelineStep.label}</span>
                                                                 </div>
                                                             ) : null}
                                                             <p className="mt-3 text-xs leading-5 text-[#8a857d]">
@@ -2704,9 +3047,11 @@ export default function Chat({
                                     value={prompt}
                                     onChange={setPrompt}
                                     onSubmit={handleSubmit}
-                                    disabled={isLoading || showGenerationProgressInWorkspace}
+                                    disabled={isLoading}
+                                    selectedElements={selectedAiTargetMentions}
                                     selectedElement={selectedElementMention}
                                     onClearElement={() => {
+                                        clearAiTargetMentions();
                                         clearBuilderSelection();
                                         postBuilderCommand({
                                             type: 'builder:set-sidebar-mode',
@@ -2716,6 +3061,16 @@ export default function Chat({
                                             type: 'builder:clear-selected-section',
                                         });
                                     }}
+                                    onRemoveElement={(targetId) => {
+                                        removeAiTargetMention(targetId);
+                                        setPrompt((current) => (
+                                            current
+                                                .split('\n')
+                                                .filter((line) => line.trim() !== buildAiNodeTag(targetId))
+                                                .join('\n')
+                                                .replace(/\n{3,}/g, '\n\n')
+                                        ));
+                                    }}
                                     placeholder={showGenerationProgressInWorkspace ? generationStatusCopy.generationInputPlaceholder : t('Write to Webu')}
                                     isLoading={isLoading}
                                     onCancel={cancelBuild}
@@ -2723,23 +3078,23 @@ export default function Chat({
                                     footerStartSlot={
                                         <Button
                                             type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={handleVisualBuilderToggle}
-                                            className={cn(
-                                                'workspace-visual-edit-button',
-                                                isVisualBuilderOpen && 'workspace-visual-edit-button--active',
-                                            )}
-                                        >
-                                            {isVisualBuilderOpen ? (
-                                                <MessageSquare className="h-4 w-4" />
-                                            ) : (
-                                                <MousePointerClick className="h-4 w-4" />
-                                            )}
-                                            {isVisualBuilderOpen ? t('Chat') : visualBuilderLabel}
-                                        </Button>
-                                    }
-                                />
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleVisualBuilderToggle}
+                                    className={cn(
+                                        'workspace-visual-edit-button',
+                                        isVisualBuilderOpen && 'workspace-visual-edit-button--active',
+                                    )}
+                                >
+                                    {isVisualBuilderOpen ? (
+                                        <CheckCircle2 className="h-4 w-4" />
+                                    ) : (
+                                        <MousePointerClick className="h-4 w-4" />
+                                    )}
+                                    {aiInspectLabel}
+                                </Button>
+                            }
+                        />
                             </div>
                         </div>
                     </div>
@@ -2748,7 +3103,7 @@ export default function Chat({
         </div>
     );
 
-    const hiddenBuilderBridgeHost = !isInspectBuilderMode ? (
+    const hiddenBuilderBridgeHost = !showManualBuilderSidebar ? (
         <div
             aria-hidden="true"
             className="h-0 w-0 overflow-hidden opacity-0 pointer-events-none"
@@ -2831,177 +3186,95 @@ export default function Chat({
             )}
             previewContent={(
                 <Suspense fallback={lazyPanelFallback}>
-                    {showGenerationProgressInWorkspace ? (
-                        <div className="flex h-full min-h-0 flex-col p-4">
-                            <div className="workspace-surface relative flex h-full min-h-0 overflow-y-auto bg-[#fbf9f4]">
-                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,247,237,0.95),_rgba(251,249,244,0.92)_46%,_rgba(244,239,230,0.96)_100%)]" />
-                                <div className="relative z-10 mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center gap-6 px-6 py-10 text-left">
-                                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] bg-white/90 text-[#b7791f] shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-                                        <Sparkles className="h-7 w-7" />
-                                    </div>
-
-                                    <div className="space-y-2 text-center">
-                                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8a857d]">
-                                            {generationStatusCopy.assistantLabel}
-                                        </div>
-                                        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-[#1c1917]">
-                                            {generationHeadline}
-                                        </h1>
-                                        <p className="mx-auto max-w-xl text-sm leading-7 text-[#625f57]">
-                                            {generationProgressDetail}
-                                        </p>
-                                        <p className="mx-auto max-w-xl text-xs leading-6 text-[#8a857d]">
-                                            {generationStatusCopy.canvasHint}
-                                        </p>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        {generationTimelineSteps.map((step) => (
-                                            <div
-                                                key={step.key}
-                                                className={cn(
-                                                    'flex items-center justify-between gap-4 rounded-[22px] border px-5 py-4 backdrop-blur',
-                                                    step.status === 'complete' && 'border-emerald-200 bg-white/88 text-emerald-900',
-                                                    step.status === 'active' && 'border-amber-200 bg-amber-50/92 text-amber-950 shadow-[0_16px_32px_rgba(245,158,11,0.10)]',
-                                                    step.status === 'pending' && 'border-[#e7dfd4] bg-white/72 text-[#78716c]',
-                                                )}
-                                            >
-                                                <div className="min-w-0">
-                                                    <div className="text-base font-semibold">{step.translatedLabel}</div>
-                                                    <div className="mt-1 text-sm text-current/75">
-                                                        {step.status === 'active' ? generationProgressDetail : (
-                                                            step.status === 'complete'
-                                                                ? generationStatusCopy.completed
-                                                                : generationStatusCopy.pending
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex shrink-0 items-center gap-2">
-                                                    {step.status === 'active' ? (
-                                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                                    ) : step.status === 'complete' ? (
-                                                        <CheckCircle2 className="h-5 w-5" />
-                                                    ) : (
-                                                        <span className="h-3 w-3 rounded-full bg-current/45" />
-                                                    )}
-                                                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">
-                                                        {step.status === 'complete'
-                                                            ? generationStatusCopy.completed
-                                                            : step.status === 'active'
-                                                                ? generationStatusCopy.active
-                                                                : generationStatusCopy.pending}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ) : showGenerationFailureInWorkspace ? (
-                        <div className="flex h-full min-h-0 flex-col p-4">
-                            <div className="workspace-surface flex h-full min-h-0 items-center justify-center bg-[#fff8f8] px-6">
-                                <div className="w-full max-w-xl rounded-[30px] border border-red-200 bg-white p-8 shadow-[0_24px_80px_rgba(28,25,23,0.08)]">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-700">
-                                            <Sparkles className="h-5 w-5" />
-                                        </div>
-                                        <div>
-                                            <h1 className="text-xl font-semibold text-[#1c1917]">
-                                                {t('Website generation failed')}
-                                            </h1>
-                                            <p className="mt-1 text-sm text-[#78716c]">
-                                                {generationFailureMessage}
-                                            </p>
-                                            {generationFailureRecoveryMessage ? (
-                                                <p className="mt-2 text-sm text-[#8a857d]">
-                                                    {generationFailureRecoveryMessage}
-                                                </p>
-                                            ) : null}
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-6 flex gap-3">
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={() => router.reload({ only: ['project'] })}
-                                            className="rounded-full"
-                                        >
-                                            {generationFailureIsValidation ? t('Retry generation') : t('Refresh status')}
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            onClick={() => router.visit('/create')}
-                                            className="rounded-full"
-                                        >
-                                            {generationFailureIsValidation ? t('Repair prompt') : t('Create another project')}
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <InspectPreview
-                            projectId={project.id}
-                            mode={viewMode as 'preview' | 'inspect' | 'design'}
-                            viewport={previewViewport}
-                            previewUrl={builderPreviewUrl}
-                            refreshTrigger={previewRefreshTrigger}
-                            isBuilding={isBuildingPreview}
-                            captureThumbnailTrigger={captureThumbnailTrigger}
-                            onElementSelect={handleElementSelect}
-                            onElementEdit={handleElementEdit}
-                            pendingEdits={pendingEdits}
-                            onSaveAllEdits={handleSaveAllEdits}
-                            onDiscardAllEdits={handleDiscardAllEdits}
-                            onRemoveEdit={handleRemoveEdit}
-                            onThemeSelect={applyThemeToPreview}
-                            isSavingTheme={isSavingTheme}
-                            currentTheme={appliedTheme}
-                            highlightSectionKey={viewMode === 'inspect' ? effectiveSelectedPreviewSectionKey : null}
-                            highlightSectionLocalId={viewMode === 'inspect' ? (agentHighlightLocalId ?? effectiveSelectedBuilderSectionLocalId) : null}
-                            liveStructureItems={viewMode === 'design' ? [] : visibleBuilderStructureItems}
-                            selectedElementMention={viewMode === 'design' ? null : selectedElementMention}
-                            pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
-                            onLibraryItemPlace={handleLibraryItemPlace}
-                            onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
-                            themeDesignerSlot={(
-                                <Suspense fallback={lazyPanelFallback}>
-                                    <ThemeDesigner
-                                        currentTheme={appliedTheme}
-                                        onThemeSelect={applyThemeToPreview}
-                                        onApply={async (presetId) => {
-                                            setIsSavingTheme(true);
-                                            try {
-                                                const response = await axios.put(`/project/${project.id}/theme`, {
-                                                    theme_preset: presetId,
-                                                });
-                                                if (response.data.success) {
-                                                    setAppliedTheme(presetId);
-                                                    if (response.data.warning) {
-                                                        toast.warning(response.data.warning);
-                                                    } else {
-                                                        toast.success(t('Theme applied successfully'));
-                                                    }
-                                                    setPreviewRefreshTrigger(Date.now());
-                                                    setCaptureThumbnailTrigger(Date.now());
+                    <InspectPreview
+                        projectId={project.id}
+                        mode={viewMode as 'preview' | 'inspect' | 'design'}
+                        viewport={previewViewport}
+                        previewUrl={builderPreviewUrl}
+                        refreshTrigger={previewRefreshTrigger}
+                        isBuilding={isBuildingPreview}
+                        captureThumbnailTrigger={captureThumbnailTrigger}
+                        onElementSelect={handleElementSelect}
+                        onElementEdit={handleElementEdit}
+                        pendingEdits={pendingEdits}
+                        onSaveAllEdits={handleSaveAllEdits}
+                        onDiscardAllEdits={handleDiscardAllEdits}
+                        onRemoveEdit={handleRemoveEdit}
+                        onThemeSelect={applyThemeToPreview}
+                        isSavingTheme={isSavingTheme}
+                        currentTheme={appliedTheme}
+                        highlightSectionKey={viewMode === 'inspect' ? effectiveSelectedPreviewSectionKey : null}
+                        highlightSectionLocalId={viewMode === 'inspect' ? (agentHighlightLocalId ?? effectiveSelectedBuilderSectionLocalId) : null}
+                        liveStructureItems={viewMode === 'design' ? [] : visibleBuilderStructureItems}
+                        selectedElementMention={viewMode === 'design' ? null : (selectedAiTargetMentions[0] ?? selectedElementMention)}
+                        aiFlashNodeIds={aiFlashNodeIds}
+                        aiFlashNonce={aiFlashNonce}
+                        onAiFlashComplete={clearAiTargetFlash}
+                        pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
+                        onLibraryItemPlace={handleLibraryItemPlace}
+                        onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
+                        themeDesignerSlot={(
+                            <Suspense fallback={lazyPanelFallback}>
+                                <ThemeDesigner
+                                    currentTheme={appliedTheme}
+                                    onThemeSelect={applyThemeToPreview}
+                                    onApply={async (presetId) => {
+                                        setIsSavingTheme(true);
+                                        try {
+                                            const response = await axios.put(`/project/${project.id}/theme`, {
+                                                theme_preset: presetId,
+                                            });
+                                            if (response.data.success) {
+                                                setAppliedTheme(presetId);
+                                                if (response.data.warning) {
+                                                    toast.warning(response.data.warning);
+                                                } else {
+                                                    toast.success(t('Theme applied successfully'));
                                                 }
-                                            } catch {
-                                                toast.error(t('Failed to apply theme'));
-                                            } finally {
-                                                setIsSavingTheme(false);
+                                                setPreviewRefreshTrigger(Date.now());
+                                                setCaptureThumbnailTrigger(Date.now());
                                             }
-                                        }}
-                                        isSaving={isSavingTheme}
-                                    />
-                                </Suspense>
-                            )}
-                        />
-                    )}
+                                        } catch {
+                                            toast.error(t('Failed to apply theme'));
+                                        } finally {
+                                            setIsSavingTheme(false);
+                                        }
+                                    }}
+                                    isSaving={isSavingTheme}
+                                />
+                            </Suspense>
+                        )}
+                    />
                 </Suspense>
             )}
+            overlayContent={shouldRenderGenerationOverlay || showAiInspectorPanel ? (
+                <>
+                    {showAiInspectorPanel ? (
+                        <div className="pointer-events-none absolute inset-x-0 top-0 z-[18] flex justify-end px-4 py-4 md:px-6">
+                            <AIInspectorPanel
+                                primaryMention={primaryAiInspectorMention}
+                                primaryTarget={selectedBuilderTarget}
+                                selectedMentions={selectedAiTargetMentions}
+                                textFields={aiInspectorFieldBuckets.text}
+                                styleFields={aiInspectorFieldBuckets.style}
+                                settingsFields={aiInspectorFieldBuckets.settings}
+                                onEditWithAi={handleAiInspectorEditWithAi}
+                                onEditManually={handleAiInspectorEditManually}
+                                onInsertNodeTag={handleAiInspectorInsertNodeTag}
+                                onClose={handleAiInspectorClose}
+                                manualEditDisabled={Boolean(aiInspectManualEditDisabledReason)}
+                                manualEditDisabledReason={aiInspectManualEditDisabledReason}
+                            />
+                        </div>
+                    ) : null}
+                    {shouldRenderGenerationOverlay ? (
+                        <AIGenerationOverlay
+                            onRetry={showGenerationFailureInWorkspace ? () => router.reload({ only: ['project'] }) : null}
+                            onCreateAnother={showGenerationFailureInWorkspace ? () => router.visit('/create') : null}
+                        />
+                    ) : null}
+                </>
+            ) : null}
         />
     );
 
@@ -3210,17 +3483,14 @@ export default function Chat({
                                 </button>
 
                                 {toolbarTabs.map((tab) => {
-                                    const isInspectToggle = tab.key === 'inspect' && viewMode === 'inspect';
-                                    const Icon = isInspectToggle ? MessageSquare : tab.icon;
+                                    const Icon = tab.icon;
                                     const isActive = viewMode === tab.key;
-                                    const tabLabel = isInspectToggle ? t('Chat') : tab.label;
-
                                     return (
                                         <button
                                             key={tab.key}
                                             type="button"
                                             onClick={() => handleWorkspaceModeChange(tab.key)}
-                                            title={tabLabel}
+                                            title={tab.label}
                                             className={cn(
                                                 isActive
                                                     ? 'workspace-preview-button workspace-preview-button--active'
@@ -3228,7 +3498,7 @@ export default function Chat({
                                             )}
                                         >
                                             <Icon className="h-3.5 w-3.5" />
-                                            {isActive && <span>{tabLabel}</span>}
+                                            {isActive && <span>{tab.label}</span>}
                                         </button>
                                     );
                                 })}

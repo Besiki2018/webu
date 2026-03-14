@@ -1,4 +1,5 @@
 import type { BuilderPageModel } from '@/builder/model/pageModel';
+import { cloneRecordData } from '@/builder/runtime/clone';
 
 import { buildCmsPageBinding, CMS_PAGE_BINDING_EXTRA_CONTENT_KEY, serializeCmsPageBindingRootMetadata } from './cmsPageBinding';
 import { buildCmsSectionBinding } from './cmsSectionBinding';
@@ -13,15 +14,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneRecord<T extends Record<string, unknown>>(value: T | null | undefined): T {
-    if (!value) {
-        return {} as T;
-    }
-
-    try {
-        return JSON.parse(JSON.stringify(value)) as T;
-    } catch {
-        return { ...value };
-    }
+    return cloneRecordData(value);
 }
 
 function normalizeText(value: string | null | undefined, fallback = ''): string {

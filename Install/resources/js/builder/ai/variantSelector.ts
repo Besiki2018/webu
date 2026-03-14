@@ -4,6 +4,7 @@ import type { AiProjectType } from './projectTypeDetector';
 
 export interface VariantSelectionInput {
     componentKey: string;
+    catalogEntry?: AiComponentCatalogEntry | null;
     prompt: string;
     projectType: AiProjectType;
     tone?: string | null;
@@ -51,7 +52,7 @@ function matchesVariantKeyword(entry: AiComponentCatalogEntry, prompt: string): 
 }
 
 export function selectComponentVariant(input: VariantSelectionInput): string {
-    const entry = getCatalogEntry(input.componentKey);
+    const entry = input.catalogEntry ?? getCatalogEntry(input.componentKey);
     if (!entry) {
         return '';
     }

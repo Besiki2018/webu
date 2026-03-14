@@ -58,6 +58,24 @@ export function GenerationDiagnosticsPanel({
                     </div>
                     <div>
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Detected domain
+                        </div>
+                        <div className="mt-1 font-mono text-xs text-slate-900">
+                            {diagnostics.detectedDomain
+                                ? `${diagnostics.detectedDomain.domain} (${Math.round(diagnostics.detectedDomain.confidence * 100)}%)`
+                                : 'n/a'}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Layout template
+                        </div>
+                        <div className="mt-1 font-mono text-xs text-slate-900">
+                            {diagnostics.selectedLayoutTemplate ?? 'n/a'}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                             Selected section types
                         </div>
                         <div className="mt-1 font-mono text-xs text-slate-900">
@@ -70,6 +88,14 @@ export function GenerationDiagnosticsPanel({
                         </div>
                         <div className="mt-1 font-mono text-xs text-slate-900">
                             {diagnostics.selectedComponentKeys.length > 0 ? diagnostics.selectedComponentKeys.join(', ') : 'n/a'}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Final sections
+                        </div>
+                        <div className="mt-1 font-mono text-xs text-slate-900">
+                            {diagnostics.finalSections.length > 0 ? diagnostics.finalSections.join(', ') : 'n/a'}
                         </div>
                     </div>
                     <div>
@@ -90,6 +116,16 @@ export function GenerationDiagnosticsPanel({
                     </div>
                     <div>
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Design quality
+                        </div>
+                        <div className="mt-1 font-mono text-xs text-slate-900">
+                            {diagnostics.designQualityReport
+                                ? `${diagnostics.designQualityReport.overallScore}/100`
+                                : 'n/a'}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                             Root cause
                         </div>
                         <div className={cn(
@@ -100,6 +136,79 @@ export function GenerationDiagnosticsPanel({
                         </div>
                     </div>
                 </div>
+
+                {diagnostics.designQualityReport && (
+                    <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Design Quality Report
+                        </div>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Overall
+                                </div>
+                                <div className="mt-1 font-mono text-xs text-slate-900">
+                                    {diagnostics.designQualityReport.overallScore}/100
+                                    {' '}
+                                    (initial {diagnostics.designQualityReport.initialOverallScore}/100)
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Auto improved
+                                </div>
+                                <div className="mt-1 font-mono text-xs text-slate-900">
+                                    {diagnostics.designQualityReport.autoImproved ? 'yes' : 'no'}
+                                </div>
+                            </div>
+                            {Object.entries(diagnostics.designQualityReport.categoryScores).map(([key, value]) => (
+                                <div key={key}>
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                        {formatStepLabel(key)}
+                                    </div>
+                                    <div className="mt-1 font-mono text-xs text-slate-900">
+                                        {value}/100
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Issues found
+                                </div>
+                                <div className="mt-2 space-y-2">
+                                    {diagnostics.designQualityReport.issues.length > 0 ? diagnostics.designQualityReport.issues.map((issue) => (
+                                        <div key={issue} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                                            {issue}
+                                        </div>
+                                    )) : (
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                                            No design issues detected.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Improvements applied
+                                </div>
+                                <div className="mt-2 space-y-2">
+                                    {diagnostics.designQualityReport.improvementsApplied.length > 0 ? diagnostics.designQualityReport.improvementsApplied.map((improvement) => (
+                                        <div key={improvement} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                                            {improvement}
+                                        </div>
+                                    )) : (
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                                            No automatic changes were needed.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">

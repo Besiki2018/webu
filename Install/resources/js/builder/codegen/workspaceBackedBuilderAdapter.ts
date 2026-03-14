@@ -13,6 +13,7 @@ import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
 import { buildCmsBindingModelFromBuilderPageModel } from '@/builder/cmsIntegration/cmsBindingModel';
 import { prepareVisualBuilderCmsEditExecution } from '@/builder/cmsIntegration/editExecutors';
 import { applyCmsBindingModelToGeneratedPage } from '@/builder/cmsIntegration/workspaceCmsSync';
+import { cloneRecordData } from '@/builder/runtime/clone';
 
 import { buildProjectGraphPatchFromBuilderOperations } from './builderModelToProjectGraphPatch';
 import {
@@ -157,15 +158,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneRecord<T extends Record<string, unknown>>(value: T | null | undefined): T {
-    if (!value) {
-        return {} as T;
-    }
-
-    try {
-        return JSON.parse(JSON.stringify(value)) as T;
-    } catch {
-        return { ...value };
-    }
+    return cloneRecordData(value);
 }
 
 function normalizeText(value: string | number | null | undefined, fallback = ''): string {

@@ -452,17 +452,25 @@ function resolveProjectTypeLabel(projectType: GenerateSectionContentInput['bluep
 
 function buildSectionContentBrief(input: GenerateSectionContentInput, profile: IndustryProfile): SectionContentBrief {
   const sectionType = input.section.sectionType
-  const sectionLabel = sectionType === 'hero'
-    ? `Introduce ${profile.offerLabel}`
-    : sectionType === 'features'
-      ? `Prove ${profile.offerLabel}`
-      : sectionType === 'testimonials'
-        ? `Use client proof to support ${profile.offerLabel}`
-        : sectionType === 'faq'
-          ? `Resolve objections for ${input.blueprint.audience}`
-          : sectionType === 'cta' || input.section.layoutType === 'form'
-            ? `Convert ${input.blueprint.audience}`
-            : `Support ${input.blueprint.pageGoal.toLowerCase()}`
+  let sectionLabel = `Support ${input.blueprint.pageGoal.toLowerCase()}`
+
+  if (sectionType === 'hero') {
+    sectionLabel = `Introduce ${profile.offerLabel}`
+  } else if (['problem', 'solution'].includes(sectionType)) {
+    sectionLabel = `Clarify the core value of ${profile.offerLabel}`
+  } else if (['services', 'features', 'process', 'skills'].includes(sectionType)) {
+    sectionLabel = `Prove ${profile.offerLabel}`
+  } else if (['doctors', 'chef', 'case_studies', 'portfolio_gallery', 'gallery', 'product_demo'].includes(sectionType)) {
+    sectionLabel = `Build trust around ${profile.offerLabel}`
+  } else if (['appointment_booking', 'reservation', 'booking', 'contact', 'location'].includes(sectionType)) {
+    sectionLabel = `Make the next step easy for ${input.blueprint.audience}`
+  } else if (sectionType === 'testimonials') {
+    sectionLabel = `Use client proof to support ${profile.offerLabel}`
+  } else if (sectionType === 'faq') {
+    sectionLabel = `Resolve objections for ${input.blueprint.audience}`
+  } else if (sectionType === 'cta' || input.section.layoutType === 'form') {
+    sectionLabel = `Convert ${input.blueprint.audience}`
+  }
 
   return {
     sectionType: input.section.sectionType,
@@ -556,25 +564,57 @@ function buildMenuLinks(input: GenerateSectionContentInput, profile: IndustryPro
       switch (section.sectionType) {
         case 'hero':
           return { label: 'Overview', url: '#overview' }
+        case 'problem':
+          return { label: 'Problem', url: '#problem' }
+        case 'solution':
+          return { label: 'Solution', url: '#solution' }
+        case 'services':
+          return { label: 'Services', url: '#services' }
+        case 'doctors':
+          return { label: 'Team', url: '#team' }
         case 'features':
           return { label: profile.key === 'restaurant' ? 'Highlights' : profile.key === 'ecommerce' ? 'Why shop here' : 'Why it works', url: '#features' }
         case 'pricing':
           return { label: 'Pricing', url: '#pricing' }
         case 'productGrid':
           return { label: 'Shop', url: '#products' }
+        case 'featured_products':
+          return { label: 'Featured', url: '#featured-products' }
+        case 'categories':
+          return { label: 'Categories', url: '#categories' }
         case 'grid':
           return { label: 'Work', url: '#work' }
+        case 'portfolio_gallery':
+          return { label: 'Portfolio', url: '#portfolio' }
+        case 'case_studies':
+          return { label: 'Case Studies', url: '#case-studies' }
+        case 'process':
+          return { label: 'Process', url: '#process' }
         case 'gallery':
           return { label: 'Gallery', url: '#gallery' }
         case 'testimonials':
           return { label: profile.key === 'restaurant' ? 'Reviews' : 'Proof', url: '#testimonials' }
+        case 'reviews':
+          return { label: 'Reviews', url: '#reviews' }
         case 'faq':
           return { label: 'FAQ', url: '#faq' }
         case 'menu':
           return { label: 'Menu', url: '#menu' }
+        case 'chef':
+          return { label: 'Chef', url: '#chef' }
+        case 'product_demo':
+          return { label: 'Demo', url: '#demo' }
+        case 'about':
+          return { label: 'About', url: '#about' }
+        case 'skills':
+          return { label: 'Skills', url: '#skills' }
+        case 'location':
+          return { label: 'Location', url: '#location' }
         case 'cta':
         case 'contact':
         case 'booking':
+        case 'appointment_booking':
+        case 'reservation':
           return { label: profile.primaryCtaLabel, url: profile.primaryCtaUrl }
         default:
           return null
@@ -962,7 +1002,7 @@ function resolveStructuredContent(
 }
 
 export function generateSectionContent(input: GenerateSectionContentInput): GeneratedSectionContent {
-  const entry = getCatalogEntry(input.section.componentKey)
+  const entry = input.catalogEntry ?? getCatalogEntry(input.section.componentKey)
   if (!entry) {
     throw new Error(`component_catalog_entry_missing:${input.section.componentKey}`)
   }

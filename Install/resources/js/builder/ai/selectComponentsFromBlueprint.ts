@@ -1,5 +1,8 @@
 import type { ProjectType } from '../projectTypes'
-import { getAllowedComponentCatalog } from './componentCatalog'
+import {
+  getAllowedComponentCatalogIndex,
+  type AiComponentCatalogIndex,
+} from './componentCatalog'
 import {
   getCompatibleSectionTypes,
   retrieveComponentsForSection,
@@ -14,6 +17,7 @@ export interface SelectComponentsFromBlueprintInput {
   blueprint: ProjectBlueprint
   sections: NormalizedBlueprintSection[]
   builderProjectTypeOverride?: ProjectType | null
+  registryIndex?: AiComponentCatalogIndex
 }
 
 export interface SelectComponentsFromBlueprintResult {
@@ -57,7 +61,7 @@ function resolveCatalogProjectType(blueprint: ProjectBlueprint, override?: Proje
 
 export function selectComponentsFromBlueprint(input: SelectComponentsFromBlueprintInput): SelectComponentsFromBlueprintResult {
   const catalogProjectType = resolveCatalogProjectType(input.blueprint, input.builderProjectTypeOverride)
-  const catalog = getAllowedComponentCatalog(catalogProjectType)
+  const registryIndex = input.registryIndex ?? getAllowedComponentCatalogIndex(catalogProjectType)
   const components: BlueprintComponentSelection[] = []
   const scorecards: SelectComponentsFromBlueprintResult['scorecards'] = []
   const usedComponentKeys = new Set<string>()
@@ -67,7 +71,7 @@ export function selectComponentsFromBlueprint(input: SelectComponentsFromBluepri
     const candidates = retrieveComponentsForSection({
       blueprint: input.blueprint,
       section,
-      catalog,
+      registryIndex,
       sectionIndex: index,
       totalSections: input.sections.length,
       usedComponentKeys,
@@ -94,6 +98,7 @@ export function selectComponentsFromBlueprint(input: SelectComponentsFromBluepri
     const component = candidate.entry
     const variant = selectComponentVariant({
       componentKey: component.componentKey,
+      catalogEntry: component,
       prompt: [
         input.prompt,
         input.blueprint.businessType,
@@ -125,7 +130,7 @@ export function selectComponentsFromBlueprint(input: SelectComponentsFromBluepri
 
   return {
     components,
-    availableComponents: catalog.map((entry) => entry.componentKey),
+    availableComponents: registryIndex.entries.map((entry) => entry.componentKey),
     scorecards,
   }
 }

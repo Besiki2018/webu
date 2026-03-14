@@ -20,6 +20,7 @@ import {
   getEmergencyFallbackSections,
 } from './selectSectionsFromBlueprint'
 import { selectComponentsFromBlueprint } from './selectComponentsFromBlueprint'
+import { getAllowedComponentCatalogIndex } from './componentCatalog'
 import type {
   BuildGenerationDiagnostics,
   BlueprintGenerationLogEntry,
@@ -28,6 +29,11 @@ import type {
 } from './blueprintTypes'
 import type { AiSitePlan } from './sitePlanner'
 import type { BuilderSection } from '../visual/treeUtils'
+import { inferAiProjectTypeFromBuilderProjectType, type AiProjectType } from './projectTypeDetector'
+import { enhanceBlueprintWithLayout } from './blueprint/enhanceBlueprintWithLayout'
+import { buildDesignQualityReport } from './designQuality/buildDesignQualityReport'
+import { improveDesignFromReport } from './designQuality/improveDesignFromReport'
+import type { DesignQualityReport } from './designQuality/types'
 
 export interface BuildSiteFromBlueprintInput {
   prompt: string
@@ -86,6 +92,14 @@ function mapBlueprintProjectTypeToAiProjectType(projectType: BlueprintProjectTyp
   }
 }
 
+function resolveCatalogProjectType(blueprint: ProjectBlueprint, override?: ProjectType | null): AiProjectType {
+  if (override) {
+    return inferAiProjectTypeFromBuilderProjectType(override)
+  }
+
+  return mapBlueprintProjectTypeToAiProjectType(blueprint.projectType)
+}
+
 function logBlueprintStep(
   logs: BlueprintGenerationLogEntry[],
   step: BlueprintGenerationLogEntry['step'],
@@ -109,7 +123,7 @@ function logBlueprintStep(
   }
 }
 
-export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): BuildSiteFromBlueprintResult {
+export async function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Promise<BuildSiteFromBlueprintResult> {
   const generationLog: BlueprintGenerationLogEntry[] = []
   const resolvedGenerationMode = input.generationMode ?? 'blueprint'
   let effectiveBlueprint = input.blueprint
@@ -118,6 +132,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
   let selectedComponentKeys: string[] = []
   let usedEmergencyFallback = resolvedGenerationMode === 'emergency-fallback'
   let validationPassed = false
+  let designQualityReport: DesignQualityReport | null = null
 
   if (!input.blueprint) {
     throw new GenerationTraceError('project_blueprint_required', buildGenerationDiagnostics({
@@ -138,12 +153,16 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
         ?? builderProjectType
         ?? mapBlueprintProjectTypeToBuilderProjectType(effectiveBlueprint.projectType),
       selectedBusinessType: overrides.selectedBusinessType ?? effectiveBlueprint.businessType ?? null,
+      detectedDomain: overrides.detectedDomain ?? effectiveBlueprint.layoutDiagnostics?.detectedDomain ?? null,
+      selectedLayoutTemplate: overrides.selectedLayoutTemplate ?? effectiveBlueprint.layoutDiagnostics?.selectedLayoutTemplate ?? null,
       selectedSectionTypes: overrides.selectedSectionTypes ?? selectedSectionTypes,
+      finalSections: overrides.finalSections ?? effectiveBlueprint.layoutDiagnostics?.finalSections ?? selectedSectionTypes,
       selectedSections: overrides.selectedSections ?? selectedSectionTypes,
       selectedComponentKeys: overrides.selectedComponentKeys ?? selectedComponentKeys,
       validationPassed: overrides.validationPassed ?? validationPassed,
       emergencyFallbackUsed: overrides.emergencyFallbackUsed ?? usedEmergencyFallback,
       fallbackUsed: overrides.fallbackUsed ?? usedEmergencyFallback,
+      designQualityReport: overrides.designQualityReport ?? designQualityReport,
       failedStep: overrides.failedStep ?? null,
       rootCause: overrides.rootCause ?? null,
       events: generationLog,
@@ -156,7 +175,22 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
       builderProjectTypeOverride: input.builderProjectTypeOverride ?? null,
       generationMode: resolvedGenerationMode,
     })
+    if (resolvedGenerationMode !== 'emergency-fallback') {
+      effectiveBlueprint = enhanceBlueprintWithLayout({
+        blueprint: effectiveBlueprint,
+        prompt: input.prompt,
+      })
+    }
     logBlueprintStep(generationLog, 'blueprint', 'blueprint created', effectiveBlueprint, 'success')
+    logBlueprintStep(generationLog, 'layout', 'layout plan created', effectiveBlueprint.layoutDiagnostics ?? {
+      detectedDomain: null,
+      selectedLayoutTemplate: null,
+      finalSections: effectiveBlueprint.sections.map((section) => section.sectionType),
+    }, 'success')
+
+    let registryIndex = getAllowedComponentCatalogIndex(
+      resolveCatalogProjectType(effectiveBlueprint, input.builderProjectTypeOverride ?? null)
+    )
 
     let selectedSectionsResult = selectSectionsFromBlueprint(effectiveBlueprint)
     selectedSectionTypes = selectedSectionsResult.sections.map((section) => section.sectionType)
@@ -167,6 +201,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
       blueprint: effectiveBlueprint,
       sections: selectedSectionsResult.sections,
       builderProjectTypeOverride: input.builderProjectTypeOverride,
+      registryIndex,
     })
 
     usedEmergencyFallback = usedEmergencyFallback || selectedSectionsResult.usedEmergencyFallback
@@ -175,6 +210,9 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
 
     if (componentResult.components.length === 0) {
       effectiveBlueprint = createEmergencyFallbackBlueprint(effectiveBlueprint.projectType)
+      registryIndex = getAllowedComponentCatalogIndex(
+        resolveCatalogProjectType(effectiveBlueprint, input.builderProjectTypeOverride ?? null)
+      )
       selectedSectionsResult = {
         sections: getEmergencyFallbackSections(effectiveBlueprint.projectType),
         usedEmergencyFallback: true,
@@ -185,6 +223,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
         blueprint: effectiveBlueprint,
         sections: selectedSectionsResult.sections,
         builderProjectTypeOverride: input.builderProjectTypeOverride,
+        registryIndex,
       })
       usedEmergencyFallback = true
       logBlueprintStep(generationLog, 'fallback', 'emergency fallback blueprint', effectiveBlueprint, 'success')
@@ -199,16 +238,17 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
     const siteType = normalizeProjectSiteType(builderProjectType)
     const aiProjectType = mapBlueprintProjectTypeToAiProjectType(effectiveBlueprint.projectType)
 
-    const resolvedSectionContent = componentResult.components.map((section, index) => (
+    const resolvedSectionContent = await Promise.all(componentResult.components.map(async (section, index) => (
       generateSectionContent({
         prompt: input.prompt,
         blueprint: effectiveBlueprint,
         section,
+        catalogEntry: registryIndex.byKey[section.componentKey] ?? null,
         brandName: input.brandName,
         sectionIndex: index,
         totalSections: componentResult.components.length,
       })
-    ))
+    )))
 
     logBlueprintStep(
       generationLog,
@@ -224,7 +264,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
       'success'
     )
 
-    const siteSections = componentResult.components.map((section, index) => {
+    let siteSections = componentResult.components.map((section, index) => {
       return {
         componentKey: section.componentKey,
         label: section.label,
@@ -233,6 +273,73 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
         props: resolvedSectionContent[index]?.props ?? {},
       }
     })
+
+    let tree = sectionPlanToComponentTree({
+      sections: siteSections.map((section) => ({
+        componentKey: section.componentKey,
+        ...(section.variant ? { variant: section.variant } : {}),
+        ...(section.props ? { props: section.props } : {}),
+      })),
+    }, {
+      propsByIndex: {},
+    })
+
+    const rawDesignQualityReport = buildDesignQualityReport({
+      blueprint: effectiveBlueprint,
+      siteSections,
+      tree,
+      registryIndex,
+    })
+    designQualityReport = rawDesignQualityReport
+    logBlueprintStep(generationLog, 'design_quality', 'design quality report built', rawDesignQualityReport, rawDesignQualityReport.overallScore >= rawDesignQualityReport.threshold ? 'success' : 'info')
+
+    if (rawDesignQualityReport.overallScore < rawDesignQualityReport.threshold && rawDesignQualityReport.improvements.length > 0) {
+      const improvementResult = improveDesignFromReport({
+        blueprint: effectiveBlueprint,
+        siteSections,
+        tree,
+        registryIndex,
+        report: rawDesignQualityReport,
+      })
+
+      if (improvementResult.changesApplied.length > 0) {
+        siteSections = improvementResult.siteSections.map((section) => ({
+          ...section,
+          props: section.props ?? {},
+        }))
+        tree = sectionPlanToComponentTree({
+          sections: siteSections.map((section) => ({
+            componentKey: section.componentKey,
+            ...(section.variant ? { variant: section.variant } : {}),
+            ...(section.props ? { props: section.props } : {}),
+          })),
+        }, {
+          propsByIndex: {},
+        })
+
+        const improvedDesignQualityReport = buildDesignQualityReport({
+          blueprint: effectiveBlueprint,
+          siteSections,
+          tree,
+          registryIndex,
+          threshold: rawDesignQualityReport.threshold,
+        })
+
+        designQualityReport = {
+          ...improvedDesignQualityReport,
+          initialOverallScore: rawDesignQualityReport.overallScore,
+          initialCategoryScores: rawDesignQualityReport.categoryScores,
+          improvementsApplied: improvementResult.changesApplied,
+          autoImproved: true,
+        }
+
+        logBlueprintStep(generationLog, 'design_improvement', 'design quality improvements applied', {
+          initialOverallScore: rawDesignQualityReport.overallScore,
+          finalOverallScore: designQualityReport.overallScore,
+          changesApplied: improvementResult.changesApplied,
+        }, 'success')
+      }
+    }
 
     const sitePlan: AiSitePlan = {
       projectType: aiProjectType,
@@ -246,16 +353,6 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
         type: siteType,
       },
     }
-
-    const tree = sectionPlanToComponentTree({
-      sections: siteSections.map((section) => ({
-        componentKey: section.componentKey,
-        ...(section.variant ? { variant: section.variant } : {}),
-        ...(section.props ? { props: section.props } : {}),
-      })),
-    }, {
-      propsByIndex: {},
-    })
 
     logBlueprintStep(
       generationLog,
@@ -272,6 +369,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
       projectType: builderProjectType,
       tree,
       supportedComponentKeys: componentResult.availableComponents,
+      registryIndex,
       plannedSections: siteSections.map((section, index) => ({
         componentKey: section.componentKey,
         props: section.props,
@@ -289,6 +387,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
         failedStep: 'validation',
         rootCause: errorMessage,
         validationPassed: false,
+        designQualityReport,
       }))
     }
     validationPassed = true
@@ -298,6 +397,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
       selectedComponentKeys,
       generationMode: resolvedGenerationMode,
       usedEmergencyFallback,
+      designQualityOverallScore: designQualityReport?.overallScore ?? null,
     }, 'success')
 
     return {
@@ -315,6 +415,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
       usedEmergencyFallback,
       diagnostics: buildDiagnostics({
         validationPassed: true,
+        designQualityReport,
       }),
     }
   } catch (error) {
@@ -332,6 +433,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
       failedStep,
       rootCause: message,
       validationPassed: false,
+      designQualityReport,
     }))
   }
 }

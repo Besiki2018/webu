@@ -1,6 +1,7 @@
 import { buildBuilderPageModelFromContentJson, type BuilderPageModel } from '@/builder/model/pageModel';
 import { resolveComponentRegistryKey } from '@/builder/componentRegistry';
 import { CMS_PAGE_BINDING_EXTRA_CONTENT_KEY } from '@/builder/cmsIntegration/cmsPageBinding';
+import { cloneRecordData } from '@/builder/runtime/clone';
 import { getGeneratedSectionPrimaryProps } from './projectGraph';
 import type { GeneratedPage, GeneratedProjectGraph, GeneratedSection } from './types';
 
@@ -40,15 +41,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneRecord<T extends Record<string, unknown>>(value: T | null | undefined): T {
-    if (!value) {
-        return {} as T;
-    }
-
-    try {
-        return JSON.parse(JSON.stringify(value)) as T;
-    } catch {
-        return { ...value };
-    }
+    return cloneRecordData(value);
 }
 
 function resolveBuilderSectionType(section: GeneratedSection): string {

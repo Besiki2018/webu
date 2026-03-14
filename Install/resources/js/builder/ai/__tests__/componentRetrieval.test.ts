@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAllowedComponentCatalog } from '../componentCatalog'
+import { getAllowedComponentCatalogIndex } from '../componentCatalog'
 import * as componentScoring from '../componentScoring'
 import {
   __resetComponentRetrievalCacheForTests,
@@ -52,12 +52,12 @@ describe('componentRetrieval', () => {
       pageGoal: 'Turn finance leaders into consultation leads',
     })
     const section = createSection('cta')
-    const catalog = getAllowedComponentCatalog('business')
+    const registryIndex = getAllowedComponentCatalogIndex('business')
 
     const first = retrieveComponentsForSection({
       blueprint,
       section,
-      catalog,
+      registryIndex,
       sectionIndex: 5,
       totalSections: 7,
     }).map((candidate) => candidate.entry.componentKey)
@@ -65,7 +65,7 @@ describe('componentRetrieval', () => {
     const second = retrieveComponentsForSection({
       blueprint,
       section,
-      catalog,
+      registryIndex,
       sectionIndex: 5,
       totalSections: 7,
     }).map((candidate) => candidate.entry.componentKey)
@@ -74,7 +74,7 @@ describe('componentRetrieval', () => {
   })
 
   it('retrieves different CTA components for different industries on the same project type', () => {
-    const catalog = getAllowedComponentCatalog('business')
+    const registryIndex = getAllowedComponentCatalogIndex('business')
     const section = createSection('cta')
     const vetBlueprint = createBlueprint({
       businessType: 'Vet clinic',
@@ -94,14 +94,14 @@ describe('componentRetrieval', () => {
     const vetResult = retrieveBestComponentForSection({
       blueprint: vetBlueprint,
       section,
-      catalog,
+      registryIndex,
       sectionIndex: 5,
       totalSections: 7,
     })
     const consultingResult = retrieveBestComponentForSection({
       blueprint: consultingBlueprint,
       section,
-      catalog,
+      registryIndex,
       sectionIndex: 5,
       totalSections: 7,
     })
@@ -120,12 +120,12 @@ describe('componentRetrieval', () => {
       pageGoal: 'Turn finance leaders into consultation leads',
     })
     const section = createSection('hero')
-    const catalog = getAllowedComponentCatalog('business')
+    const registryIndex = getAllowedComponentCatalogIndex('business')
 
     const first = retrieveComponentsForSection({
       blueprint,
       section,
-      catalog,
+      registryIndex,
       sectionIndex: 1,
       totalSections: 7,
     })
@@ -133,7 +133,7 @@ describe('componentRetrieval', () => {
     const second = retrieveComponentsForSection({
       blueprint,
       section,
-      catalog,
+      registryIndex,
       sectionIndex: 1,
       totalSections: 7,
     })

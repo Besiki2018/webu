@@ -45,7 +45,7 @@ class ProjectCmsController extends Controller
             $this->projectWorkspace
         );
         if ($this->generationRequiresCompletionGate($generationPayload)) {
-            return redirect()->route('project.generation', [
+            return redirect()->route('chat', [
                 'project' => $project,
             ]);
         }

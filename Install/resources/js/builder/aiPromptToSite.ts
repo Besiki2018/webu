@@ -23,12 +23,12 @@ export interface PromptToSiteOutput {
   structure: SiteStructureSection[];
 }
 
-export function promptToSite(input: PromptToSiteInput): PromptToSiteOutput {
+export async function promptToSite(input: PromptToSiteInput): Promise<PromptToSiteOutput> {
   const blueprint = createBlueprint({
     prompt: input.userPrompt,
     projectType: input.projectType,
   });
-  const result = buildSiteFromBlueprint({
+  const result = await buildSiteFromBlueprint({
     prompt: input.userPrompt,
     blueprint,
     builderProjectTypeOverride: typeof input.projectType === 'string' ? input.projectType as ProjectType : null,

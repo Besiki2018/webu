@@ -20,56 +20,81 @@ export interface BuilderChatElementContext {
     currentBreakpoint?: 'desktop' | 'tablet' | 'mobile' | null;
     currentInteractionState?: 'normal' | 'hover' | 'focus' | 'active' | null;
     responsiveContext?: BuilderTargetResponsiveContext | null;
+    aiNodeId?: string | null;
+    currentValue?: string | null;
 }
 
-export function buildBuilderChatPrompt(content: string, elementContext?: BuilderChatElementContext): string {
-    let finalPrompt = content.trim();
-    if (!elementContext) {
-        return finalPrompt;
+function appendElementContextBlock(finalPrompt: string, elementContext: BuilderChatElementContext, index?: number): string {
+    const heading = index === undefined ? '[Selected Element]' : `[Selected Element ${index + 1}]`;
+    let nextPrompt = `${finalPrompt}\n\n${heading}\n<${elementContext.tagName}${elementContext.selector ? ` (${elementContext.selector})` : ''}>${elementContext.textPreview ? ` containing "${elementContext.textPreview}"` : ''}\nSelector: ${elementContext.selector}`;
+    if (elementContext.aiNodeId) {
+        nextPrompt += `\nAI Node ID: ${elementContext.aiNodeId}`;
     }
-
-    finalPrompt += `\n\n[Selected Element]\n<${elementContext.tagName}${elementContext.selector ? ` (${elementContext.selector})` : ''}>${elementContext.textPreview ? ` containing "${elementContext.textPreview}"` : ''}\nSelector: ${elementContext.selector}`;
+    if (elementContext.currentValue) {
+        nextPrompt += `\nCurrent Value: ${elementContext.currentValue}`;
+    }
     if (elementContext.elementId) {
-        finalPrompt += `\nElement ID: ${elementContext.elementId}`;
+        nextPrompt += `\nElement ID: ${elementContext.elementId}`;
     }
     if (elementContext.componentType) {
-        finalPrompt += `\nComponent Type: ${elementContext.componentType}`;
+        nextPrompt += `\nComponent Type: ${elementContext.componentType}`;
     }
     if (elementContext.componentPath || elementContext.parameterName) {
-        finalPrompt += `\nComponent Path: ${elementContext.componentPath ?? elementContext.parameterName}`;
+        nextPrompt += `\nComponent Path: ${elementContext.componentPath ?? elementContext.parameterName}`;
     }
     if (Array.isArray(elementContext.editableFields) && elementContext.editableFields.length > 0) {
-        finalPrompt += `\nEditable Fields: ${elementContext.editableFields.join(', ')}`;
+        nextPrompt += `\nEditable Fields: ${elementContext.editableFields.join(', ')}`;
     }
     if (elementContext.variants?.layout) {
-        finalPrompt += `\nLayout Variant: ${elementContext.variants.layout.active ?? 'default'} (allowed: ${elementContext.variants.layout.options.join(', ')})`;
+        nextPrompt += `\nLayout Variant: ${elementContext.variants.layout.active ?? 'default'} (allowed: ${elementContext.variants.layout.options.join(', ')})`;
     }
     if (elementContext.variants?.style) {
-        finalPrompt += `\nStyle Variant: ${elementContext.variants.style.active ?? 'default'} (allowed: ${elementContext.variants.style.options.join(', ')})`;
+        nextPrompt += `\nStyle Variant: ${elementContext.variants.style.active ?? 'default'} (allowed: ${elementContext.variants.style.options.join(', ')})`;
     }
     if (elementContext.allowedUpdates) {
-        finalPrompt += `\nAllowed Operations: ${elementContext.allowedUpdates.operationTypes.join(', ')}`;
-        finalPrompt += `\nAllowed Field Paths: ${elementContext.allowedUpdates.fieldPaths.join(', ')}`;
+        nextPrompt += `\nAllowed Operations: ${elementContext.allowedUpdates.operationTypes.join(', ')}`;
+        nextPrompt += `\nAllowed Field Paths: ${elementContext.allowedUpdates.fieldPaths.join(', ')}`;
         if (elementContext.allowedUpdates.scope === 'element') {
-            finalPrompt += `\nIf the user explicitly asks for a broader same-section change, keep it within this section and only use: ${elementContext.allowedUpdates.sectionFieldPaths.join(', ')}`;
+            nextPrompt += `\nIf the user explicitly asks for a broader same-section change, keep it within this section and only use: ${elementContext.allowedUpdates.sectionFieldPaths.join(', ')}`;
         }
     }
     if (elementContext.currentBreakpoint) {
-        finalPrompt += `\nCurrent Breakpoint: ${elementContext.currentBreakpoint}`;
+        nextPrompt += `\nCurrent Breakpoint: ${elementContext.currentBreakpoint}`;
     }
     if (elementContext.currentInteractionState) {
-        finalPrompt += `\nCurrent Interaction State: ${elementContext.currentInteractionState}`;
+        nextPrompt += `\nCurrent Interaction State: ${elementContext.currentInteractionState}`;
     }
     if (elementContext.responsiveContext) {
-        finalPrompt += `\nAvailable Breakpoints: ${elementContext.responsiveContext.availableBreakpoints.join(', ')}`;
-        finalPrompt += `\nAvailable Interaction States: ${elementContext.responsiveContext.availableInteractionStates.join(', ')}`;
+        nextPrompt += `\nAvailable Breakpoints: ${elementContext.responsiveContext.availableBreakpoints.join(', ')}`;
+        nextPrompt += `\nAvailable Interaction States: ${elementContext.responsiveContext.availableInteractionStates.join(', ')}`;
         if (elementContext.responsiveContext.supportsResponsiveOverrides) {
-            finalPrompt += `\nResponsive Field Paths (${elementContext.responsiveContext.currentBreakpoint}): ${elementContext.responsiveContext.responsiveFieldPaths.join(', ')}`;
+            nextPrompt += `\nResponsive Field Paths (${elementContext.responsiveContext.currentBreakpoint}): ${elementContext.responsiveContext.responsiveFieldPaths.join(', ')}`;
         }
         if (elementContext.responsiveContext.currentInteractionState !== 'normal' && elementContext.responsiveContext.stateFieldPaths.length > 0) {
-            finalPrompt += `\nState Field Paths (${elementContext.responsiveContext.currentInteractionState}): ${elementContext.responsiveContext.stateFieldPaths.join(', ')}`;
+            nextPrompt += `\nState Field Paths (${elementContext.responsiveContext.currentInteractionState}): ${elementContext.responsiveContext.stateFieldPaths.join(', ')}`;
         }
     }
+
+    return nextPrompt;
+}
+
+export function buildBuilderChatPrompt(
+    content: string,
+    elementContext?: BuilderChatElementContext,
+    elementContexts: BuilderChatElementContext[] = [],
+): string {
+    let finalPrompt = content.trim();
+    const contexts = elementContexts.length > 0
+        ? elementContexts
+        : (elementContext ? [elementContext] : []);
+
+    if (contexts.length === 0) {
+        return finalPrompt;
+    }
+
+    contexts.forEach((context, index) => {
+        finalPrompt = appendElementContextBlock(finalPrompt, context, contexts.length > 1 ? index : undefined);
+    });
 
     return finalPrompt;
 }

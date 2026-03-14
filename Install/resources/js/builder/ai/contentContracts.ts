@@ -1,4 +1,4 @@
-import type { AiComponentLayoutType } from './componentCatalog'
+import type { AiComponentCatalogEntry, AiComponentLayoutType } from './componentCatalog'
 import type { BlueprintComponentSelection, ProjectBlueprint } from './blueprintTypes'
 
 export interface SectionContentBrief {
@@ -166,6 +166,7 @@ export interface GenerateSectionContentInput {
   prompt: string
   blueprint: ProjectBlueprint
   section: BlueprintComponentSelection
+  catalogEntry?: AiComponentCatalogEntry | null
   brandName?: string | null
   sectionIndex: number
   totalSections: number

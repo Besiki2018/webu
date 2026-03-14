@@ -39,6 +39,8 @@ export interface PromptAnalysisResult {
   industry: string | null;
   /** Design tone (e.g. modern, minimal, professional). */
   tone: string | null;
+  /** Sections directly requested by the user prompt before any defaults are applied. */
+  explicitSections: SectionSlug[];
   /** Ordered list of section slugs the site should include. */
   requiredSections: SectionSlug[];
   /** Functional requirements (e.g. contact form, cart, booking). */
@@ -224,6 +226,7 @@ export function analyzePrompt(prompt: string): PromptAnalysisResult {
       projectType: DEFAULT_PROJECT_TYPE,
       industry: null,
       tone: null,
+      explicitSections: [],
       requiredSections: getDefaultSectionsForProjectType(DEFAULT_PROJECT_TYPE),
       functionalNeeds: [],
     };
@@ -243,6 +246,7 @@ export function analyzePrompt(prompt: string): PromptAnalysisResult {
     projectType,
     industry,
     tone,
+    explicitSections: sectionHits,
     requiredSections,
     functionalNeeds,
   };

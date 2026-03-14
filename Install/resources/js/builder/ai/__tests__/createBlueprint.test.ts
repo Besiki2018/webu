@@ -22,6 +22,19 @@ describe('createBlueprint', () => {
     expect(blueprint.audience.length).toBeGreaterThan(0)
     expect(blueprint.styleKeywords).toEqual(expect.arrayContaining(['modern', 'premium']))
     expect(blueprint.pageGoal.length).toBeGreaterThan(0)
+    expect(blueprint.layoutDiagnostics?.detectedDomain.domain).toBe('vet_clinic')
+    expect(blueprint.layoutDiagnostics?.selectedLayoutTemplate).toBe('vet_clinic')
+    expect(blueprint.sections.map((section) => section.sectionType)).toEqual([
+      'header',
+      'hero',
+      'services',
+      'doctors',
+      'appointment_booking',
+      'testimonials',
+      'faq',
+      'contact',
+      'footer',
+    ])
     expect(blueprint.sections.some((section) => section.sectionType === 'pricing')).toBe(false)
   })
 
@@ -35,7 +48,42 @@ describe('createBlueprint', () => {
     expect(blueprint.audience).toContain('finance teams')
     expect(blueprint.tone).toBe('minimal')
     expect(blueprint.styleKeywords).toEqual(expect.arrayContaining(['minimalist']))
-    expect(blueprint.sections.some((section) => section.sectionType === 'pricing')).toBe(true)
+    expect(blueprint.layoutDiagnostics?.detectedDomain.domain).toBe('saas')
+    expect(blueprint.layoutDiagnostics?.selectedLayoutTemplate).toBe('saas')
+    expect(blueprint.sections.map((section) => section.sectionType)).toEqual([
+      'header',
+      'hero',
+      'problem',
+      'solution',
+      'features',
+      'product_demo',
+      'pricing',
+      'testimonials',
+      'faq',
+      'cta',
+      'footer',
+    ])
+  })
+
+  it('builds a restaurant-specific blueprint layout from the prompt', () => {
+    const blueprint = createBlueprint({
+      prompt: 'Create a restaurant website with reservations and chef storytelling',
+    })
+
+    expect(blueprint.projectType).toBe('restaurant')
+    expect(blueprint.layoutDiagnostics?.detectedDomain.domain).toBe('restaurant')
+    expect(blueprint.layoutDiagnostics?.selectedLayoutTemplate).toBe('restaurant')
+    expect(blueprint.sections.map((section) => section.sectionType)).toEqual([
+      'header',
+      'hero',
+      'menu',
+      'chef',
+      'gallery',
+      'reservation',
+      'reviews',
+      'location',
+      'footer',
+    ])
   })
 
   it('uses the emergency fallback blueprint for empty prompts', () => {

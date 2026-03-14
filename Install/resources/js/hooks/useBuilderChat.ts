@@ -134,6 +134,8 @@ export interface SendMessageOptions {
     sourceGenerationType?: SourceGenerationType;
     /** Element context for element-specific modifications */
     elementContext?: ElementMentionContext;
+    /** Multi-node element contexts for exact AI targeting */
+    elementContexts?: ElementMentionContext[];
 }
 
 const initialProgress: BuildProgress = {
@@ -837,77 +839,79 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 return;
             }
 
-            const resolvedSourceGenerationType: SourceGenerationType = hasBlueprint
-                ? buildScopeRef.current.sourceGenerationType
-                : 'legacy';
-            const result = runGenerateSite({
-                ...(projectType && { projectType }),
-                ...(hasBlueprint
-                    ? {
-                        blueprint,
-                        ...(generationMode && { generationMode }),
-                    }
-                    : {
-                        structure,
-                    }),
-            });
+            void (async () => {
+                const resolvedSourceGenerationType: SourceGenerationType = hasBlueprint
+                    ? buildScopeRef.current.sourceGenerationType
+                    : 'legacy';
+                const result = await runGenerateSite({
+                    ...(projectType && { projectType }),
+                    ...(hasBlueprint
+                        ? {
+                            blueprint,
+                            ...(generationMode && { generationMode }),
+                        }
+                        : {
+                            structure,
+                        }),
+                });
 
-            if (!result.ok) {
-                const message = result.error ?? 'Generation failed';
-                const repairGuidance = isGeneratedSiteValidationMessage(message)
-                    ? ' Ask me to repair the structure and retry.'
-                    : '';
+                if (!result.ok) {
+                    const message = result.error ?? 'Generation failed';
+                    const repairGuidance = isGeneratedSiteValidationMessage(message)
+                        ? ' Ask me to repair the structure and retry.'
+                        : '';
+                    syncBuildScope({
+                        sourceGenerationType: resolvedSourceGenerationType,
+                    });
+
+                    addHistoryMessage({
+                        id: `error-${Date.now()}-${data.id}`,
+                        type: 'assistant',
+                        content: `Generation error: ${message}${repairGuidance}`,
+                        timestamp: new Date(),
+                    });
+
+                    setProgress(prev => ({
+                        ...prev,
+                        status: 'failed',
+                        statusMessage: message,
+                        error: message,
+                        thinkingContent: null,
+                        thinkingStartTime: null,
+                        toolResults: [...prev.toolResults, data],
+                        sourceGenerationType: resolvedSourceGenerationType,
+                        generationDiagnostics: mergeGenerationDiagnostics(prev.generationDiagnostics, result.diagnostics),
+                    }));
+
+                    callbackRefs.current.onBuildError?.(message);
+                    callbackRefs.current.onError?.(message);
+                    return;
+                }
+
                 syncBuildScope({
                     sourceGenerationType: resolvedSourceGenerationType,
                 });
-
                 addHistoryMessage({
-                    id: `error-${Date.now()}-${data.id}`,
-                    type: 'assistant',
-                    content: `Generation error: ${message}${repairGuidance}`,
+                    id: `activity-generate-site-${Date.now()}-${data.id}`,
+                    type: 'activity',
+                    content: hasBlueprint
+                        ? 'Generated via blueprint pipeline'
+                        : 'Generated via legacy structure path',
                     timestamp: new Date(),
+                    activityType: 'generation',
                 });
 
                 setProgress(prev => ({
                     ...prev,
-                    status: 'failed',
-                    statusMessage: message,
-                    error: message,
-                    thinkingContent: null,
-                    thinkingStartTime: null,
                     toolResults: [...prev.toolResults, data],
+                    statusMessage: hasBlueprint
+                        ? 'Generated via blueprint pipeline'
+                        : 'Generated via legacy structure path',
+                    error: null,
                     sourceGenerationType: resolvedSourceGenerationType,
                     generationDiagnostics: mergeGenerationDiagnostics(prev.generationDiagnostics, result.diagnostics),
                 }));
-
-                callbackRefs.current.onBuildError?.(message);
-                callbackRefs.current.onError?.(message);
-                return;
-            }
-
-            syncBuildScope({
-                sourceGenerationType: resolvedSourceGenerationType,
-            });
-            addHistoryMessage({
-                id: `activity-generate-site-${Date.now()}-${data.id}`,
-                type: 'activity',
-                content: hasBlueprint
-                    ? 'Generated via blueprint pipeline'
-                    : 'Generated via legacy structure path',
-                timestamp: new Date(),
-                activityType: 'generation',
-            });
-
-            setProgress(prev => ({
-                ...prev,
-                toolResults: [...prev.toolResults, data],
-                statusMessage: hasBlueprint
-                    ? 'Generated via blueprint pipeline'
-                    : 'Generated via legacy structure path',
-                error: null,
-                sourceGenerationType: resolvedSourceGenerationType,
-                generationDiagnostics: mergeGenerationDiagnostics(prev.generationDiagnostics, result.diagnostics),
-            }));
+            })();
             return;
         }
 
@@ -1528,7 +1532,11 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
     const sendMessage = useCallback(async (content: string, sendOptions?: SendMessageOptions) => {
         if (!content.trim()) return;
 
-        const finalPrompt = buildBuilderChatPrompt(content, sendOptions?.elementContext);
+        const finalPrompt = buildBuilderChatPrompt(
+            content,
+            sendOptions?.elementContext,
+            sendOptions?.elementContexts ?? [],
+        );
         const sourceGenerationType = normalizeSourceGenerationType(
             sendOptions?.sourceGenerationType ?? (sendOptions?.templateUrl ? 'template' : 'new')
         );

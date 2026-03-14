@@ -19,10 +19,10 @@ describe('generateSite command', () => {
     expect(GENERATE_SITE_COMMAND).toBe('generate_site');
   });
 
-  it('builds from direct structure when structure is provided', () => {
+  it('builds from direct structure when structure is provided', async () => {
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
 
-    const result = runGenerateSite({
+    const result = await runGenerateSite({
       projectType: 'landing',
       structure: [
         { componentKey: 'webu_header_01' },
@@ -53,12 +53,12 @@ describe('generateSite command', () => {
     );
   });
 
-  it('builds from blueprint when structure is missing', () => {
+  it('builds from blueprint when structure is missing', async () => {
     const blueprint = createBlueprint({
       prompt: 'Create a minimalist SaaS landing page for finance teams',
     });
 
-    const result = runGenerateSite({
+    const result = await runGenerateSite({
       blueprint,
     });
 
@@ -70,17 +70,21 @@ describe('generateSite command', () => {
     expect(result.diagnostics?.generationMode).toBe('blueprint');
     expect(result.diagnostics?.selectedProjectType).toBe('saas');
     expect(result.diagnostics?.selectedBusinessType).toBe('Finance Software');
+    expect(result.diagnostics?.detectedDomain?.domain).toBe('saas');
+    expect(result.diagnostics?.selectedLayoutTemplate).toBe('saas');
     expect(result.diagnostics?.selectedSectionTypes.length).toBeGreaterThan(0);
+    expect(result.diagnostics?.finalSections).toEqual(blueprint.layoutDiagnostics?.finalSections);
     expect(result.diagnostics?.selectedSections.length).toBeGreaterThan(0);
     expect(result.diagnostics?.validationPassed).toBe(true);
     expect(result.diagnostics?.emergencyFallbackUsed).toBe(false);
+    expect(result.diagnostics?.events.some((entry) => entry.step === 'layout')).toBe(true);
     expect(result.diagnostics?.events.some((entry) => entry.step === 'component_scores')).toBe(true);
   });
 
-  it('returns an explicit error when neither blueprint nor structure exists', () => {
+  it('returns an explicit error when neither blueprint nor structure exists', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const result = runGenerateSite({
+    const result = await runGenerateSite({
       projectType: 'saas',
     });
 
@@ -100,8 +104,8 @@ describe('generateSite command', () => {
     );
   });
 
-  it('uses emergency fallback only when explicitly requested', () => {
-    const result = runGenerateSite({
+  it('uses emergency fallback only when explicitly requested', async () => {
+    const result = await runGenerateSite({
       projectType: 'ecommerce',
       generationMode: 'emergency-fallback',
     });
@@ -117,8 +121,8 @@ describe('generateSite command', () => {
     expect(result.diagnostics?.fallbackUsed).toBe(true);
   });
 
-  it('fails fast when direct structure includes invalid component keys', () => {
-    const result = runGenerateSite({
+  it('fails fast when direct structure includes invalid component keys', async () => {
+    const result = await runGenerateSite({
       projectType: 'landing',
       structure: [
         { componentKey: 'webu_header_01' },
@@ -137,7 +141,7 @@ describe('generateSite command', () => {
     expect(useBuilderStore.getState().componentTree).toEqual([]);
   });
 
-  it('rolls back the current builder state when apply crashes mid-mutation', () => {
+  it('rolls back the current builder state when apply crashes mid-mutation', async () => {
     const previousTree = [
       {
         id: 'existing-hero',
@@ -158,7 +162,7 @@ describe('generateSite command', () => {
     };
 
     try {
-      const result = runGenerateSite({
+      const result = await runGenerateSite({
         projectType: 'landing',
         structure: [
           { componentKey: 'webu_header_01' },
@@ -178,8 +182,8 @@ describe('generateSite command', () => {
     }
   });
 
-  it('skips builder mutation when the generated tree is identical to the current state', () => {
-    const initial = runGenerateSite({
+  it('skips builder mutation when the generated tree is identical to the current state', async () => {
+    const initial = await runGenerateSite({
       projectType: 'landing',
       structure: [
         { componentKey: 'webu_header_01' },
@@ -191,7 +195,7 @@ describe('generateSite command', () => {
     expect(initial.ok).toBe(true);
 
     const existingTreeReference = useBuilderStore.getState().componentTree;
-    const result = runGenerateSite({
+    const result = await runGenerateSite({
       projectType: 'landing',
       structure: [
         { componentKey: 'webu_header_01' },
