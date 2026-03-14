@@ -910,6 +910,7 @@ class ProjectWorkspaceService
             ProjectGenerationRun::STATUS_SELECTING_COMPONENTS => ProjectGenerationRun::STATUS_SELECTING_COMPONENTS,
             ProjectGenerationRun::STATUS_GENERATING_CONTENT => ProjectGenerationRun::STATUS_GENERATING_CONTENT,
             ProjectGenerationRun::STATUS_ASSEMBLING_PAGE => ProjectGenerationRun::STATUS_ASSEMBLING_PAGE,
+            ProjectGenerationRun::STATUS_VALIDATING_RESULT => ProjectGenerationRun::STATUS_VALIDATING_RESULT,
             ProjectGenerationRun::STATUS_RENDERING_PREVIEW => ProjectGenerationRun::STATUS_RENDERING_PREVIEW,
             ProjectGenerationRun::STATUS_PLANNING => ProjectGenerationRun::STATUS_PLANNING,
             ProjectGenerationRun::STATUS_GENERATING,

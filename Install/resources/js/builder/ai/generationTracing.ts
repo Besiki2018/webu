@@ -21,22 +21,33 @@ export function createGenerationLogEntry(
 
 export function buildGenerationDiagnostics(input: {
   prompt?: string | null
+  generationMode?: BuildGenerationDiagnostics['generationMode']
   selectedProjectType?: string | null
   selectedBusinessType?: string | null
+  selectedSectionTypes?: string[]
   selectedSections?: string[]
   selectedComponentKeys?: string[]
+  validationPassed?: boolean
+  emergencyFallbackUsed?: boolean
   fallbackUsed?: boolean
   failedStep?: BlueprintGenerationStep | null
   rootCause?: string | null
   events?: BlueprintGenerationLogEntry[]
 }): BuildGenerationDiagnostics {
+  const selectedSectionTypes = input.selectedSectionTypes ?? input.selectedSections ?? []
+  const emergencyFallbackUsed = input.emergencyFallbackUsed ?? input.fallbackUsed ?? false
+
   return {
     prompt: input.prompt ?? null,
+    generationMode: input.generationMode ?? (emergencyFallbackUsed ? 'emergency-fallback' : 'blueprint'),
     selectedProjectType: input.selectedProjectType ?? null,
     selectedBusinessType: input.selectedBusinessType ?? null,
-    selectedSections: input.selectedSections ?? [],
+    selectedSectionTypes,
+    validationPassed: input.validationPassed === true,
+    emergencyFallbackUsed,
+    selectedSections: selectedSectionTypes,
     selectedComponentKeys: input.selectedComponentKeys ?? [],
-    fallbackUsed: input.fallbackUsed === true,
+    fallbackUsed: emergencyFallbackUsed,
     failedStep: input.failedStep ?? null,
     rootCause: input.rootCause ?? null,
     events: input.events ? [...input.events] : [],

@@ -35,6 +35,15 @@ describe('generateSite command', () => {
     expect(result.generationMode).toBe('direct-structure');
     expect(result.trace.resolvedMode).toBe('direct-structure');
     expect(useBuilderStore.getState().componentTree).toHaveLength(3);
+    expect(result.diagnostics?.generationMode).toBe('direct-structure');
+    expect(result.diagnostics?.selectedSectionTypes).toEqual(['header', 'hero', 'footer']);
+    expect(result.diagnostics?.selectedComponentKeys).toEqual([
+      'webu_header_01',
+      'webu_general_hero_01',
+      'webu_footer_01',
+    ]);
+    expect(result.diagnostics?.validationPassed).toBe(true);
+    expect(result.diagnostics?.emergencyFallbackUsed).toBe(false);
     expect(infoSpy).toHaveBeenCalledWith(
       '[builder.generateSite] applied',
       expect.objectContaining({
@@ -58,9 +67,13 @@ describe('generateSite command', () => {
     expect(result.generationMode).toBe('blueprint');
     expect(result.trace.resolvedMode).toBe('blueprint');
     expect(useBuilderStore.getState().componentTree.length).toBeGreaterThan(0);
+    expect(result.diagnostics?.generationMode).toBe('blueprint');
     expect(result.diagnostics?.selectedProjectType).toBe('saas');
     expect(result.diagnostics?.selectedBusinessType).toBe('Finance Software');
+    expect(result.diagnostics?.selectedSectionTypes.length).toBeGreaterThan(0);
     expect(result.diagnostics?.selectedSections.length).toBeGreaterThan(0);
+    expect(result.diagnostics?.validationPassed).toBe(true);
+    expect(result.diagnostics?.emergencyFallbackUsed).toBe(false);
     expect(result.diagnostics?.events.some((entry) => entry.step === 'component_scores')).toBe(true);
   });
 
@@ -75,6 +88,8 @@ describe('generateSite command', () => {
     expect(result.nodeCount).toBe(0);
     expect(result.trace.resolvedMode).toBe('error');
     expect(result.error).toBe('Generation failed: no site blueprint or direct structure was provided. Emergency fallback must be requested explicitly.');
+    expect(result.diagnostics?.generationMode).toBe('blueprint');
+    expect(result.diagnostics?.validationPassed).toBe(false);
     expect(useBuilderStore.getState().componentTree).toEqual([]);
     expect(errorSpy).toHaveBeenCalledWith(
       '[builder.generateSite] failed',
@@ -96,6 +111,9 @@ describe('generateSite command', () => {
     expect(result.generationMode).toBe('emergency-fallback');
     expect(result.trace.resolvedMode).toBe('emergency-fallback');
     expect(useBuilderStore.getState().componentTree.length).toBeGreaterThan(0);
+    expect(result.diagnostics?.generationMode).toBe('emergency-fallback');
+    expect(result.diagnostics?.validationPassed).toBe(true);
+    expect(result.diagnostics?.emergencyFallbackUsed).toBe(true);
     expect(result.diagnostics?.fallbackUsed).toBe(true);
   });
 
@@ -114,6 +132,8 @@ describe('generateSite command', () => {
     expect(result.error).toContain('Generated site validation failed:');
     expect(result.error).toContain('Unknown component key "not_a_real_component"');
     expect(result.diagnostics?.failedStep).toBe('validation');
+    expect(result.diagnostics?.generationMode).toBe('direct-structure');
+    expect(result.diagnostics?.validationPassed).toBe(false);
     expect(useBuilderStore.getState().componentTree).toEqual([]);
   });
 

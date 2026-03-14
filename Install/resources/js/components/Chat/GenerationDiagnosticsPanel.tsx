@@ -14,6 +14,10 @@ export function GenerationDiagnosticsPanel({
     diagnostics,
     className,
 }: GenerationDiagnosticsPanelProps) {
+    const selectedSectionTypes = diagnostics.selectedSectionTypes.length > 0
+        ? diagnostics.selectedSectionTypes
+        : diagnostics.selectedSections;
+
     return (
         <details
             open={diagnostics.rootCause !== null}
@@ -28,6 +32,14 @@ export function GenerationDiagnosticsPanel({
 
             <div className="mt-4 space-y-4 text-sm text-slate-700">
                 <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Generation mode
+                        </div>
+                        <div className="mt-1 font-mono text-xs text-slate-900">
+                            {diagnostics.generationMode}
+                        </div>
+                    </div>
                     <div>
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                             Selected projectType
@@ -46,10 +58,10 @@ export function GenerationDiagnosticsPanel({
                     </div>
                     <div>
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Selected sections
+                            Selected section types
                         </div>
                         <div className="mt-1 font-mono text-xs text-slate-900">
-                            {diagnostics.selectedSections.length > 0 ? diagnostics.selectedSections.join(', ') : 'n/a'}
+                            {selectedSectionTypes.length > 0 ? selectedSectionTypes.join(', ') : 'n/a'}
                         </div>
                     </div>
                     <div>
@@ -62,10 +74,18 @@ export function GenerationDiagnosticsPanel({
                     </div>
                     <div>
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Fallback used
+                            Validation passed
                         </div>
                         <div className="mt-1 font-mono text-xs text-slate-900">
-                            {diagnostics.fallbackUsed ? 'yes' : 'no'}
+                            {diagnostics.validationPassed ? 'yes' : 'no'}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Emergency fallback used
+                        </div>
+                        <div className="mt-1 font-mono text-xs text-slate-900">
+                            {diagnostics.emergencyFallbackUsed ? 'yes' : 'no'}
                         </div>
                     </div>
                     <div>

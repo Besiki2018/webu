@@ -67,6 +67,7 @@ export type BlueprintGenerationStep =
   | 'fallback'
 
 export type BlueprintGenerationStatus = 'info' | 'success' | 'failure'
+export type BuildGenerationMode = 'blueprint' | 'direct-structure' | 'emergency-fallback'
 
 export interface BlueprintGenerationLogEntry {
   step: BlueprintGenerationStep
@@ -77,8 +78,12 @@ export interface BlueprintGenerationLogEntry {
 
 export interface BuildGenerationDiagnostics {
   prompt: string | null
+  generationMode: BuildGenerationMode
   selectedProjectType: string | null
   selectedBusinessType: string | null
+  selectedSectionTypes: string[]
+  validationPassed: boolean
+  emergencyFallbackUsed: boolean
   selectedSections: string[]
   selectedComponentKeys: string[]
   fallbackUsed: boolean

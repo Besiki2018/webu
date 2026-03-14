@@ -8,11 +8,7 @@
 import type { ProjectType } from './projectTypes';
 import type { SiteStructureSection } from './aiSiteGeneration';
 import type { ProjectBlueprint, BlueprintGenerationLogEntry } from './ai/blueprintTypes';
-import {
-  createBlueprint,
-  createEmergencyFallbackBlueprint,
-  mapBuilderProjectTypeToBlueprintProjectType,
-} from './ai/createBlueprint';
+import { createBlueprint } from './ai/createBlueprint';
 import { buildSiteFromBlueprint } from './ai/buildSiteFromBlueprint';
 
 export interface PromptToSiteInput {
@@ -38,34 +34,20 @@ export function promptToSite(input: PromptToSiteInput): PromptToSiteOutput {
     builderProjectTypeOverride: typeof input.projectType === 'string' ? input.projectType as ProjectType : null,
     generationMode: 'blueprint',
   });
+  const homeSections = result.sitePlan.pages[0]?.sections;
+
+  if (!Array.isArray(homeSections) || homeSections.length === 0) {
+    throw new Error('prompt_to_site_requires_blueprint_sections');
+  }
 
   return {
     projectType: result.projectType,
     blueprint: result.blueprint,
     generationLog: result.generationLog,
-    structure: result.sitePlan.pages[0]?.sections.map((section) => ({
+    structure: homeSections.map((section) => ({
       componentKey: section.componentKey,
       ...(section.variant ? { variant: section.variant } : {}),
       ...(section.props ? { props: section.props } : {}),
-    })) ?? getDefaultStructureForPrompt(result.projectType),
+    })),
   };
-}
-
-/** Emergency fallback only. Main generation must always flow through a blueprint first. */
-export function getDefaultStructureForPrompt(projectType: ProjectType): SiteStructureSection[] {
-  const fallbackBlueprint = createEmergencyFallbackBlueprint(
-    mapBuilderProjectTypeToBlueprintProjectType(projectType)
-  );
-  const result = buildSiteFromBlueprint({
-    prompt: projectType,
-    blueprint: fallbackBlueprint,
-    builderProjectTypeOverride: projectType,
-    generationMode: 'emergency-fallback',
-  });
-
-  return result.sitePlan.pages[0]?.sections.map((section) => ({
-    componentKey: section.componentKey,
-    ...(section.variant ? { variant: section.variant } : {}),
-    ...(section.props ? { props: section.props } : {}),
-  })) ?? []
 }

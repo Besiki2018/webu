@@ -78,6 +78,11 @@ class ChatController extends Controller
         // Check if preview exists for this project
         $generationRun = $project->latestGenerationRun;
         $generationPayload = $this->buildGenerationPayload($generationRun, $project, $this->projectWorkspace);
+        if ($this->generationRequiresCompletionGate($generationPayload)) {
+            return redirect()->route('project.generation', [
+                'project' => $project,
+            ]);
+        }
         $previewExists = Storage::disk('local')->exists("previews/{$project->id}");
         $previewUrl = $previewExists ? "/preview/{$project->id}" : null;
         $hasActiveSession = ! empty($project->build_session_id) && ! empty($project->builder_id);

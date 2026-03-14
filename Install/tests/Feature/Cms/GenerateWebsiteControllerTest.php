@@ -29,7 +29,7 @@ class GenerateWebsiteControllerTest extends TestCase
         SystemSetting::set('installation_completed', true, 'boolean', 'system');
     }
 
-    public function test_inertia_requests_redirect_to_chat_workspace_before_builder_is_ready(): void
+    public function test_inertia_requests_redirect_to_generation_screen_before_builder_is_ready(): void
     {
         Bus::fake();
 
@@ -49,7 +49,7 @@ class GenerateWebsiteControllerTest extends TestCase
             ]);
 
         $project = Project::query()->where('user_id', $user->id)->latest('created_at')->firstOrFail();
-        $expectedRedirect = route('chat', ['project' => $project]);
+        $expectedRedirect = route('project.generation', ['project' => $project]);
 
         $response
             ->assertStatus(409)
@@ -90,7 +90,7 @@ class GenerateWebsiteControllerTest extends TestCase
         $project = Project::query()->where('user_id', $user->id)->latest('created_at')->firstOrFail();
         $firstResponse
             ->assertStatus(409)
-            ->assertHeader('X-Inertia-Location', route('chat', ['project' => $project]));
+            ->assertHeader('X-Inertia-Location', route('project.generation', ['project' => $project]));
 
         $secondResponse = $this->from('/create')
             ->actingAs($user)
@@ -107,7 +107,7 @@ class GenerateWebsiteControllerTest extends TestCase
         Bus::assertDispatchedTimes(RunProjectGeneration::class, 1);
     }
 
-    public function test_new_project_flow_redirects_into_the_chat_workspace_after_creation(): void
+    public function test_new_project_flow_redirects_into_the_generation_screen_after_creation(): void
     {
         Bus::fake();
 
@@ -128,7 +128,7 @@ class GenerateWebsiteControllerTest extends TestCase
 
         $project = Project::query()->where('user_id', $user->id)->latest('created_at')->firstOrFail();
         $response->assertStatus(409);
-        $response->assertHeader('X-Inertia-Location', route('chat', ['project' => $project]));
+        $response->assertHeader('X-Inertia-Location', route('project.generation', ['project' => $project]));
 
         $run = ProjectGenerationRun::query()
             ->where('project_id', $project->id)
@@ -214,7 +214,7 @@ class GenerateWebsiteControllerTest extends TestCase
         );
     }
 
-    public function test_chat_route_renders_workspace_generation_progress_while_build_is_unfinished(): void
+    public function test_chat_route_redirects_back_to_generation_screen_while_build_is_unfinished(): void
     {
         $provider = AiProvider::factory()->openai()->create();
         $builder = Builder::factory()->create();
@@ -239,16 +239,10 @@ class GenerateWebsiteControllerTest extends TestCase
 
         $response = $this->actingAs($user)->get(route('chat', $project));
 
-        $response->assertInertia(fn (Assert $page) => $page
-            ->component('Chat')
-            ->where('project.id', (string) $project->id)
-            ->where('project.generation.status', ProjectGenerationRun::STATUS_BUILDING_PREVIEW)
-            ->where('project.generation.ready_for_builder', false)
-            ->where('project.generation.progress_message', 'Rendering the preview and validating the workspace.')
-        );
+        $response->assertRedirect(route('project.generation', ['project' => $project]));
     }
 
-    public function test_project_cms_redirects_back_to_chat_workspace_while_generation_is_active(): void
+    public function test_project_cms_redirects_back_to_generation_screen_while_generation_is_active(): void
     {
         $provider = AiProvider::factory()->openai()->create();
         $builder = Builder::factory()->create();
@@ -272,7 +266,7 @@ class GenerateWebsiteControllerTest extends TestCase
         $response = $this->actingAs($user)
             ->get(route('project.cms', $project));
 
-        $response->assertRedirect(route('chat', ['project' => $project]));
+        $response->assertRedirect(route('project.generation', ['project' => $project]));
     }
 
     public function test_generation_status_endpoint_marks_ready_for_builder_when_manifest_is_ready(): void

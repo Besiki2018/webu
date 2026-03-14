@@ -21,6 +21,7 @@ import {
   GenerationTraceError,
   isGenerationTraceError,
 } from '../ai/generationTracing';
+import { getCatalogEntry } from '../ai/componentCatalog';
 import {
   buildTreeFromStructure,
   type SiteStructureSection,
@@ -164,16 +165,35 @@ function buildDirectStructureDiagnostics(input: {
   rootCause?: string | null
 }): BuildGenerationDiagnostics {
   const sections = Array.isArray(input.structure) ? input.structure : []
+  const selectedSectionTypes = sections.map((section) => (
+    getCatalogEntry(section.componentKey)?.sectionType ?? section.componentKey
+  ))
 
   return buildGenerationDiagnostics({
+    generationMode: 'direct-structure',
     selectedProjectType: input.projectType,
-    selectedSections: sections.map((section) => section.componentKey),
+    selectedSectionTypes,
+    selectedSections: selectedSectionTypes,
     selectedComponentKeys: sections.map((section) => section.componentKey),
+    validationPassed: input.rootCause == null,
+    emergencyFallbackUsed: false,
     fallbackUsed: false,
     rootCause: input.rootCause ?? null,
     failedStep: input.rootCause ? 'validation' : null,
     events: input.generationLog ?? [],
   })
+}
+
+function resolveDiagnosticsGenerationMode(params: GenerateSiteParams): BuildGenerationDiagnostics['generationMode'] {
+  if (hasStructure(params.structure)) {
+    return 'direct-structure';
+  }
+
+  if (params.generationMode === 'emergency-fallback') {
+    return 'emergency-fallback';
+  }
+
+  return 'blueprint';
 }
 
 function captureBuilderStoreSnapshot(): BuilderStoreSnapshot {
@@ -298,6 +318,23 @@ function failGenerateSite(
   error: string,
   diagnostics?: BuildGenerationDiagnostics,
 ): GenerateSiteResult {
+  const selectedSectionTypes = hasStructure(params.structure)
+    ? params.structure.map((section) => getCatalogEntry(section.componentKey)?.sectionType ?? section.componentKey)
+    : [];
+  const resolvedDiagnostics = diagnostics ?? buildGenerationDiagnostics({
+    generationMode: resolveDiagnosticsGenerationMode(params),
+    selectedProjectType: projectType,
+    selectedSectionTypes,
+    selectedSections: selectedSectionTypes,
+    selectedComponentKeys: hasStructure(params.structure)
+      ? params.structure.map((section) => section.componentKey)
+      : [],
+    validationPassed: false,
+    emergencyFallbackUsed: params.generationMode === 'emergency-fallback',
+    fallbackUsed: params.generationMode === 'emergency-fallback',
+    failedStep: null,
+    rootCause: error,
+  });
   const trace = buildTrace(params, projectType, 'error');
   logGenerateSiteTrace('failed', trace, { error });
   return {
@@ -306,7 +343,7 @@ function failGenerateSite(
     nodeCount: 0,
     trace,
     error,
-    diagnostics,
+    diagnostics: resolvedDiagnostics,
   };
 }
 
@@ -400,7 +437,10 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
         );
       }
 
-      const trace = buildTrace(params, blueprintResult.projectType, 'blueprint');
+      const resolvedGenerationMode = blueprintResult.usedEmergencyFallback
+        ? 'emergency-fallback'
+        : 'blueprint';
+      const trace = buildTrace(params, blueprintResult.projectType, resolvedGenerationMode);
       const applied = applyGeneratedTreeToStore({
         projectType: blueprintResult.projectType,
         tree: blueprintResult.tree,
@@ -417,7 +457,7 @@ export function runGenerateSite(params: GenerateSiteParams): GenerateSiteResult 
         ok: true,
         projectType: blueprintResult.projectType,
         nodeCount: blueprintResult.tree.length,
-        generationMode: 'blueprint',
+        generationMode: resolvedGenerationMode,
         trace,
         diagnostics: applied.diagnostics,
       };

@@ -53,7 +53,7 @@ interface BuilderStatusResponse {
     recent_history?: ServerHistoryEntry[];
 }
 
-export type SourceGenerationType = 'new' | 'resume' | 'template';
+export type SourceGenerationType = 'new' | 'resume' | 'template' | 'legacy';
 
 export interface BuildProgress {
     status: 'idle' | 'connecting' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -171,6 +171,11 @@ interface BuildScope {
     draftSourceId: string | null;
 }
 
+interface ScopedToolCall {
+    event: ToolCallEvent;
+    scope: BuildScope;
+}
+
 function normalizeText(value: unknown): string | null {
     return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
 }
@@ -215,7 +220,30 @@ function getBuildTimeoutMessage(scope: 'session' | 'preview'): string {
 }
 
 function normalizeSourceGenerationType(value: unknown): SourceGenerationType {
-    return value === 'resume' || value === 'template' ? value : 'new';
+    return value === 'resume' || value === 'template' || value === 'legacy' ? value : 'new';
+}
+
+function cloneBuildScope(scope: BuildScope): BuildScope {
+    return {
+        ...scope,
+    };
+}
+
+function createClientBuildToken(projectId: string, kind: 'build' | 'generation'): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `${kind}-${projectId}-${crypto.randomUUID()}`;
+    }
+
+    return `${kind}-${projectId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildScopesMatch(current: BuildScope, candidate: Pick<BuildScope, 'buildId' | 'projectGenerationVersion'>): boolean {
+    return normalizeText(current.buildId) === normalizeText(candidate.buildId)
+        && normalizeText(current.projectGenerationVersion) === normalizeText(candidate.projectGenerationVersion);
+}
+
+function generationVersionMatches(current: BuildScope, projectGenerationVersion: string | null): boolean {
+    return normalizeText(current.projectGenerationVersion) === normalizeText(projectGenerationVersion);
 }
 
 function buildScopeSignature(projectId: string, scope: BuildScope, previewUrl: string | null): string {
@@ -431,8 +459,8 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
     }));
     const [isBuildingPreview, setIsBuildingPreview] = useState(false);
     const pendingMessageRef = useRef<string | null>(null);
-    /** Latest tool calls by id, so we can apply updateComponentProps when tool_result arrives (same pipeline as sidebar). */
-    const toolCallsByIdRef = useRef<Map<string, ToolCallEvent>>(new Map());
+    /** Latest tool calls by id, so we can apply tool results only within the active build scope. */
+    const toolCallsByIdRef = useRef<Map<string, ScopedToolCall>>(new Map());
     const buildScopeRef = useRef<BuildScope>(normalizedInitialScope);
     const scopeSignatureRef = useRef<string | null>(null);
     const resetSessionReconnectionRef = useRef<() => void>(() => undefined);
@@ -466,15 +494,29 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         };
     }, []);
 
-    const isCurrentBuildEvent = useCallback((input: { buildId?: string | null; sessionId?: string | null }) => {
-        const currentBuildId = buildScopeRef.current.buildId;
+    const isCurrentBuildEvent = useCallback((input: {
+        buildId?: string | null;
+        sessionId?: string | null;
+        projectGenerationVersion?: string | null;
+    }) => {
+        const currentBuildId = normalizeText(buildScopeRef.current.buildId);
+        const currentGenerationVersion = normalizeText(buildScopeRef.current.projectGenerationVersion);
         const eventBuildId = normalizeText(input.buildId) ?? normalizeText(input.sessionId);
+        const eventGenerationVersion = normalizeText(input.projectGenerationVersion);
 
-        if (!currentBuildId || !eventBuildId) {
-            return true;
+        if (!currentBuildId && !currentGenerationVersion) {
+            return !eventBuildId && !eventGenerationVersion;
         }
 
-        return currentBuildId === eventBuildId;
+        if (eventGenerationVersion && currentGenerationVersion && eventGenerationVersion !== currentGenerationVersion) {
+            return false;
+        }
+
+        if (eventBuildId && currentBuildId) {
+            return eventBuildId === currentBuildId;
+        }
+
+        return false;
     }, []);
 
     const applyScopedPreviewUrl = useCallback((previewUrl: string | null, previewBuildId?: string | null) => {
@@ -704,7 +746,10 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             return;
         }
 
-        toolCallsByIdRef.current.set(data.id, data);
+        toolCallsByIdRef.current.set(data.id, {
+            event: data,
+            scope: cloneBuildScope(buildScopeRef.current),
+        });
         setProgress(prev => ({
             ...prev,
             status: 'running',
@@ -722,10 +767,14 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             return;
         }
 
+        const scopedToolCall = toolCallsByIdRef.current.get(data.id);
+        if (scopedToolCall && !buildScopesMatch(buildScopeRef.current, scopedToolCall.scope)) {
+            return;
+        }
+
         // Phase 7 — Chat editing: use same update pipeline as sidebar. When backend reports updateComponentProps success, apply it locally.
         if (data.tool === 'updateComponentProps' && data.success) {
-            const toolCall = toolCallsByIdRef.current.get(data.id);
-            const params = (toolCall?.params ?? {}) as Record<string, unknown>;
+            const params = (scopedToolCall?.event.params ?? {}) as Record<string, unknown>;
             const componentId = (params.componentId ?? params.component_id) as string | undefined;
             const path = (params.path ?? params.field) as string | string[] | undefined;
             const value = params.value;
@@ -741,8 +790,7 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         }
         // Optimize for project type: analyze components, apply compatibility rules, refactor (AI command).
         if (data.tool === OPTIMIZE_FOR_PROJECT_TYPE_COMMAND && data.success) {
-            const toolCall = toolCallsByIdRef.current.get(data.id);
-            const params = (toolCall?.params ?? {}) as Record<string, unknown>;
+            const params = (scopedToolCall?.event.params ?? {}) as Record<string, unknown>;
             const projectType = (params.projectType ?? params.project_type) as string | undefined;
             if (projectType) {
                 runOptimizeForProjectType(projectType);
@@ -750,16 +798,58 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         }
         // Phase 8 — AI website generation: create page from structure (Header, Hero, Features, etc.).
         if (data.tool === GENERATE_SITE_COMMAND && data.success) {
-            const toolCall = toolCallsByIdRef.current.get(data.id);
-            const params = (toolCall?.params ?? {}) as Record<string, unknown>;
+            const params = (scopedToolCall?.event.params ?? {}) as Record<string, unknown>;
             const projectType = (params.projectType ?? params.project_type) as string | undefined;
             const structure = params.structure as Array<{ componentKey: string; variant?: string; props?: Record<string, unknown> }> | undefined;
             const generationMode = (params.generationMode ?? params.generation_mode) as GenerateSiteMode | undefined;
+            const blueprint = params.blueprint as Parameters<typeof runGenerateSite>[0]['blueprint'] | undefined;
+            const hasBlueprint = blueprint != null;
+            const hasLegacyStructure = Array.isArray(structure) && structure.length > 0;
+
+            if (!hasBlueprint && !hasLegacyStructure) {
+                const message = 'Generation failed: missing blueprint or structure';
+
+                addHistoryMessage({
+                    id: `error-${Date.now()}-${data.id}`,
+                    type: 'assistant',
+                    content: message,
+                    timestamp: new Date(),
+                });
+
+                setProgress(prev => ({
+                    ...prev,
+                    status: 'failed',
+                    statusMessage: message,
+                    error: message,
+                    thinkingContent: null,
+                    thinkingStartTime: null,
+                    toolResults: [...prev.toolResults, data],
+                    generationDiagnostics: mergeGenerationDiagnostics(prev.generationDiagnostics, buildGenerationDiagnostics({
+                        prompt: pendingMessageRef.current,
+                        generationMode: 'blueprint',
+                        validationPassed: false,
+                        rootCause: message,
+                    })),
+                }));
+
+                callbackRefs.current.onBuildError?.(message);
+                callbackRefs.current.onError?.(message);
+                return;
+            }
+
+            const resolvedSourceGenerationType: SourceGenerationType = hasBlueprint
+                ? buildScopeRef.current.sourceGenerationType
+                : 'legacy';
             const result = runGenerateSite({
                 ...(projectType && { projectType }),
-                blueprint: params.blueprint as Parameters<typeof runGenerateSite>[0]['blueprint'],
-                ...(Array.isArray(structure) && structure.length > 0 && { structure }),
-                ...(generationMode && { generationMode }),
+                ...(hasBlueprint
+                    ? {
+                        blueprint,
+                        ...(generationMode && { generationMode }),
+                    }
+                    : {
+                        structure,
+                    }),
             });
 
             if (!result.ok) {
@@ -767,6 +857,9 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 const repairGuidance = isGeneratedSiteValidationMessage(message)
                     ? ' Ask me to repair the structure and retry.'
                     : '';
+                syncBuildScope({
+                    sourceGenerationType: resolvedSourceGenerationType,
+                });
 
                 addHistoryMessage({
                     id: `error-${Date.now()}-${data.id}`,
@@ -783,6 +876,7 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                     thinkingContent: null,
                     thinkingStartTime: null,
                     toolResults: [...prev.toolResults, data],
+                    sourceGenerationType: resolvedSourceGenerationType,
                     generationDiagnostics: mergeGenerationDiagnostics(prev.generationDiagnostics, result.diagnostics),
                 }));
 
@@ -791,10 +885,15 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 return;
             }
 
+            syncBuildScope({
+                sourceGenerationType: resolvedSourceGenerationType,
+            });
             addHistoryMessage({
                 id: `activity-generate-site-${Date.now()}-${data.id}`,
                 type: 'activity',
-                content: `Generated site via ${result.generationMode}`,
+                content: hasBlueprint
+                    ? 'Generated via blueprint pipeline'
+                    : 'Generated via legacy structure path',
                 timestamp: new Date(),
                 activityType: 'generation',
             });
@@ -802,8 +901,11 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             setProgress(prev => ({
                 ...prev,
                 toolResults: [...prev.toolResults, data],
-                statusMessage: `${data.tool} completed via ${result.generationMode}`,
+                statusMessage: hasBlueprint
+                    ? 'Generated via blueprint pipeline'
+                    : 'Generated via legacy structure path',
                 error: null,
+                sourceGenerationType: resolvedSourceGenerationType,
                 generationDiagnostics: mergeGenerationDiagnostics(prev.generationDiagnostics, result.diagnostics),
             }));
             return;
@@ -1077,9 +1179,11 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 return;
             }
 
+            const nextProjectGenerationVersion = buildScopeRef.current.projectGenerationVersion
+                ?? normalizeText(payload.project_generation_version);
             syncBuildScope({
                 previewBuildId,
-                projectGenerationVersion: normalizeText(payload.project_generation_version) ?? buildScopeRef.current.projectGenerationVersion,
+                projectGenerationVersion: nextProjectGenerationVersion,
                 sourceGenerationType: normalizeSourceGenerationType(payload.source_generation_type ?? buildScopeRef.current.sourceGenerationType),
             });
             const latestAssistantMessage = Array.isArray(payload.recent_history)
@@ -1103,7 +1207,7 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                     status: normalizedStatus,
                     buildId: payloadBuildId ?? prev.buildId,
                     previewBuildId: previewBuildId ?? prev.previewBuildId,
-                    projectGenerationVersion: normalizeText(payload.project_generation_version) ?? prev.projectGenerationVersion,
+                    projectGenerationVersion: prev.projectGenerationVersion ?? normalizeText(payload.project_generation_version),
                     sourceGenerationType: normalizeSourceGenerationType(payload.source_generation_type ?? prev.sourceGenerationType),
                     hasFileChanges: normalizedStatus === 'completed' ? true : prev.hasFileChanges,
                     statusMessage: normalizedStatus === 'failed'
@@ -1213,7 +1317,8 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             const payload = response.data ?? {};
             syncBuildScope({
                 previewBuildId: normalizeText(payload.preview_build_id) ?? buildScopeRef.current.previewBuildId,
-                projectGenerationVersion: normalizeText(payload.project_generation_version) ?? buildScopeRef.current.projectGenerationVersion,
+                projectGenerationVersion: buildScopeRef.current.projectGenerationVersion
+                    ?? normalizeText(payload.project_generation_version),
                 sourceGenerationType: normalizeSourceGenerationType(payload.source_generation_type ?? buildScopeRef.current.sourceGenerationType),
             });
             applyQuickStatus(payload);
@@ -1375,16 +1480,22 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         projectGenerationVersion?: string | null;
         draftSourceId?: string | null;
     }) => {
+        const hasProjectGenerationVersion = Object.prototype.hasOwnProperty.call(input ?? {}, 'projectGenerationVersion');
+        const hasDraftSourceId = Object.prototype.hasOwnProperty.call(input ?? {}, 'draftSourceId');
         const nextSourceGenerationType = normalizeSourceGenerationType(
             input?.sourceGenerationType ?? buildScopeRef.current.sourceGenerationType
         );
         const nextScope: BuildScope = {
             buildId: normalizeText(input?.buildId) ?? null,
             previewBuildId: normalizeText(input?.previewBuildId) ?? null,
-            projectGenerationVersion: normalizeText(input?.projectGenerationVersion) ?? buildScopeRef.current.projectGenerationVersion,
+            projectGenerationVersion: hasProjectGenerationVersion
+                ? normalizeText(input?.projectGenerationVersion) ?? null
+                : buildScopeRef.current.projectGenerationVersion,
             sourceGenerationType: nextSourceGenerationType,
             draftSourceId: nextSourceGenerationType === 'resume'
-                ? (normalizeText(input?.draftSourceId) ?? buildScopeRef.current.draftSourceId)
+                ? (hasDraftSourceId
+                    ? (normalizeText(input?.draftSourceId) ?? null)
+                    : buildScopeRef.current.draftSourceId)
                 : null,
         };
 
@@ -1400,6 +1511,8 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         } else if (nextScope.buildId !== null) {
             setSessionId(nextScope.buildId);
         }
+
+        setIsBuildingPreview(false);
 
         setProgress({
             ...initialProgress,
@@ -1419,6 +1532,15 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         const sourceGenerationType = normalizeSourceGenerationType(
             sendOptions?.sourceGenerationType ?? (sendOptions?.templateUrl ? 'template' : 'new')
         );
+        const requestedScope: BuildScope = {
+            buildId: createClientBuildToken(projectId, 'build'),
+            previewBuildId: null,
+            projectGenerationVersion: createClientBuildToken(projectId, 'generation'),
+            sourceGenerationType,
+            draftSourceId: sourceGenerationType === 'resume'
+                ? buildScopeRef.current.draftSourceId
+                : null,
+        };
 
         // Add user message to history
         const userMessage: ChatMessage = {
@@ -1436,18 +1558,21 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         resetProgress({
             clearPreview: true,
             clearSession: true,
-            resetBuilderState: sourceGenerationType === 'new',
+            resetBuilderState: sourceGenerationType !== 'resume',
             sourceGenerationType,
-            buildId: null,
-            previewBuildId: null,
-            draftSourceId: sourceGenerationType === 'resume'
-                ? buildScopeRef.current.draftSourceId
-                : null,
+            buildId: requestedScope.buildId,
+            previewBuildId: requestedScope.previewBuildId,
+            projectGenerationVersion: requestedScope.projectGenerationVersion,
+            draftSourceId: requestedScope.draftSourceId,
         });
         setIsStarting(true);
         setStartError(null);
         setProgress(prev => ({
             ...prev,
+            buildId: requestedScope.buildId,
+            projectGenerationVersion: requestedScope.projectGenerationVersion,
+            sourceGenerationType,
+            draftSourceId: requestedScope.draftSourceId,
             status: 'connecting',
             statusMessage: 'Starting build session...',
             generationDiagnostics: buildGenerationDiagnostics({
@@ -1458,6 +1583,8 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                     }),
                     createGenerationLogEntry('session', 'build session requested', {
                         projectId,
+                        buildId: requestedScope.buildId,
+                        projectGenerationVersion: requestedScope.projectGenerationVersion,
                         sourceGenerationType,
                     }),
                 ],
@@ -1474,34 +1601,43 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 timeout: BUILD_SESSION_START_TIMEOUT_MS,
             });
 
+            if (!generationVersionMatches(buildScopeRef.current, requestedScope.projectGenerationVersion)) {
+                return;
+            }
+
             const sessionIdFromResponse = normalizeText(response.data?.build_id ?? response.data?.session_id);
             const previewBuildId = normalizeText(response.data?.preview_build_id);
+            const resolvedSessionId = sessionIdFromResponse ?? requestedScope.buildId;
             syncBuildScope({
-                buildId: sessionIdFromResponse,
+                buildId: resolvedSessionId,
                 previewBuildId,
+                projectGenerationVersion: requestedScope.projectGenerationVersion,
                 sourceGenerationType,
-                draftSourceId: sourceGenerationType === 'resume'
-                    ? buildScopeRef.current.draftSourceId
-                    : null,
+                draftSourceId: requestedScope.draftSourceId,
             });
-            const resolvedSessionId = sessionIdFromResponse;
             setSessionId(resolvedSessionId);
             setProgress(prev => ({
                 ...prev,
                 buildId: resolvedSessionId,
                 previewBuildId,
+                projectGenerationVersion: requestedScope.projectGenerationVersion,
                 sourceGenerationType,
-                draftSourceId: sourceGenerationType === 'resume' ? prev.draftSourceId : null,
+                draftSourceId: requestedScope.draftSourceId,
                 status: 'running',
                 statusMessage: 'Connected. Preparing response...',
                 generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
                     prev.generationDiagnostics,
                     createGenerationLogEntry('session', 'build session established', {
                         buildId: resolvedSessionId,
+                        projectGenerationVersion: requestedScope.projectGenerationVersion,
                     }, 'success'),
                 ),
             }));
         } catch (error) {
+            if (!generationVersionMatches(buildScopeRef.current, requestedScope.projectGenerationVersion)) {
+                return;
+            }
+
             const errorMessage = isAxiosTimeoutError(error)
                 ? getBuildTimeoutMessage('session')
                 : axios.isAxiosError(error)
@@ -1534,7 +1670,9 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             }));
             callbackRefs.current.onError?.(errorMessage);
         } finally {
-            setIsStarting(false);
+            if (generationVersionMatches(buildScopeRef.current, requestedScope.projectGenerationVersion)) {
+                setIsStarting(false);
+            }
         }
     }, [addHistoryMessage, getHistoryForApi, projectId, removeHistoryMessage, resetProgress, syncBuildScope]);
 
@@ -1563,8 +1701,10 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             clearPreview: true,
             clearSession: true,
             resetBuilderState: true,
+            sourceGenerationType: 'new',
             buildId: null,
             previewBuildId: null,
+            projectGenerationVersion: null,
             draftSourceId: null,
         });
         setStartError(null);
@@ -1573,6 +1713,7 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
     const performPreviewBuild = useCallback(async (endpoint: 'build' | 'build/retry') => {
         if (isBuildingPreview) return;
 
+        const requestScope = cloneBuildScope(buildScopeRef.current);
         setIsBuildingPreview(true);
         callbackRefs.current.onBuildStart?.();
 
@@ -1580,6 +1721,9 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             const health = await axios.get(`/builder/projects/${projectId}/health`, {
                 timeout: BUILDER_HEALTH_TIMEOUT_MS,
             });
+            if (!buildScopesMatch(buildScopeRef.current, requestScope)) {
+                return;
+            }
             if (health.data?.online !== true) {
                 const offlineMessage = typeof health.data?.message === 'string' && health.data.message.trim() !== ''
                     ? health.data.message
@@ -1642,6 +1786,10 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 throw new Error('Failed to build preview');
             }
 
+            if (!buildScopesMatch(buildScopeRef.current, requestScope)) {
+                return;
+            }
+
             const previewUrl = response.data.preview_url || `/preview/${projectId}`;
             const previewBuildId = normalizeText(response.data.preview_build_id ?? response.data.build_id) ?? buildScopeRef.current.buildId;
             const appliedPreviewUrl = applyScopedPreviewUrl(previewUrl, previewBuildId);
@@ -1659,6 +1807,10 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 callbackRefs.current.onBuildComplete?.(appliedPreviewUrl);
             }
         } catch (error) {
+            if (!buildScopesMatch(buildScopeRef.current, requestScope)) {
+                return;
+            }
+
             const errorMessage = isAxiosTimeoutError(error)
                 ? getBuildTimeoutMessage('preview')
                 : axios.isAxiosError(error)
@@ -1680,7 +1832,9 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             }));
             callbackRefs.current.onBuildError?.(errorMessage);
         } finally {
-            setIsBuildingPreview(false);
+            if (buildScopesMatch(buildScopeRef.current, requestScope)) {
+                setIsBuildingPreview(false);
+            }
         }
     }, [applyScopedPreviewUrl, projectId, isBuildingPreview]);
 

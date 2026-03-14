@@ -119,7 +119,7 @@ class GenerateWebsiteProjectService
             'last_viewed_at' => now(),
         ])->save();
 
-        $this->reportProgress($progress, ProjectGenerationRun::STATUS_PLANNING_STRUCTURE, 'Planning the site structure.');
+        $this->reportProgress($progress, ProjectGenerationRun::STATUS_PLANNING_STRUCTURE, 'Planning the blueprint.');
         $builderGeneration = $this->generatePagesPlanFromBuilderBlueprint($userPrompt, $brief, $input);
         $pagesPlan = $builderGeneration['pages'];
 
@@ -285,6 +285,7 @@ class GenerateWebsiteProjectService
                 : null,
             'phase' => ProjectGenerationRun::STATUS_ASSEMBLING_PAGE,
         ]);
+        $this->reportProgress($progress, ProjectGenerationRun::STATUS_VALIDATING_RESULT, 'Validating the generated result before preview.');
         $scan = $this->codebaseScanner->scan($project);
         $this->codebaseScanner->writeIndex($project, $scan);
         $this->reportProgress($progress, ProjectGenerationRun::STATUS_RENDERING_PREVIEW, 'Rendering the preview and validating the workspace.');

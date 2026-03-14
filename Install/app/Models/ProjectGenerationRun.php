@@ -23,6 +23,8 @@ class ProjectGenerationRun extends Model
 
     public const STATUS_ASSEMBLING_PAGE = 'assembling_page';
 
+    public const STATUS_VALIDATING_RESULT = 'validating_result';
+
     public const STATUS_RENDERING_PREVIEW = 'rendering_preview';
 
     public const STATUS_PLANNING = 'planning';
@@ -103,6 +105,7 @@ class ProjectGenerationRun extends Model
             self::STATUS_SELECTING_COMPONENTS,
             self::STATUS_GENERATING_CONTENT,
             self::STATUS_ASSEMBLING_PAGE,
+            self::STATUS_VALIDATING_RESULT,
             self::STATUS_RENDERING_PREVIEW,
             self::STATUS_PLANNING,
             self::STATUS_GENERATING,

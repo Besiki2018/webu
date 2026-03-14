@@ -147,13 +147,14 @@ describe('useBuilderChat generate_site handling', () => {
             expect(result.current.progress.status).toBe('failed');
         });
 
-        expect(result.current.progress.error).toBe('Generation failed: no site blueprint or direct structure was provided. Emergency fallback must be requested explicitly.');
+        expect(result.current.progress.error).toBe('Generation failed: missing blueprint or structure');
         expect(result.current.messages.some((message) => (
             message.type === 'assistant'
-            && message.content.includes('Generation error: Generation failed: no site blueprint or direct structure was provided. Emergency fallback must be requested explicitly.')
+            && message.content === 'Generation failed: missing blueprint or structure'
         ))).toBe(true);
-        expect(onBuildError).toHaveBeenCalledWith('Generation failed: no site blueprint or direct structure was provided. Emergency fallback must be requested explicitly.');
-        expect(onError).toHaveBeenCalledWith('Generation failed: no site blueprint or direct structure was provided. Emergency fallback must be requested explicitly.');
+        expect(mocks.runGenerateSite).not.toHaveBeenCalled();
+        expect(onBuildError).toHaveBeenCalledWith('Generation failed: missing blueprint or structure');
+        expect(onError).toHaveBeenCalledWith('Generation failed: missing blueprint or structure');
     });
 
     it('adds repair guidance when generated output fails validation', async () => {
@@ -171,8 +172,12 @@ describe('useBuilderChat generate_site handling', () => {
             error: 'Generated site validation failed: Unknown component key "broken_hero" at planned section 2.',
             diagnostics: {
                 prompt: 'Create a landing page',
+                generationMode: 'blueprint',
                 selectedProjectType: 'landing',
                 selectedBusinessType: 'Vet clinic',
+                selectedSectionTypes: ['header', 'hero', 'footer'],
+                validationPassed: false,
+                emergencyFallbackUsed: false,
                 selectedSections: ['header', 'hero', 'footer'],
                 selectedComponentKeys: ['webu_header_01', 'broken_hero', 'webu_footer_01'],
                 fallbackUsed: false,
@@ -227,8 +232,12 @@ describe('useBuilderChat generate_site handling', () => {
             },
             diagnostics: {
                 prompt: 'Create a SaaS landing page',
+                generationMode: 'blueprint',
                 selectedProjectType: 'saas',
                 selectedBusinessType: 'Finance Software',
+                selectedSectionTypes: ['header', 'hero', 'features', 'footer'],
+                validationPassed: true,
+                emergencyFallbackUsed: false,
                 selectedSections: ['header', 'hero', 'features', 'footer'],
                 selectedComponentKeys: ['webu_header_01', 'webu_general_hero_01', 'webu_general_features_01', 'webu_footer_01'],
                 fallbackUsed: false,
@@ -264,16 +273,86 @@ describe('useBuilderChat generate_site handling', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.progress.statusMessage).toBe('generate_site completed via blueprint');
+            expect(result.current.progress.statusMessage).toBe('Generated via blueprint pipeline');
         });
 
         expect(result.current.progress.error).toBeNull();
         expect(result.current.messages.some((message) => (
             message.type === 'activity'
-            && message.content === 'Generated site via blueprint'
+            && message.content === 'Generated via blueprint pipeline'
         ))).toBe(true);
         expect(result.current.progress.generationDiagnostics?.selectedProjectType).toBe('saas');
         expect(result.current.progress.generationDiagnostics?.selectedBusinessType).toBe('Finance Software');
+    });
+
+    it('marks structure-only generation as legacy and resets the source type for the new build', async () => {
+        mocks.runGenerateSite.mockReturnValue({
+            ok: true,
+            projectType: 'landing',
+            nodeCount: 3,
+            generationMode: 'direct-structure',
+            trace: {
+                requestedMode: null,
+                resolvedMode: 'direct-structure',
+                projectType: 'landing',
+                hasBlueprint: false,
+                structureCount: 3,
+            },
+            diagnostics: {
+                prompt: 'Legacy structure',
+                generationMode: 'direct-structure',
+                selectedProjectType: 'landing',
+                selectedBusinessType: null,
+                selectedSectionTypes: ['header', 'hero', 'footer'],
+                validationPassed: true,
+                emergencyFallbackUsed: false,
+                selectedSections: ['header', 'hero', 'footer'],
+                selectedComponentKeys: ['webu_header_01', 'webu_general_hero_01', 'webu_footer_01'],
+                fallbackUsed: false,
+                failedStep: null,
+                rootCause: null,
+                events: [],
+            },
+        });
+
+        const { result } = renderHook(() => useBuilderChat('1', {
+            pusherConfig: mockPusherConfig,
+        }));
+
+        emitToolCall({
+            id: 'tool-legacy',
+            tool: 'generate_site',
+            params: {
+                structure: [
+                    { componentKey: 'webu_header_01' },
+                    { componentKey: 'webu_general_hero_01' },
+                    { componentKey: 'webu_footer_01' },
+                ],
+            },
+        });
+        emitToolResult({
+            id: 'tool-legacy',
+            tool: 'generate_site',
+            success: true,
+            output: '{}',
+        });
+
+        await waitFor(() => {
+            expect(result.current.progress.statusMessage).toBe('Generated via legacy structure path');
+        });
+
+        expect(result.current.progress.sourceGenerationType).toBe('legacy');
+        expect(result.current.messages.some((message) => (
+            message.type === 'activity'
+            && message.content === 'Generated via legacy structure path'
+        ))).toBe(true);
+        expect(mocks.runGenerateSite).toHaveBeenCalledWith({
+            structure: [
+                { componentKey: 'webu_header_01' },
+                { componentKey: 'webu_general_hero_01' },
+                { componentKey: 'webu_footer_01' },
+            ],
+        });
     });
 
     it('ignores tool results from a stale build after a new build starts', async () => {
@@ -319,6 +398,46 @@ describe('useBuilderChat generate_site handling', () => {
         expect(mocks.runGenerateSite).not.toHaveBeenCalled();
         expect(result.current.progress.toolCalls).toEqual([]);
         expect(result.current.progress.toolResults).toEqual([]);
+    });
+
+    it('resets preview, pending tool calls, and diagnostics when a new build starts', async () => {
+        const mockedAxios = vi.mocked(axios);
+        mockedAxios.post.mockResolvedValueOnce({
+            data: { session_id: 'build-fresh', build_id: 'build-fresh' },
+        });
+
+        const { result } = renderHook(() => useBuilderChat('1', {
+            pusherConfig: mockPusherConfig,
+            initialPreviewUrl: '/preview/stale',
+            initialBuildId: 'build-stale',
+            initialPreviewBuildId: 'build-stale',
+            initialProjectGenerationVersion: 'generation-stale',
+            initialSourceGenerationType: 'new',
+        }));
+
+        emitToolCall({
+            id: 'old-tool',
+            tool: 'generate_site',
+            build_id: 'build-stale',
+            session_id: 'build-stale',
+            params: {
+                blueprint: { projectType: 'landing' },
+            },
+        });
+
+        expect(result.current.progress.toolCalls).toHaveLength(1);
+
+        await act(async () => {
+            await result.current.sendMessage('Create a fresh build');
+        });
+
+        expect(result.current.progress.previewUrl).toBeNull();
+        expect(result.current.progress.toolCalls).toEqual([]);
+        expect(result.current.progress.toolResults).toEqual([]);
+        expect(result.current.progress.buildId).toBe('build-fresh');
+        expect(result.current.progress.generationDiagnostics?.events.some((entry) => (
+            entry.step === 'session' && entry.message === 'build session requested'
+        ))).toBe(true);
     });
 
     it('retries preview generation once after a timeout and keeps diagnostics for the retry path', async () => {
@@ -371,5 +490,36 @@ describe('useBuilderChat generate_site handling', () => {
             entry.step === 'preview' && entry.message === 'preview rendered'
         ))).toBe(true);
         expect(onBuildComplete).toHaveBeenCalledWith('/preview/1?retry=1');
+    });
+
+    it('ignores a late start response from an older build request', async () => {
+        const mockedAxios = vi.mocked(axios);
+        let resolveFirstRequest: ((value: unknown) => void) | null = null;
+
+        mockedAxios.post
+            .mockImplementationOnce(() => new Promise((resolve) => {
+                resolveFirstRequest = resolve;
+            }))
+            .mockResolvedValueOnce({
+                data: { session_id: 'build-second', build_id: 'build-second' },
+            });
+
+        const { result } = renderHook(() => useBuilderChat('1', {
+            pusherConfig: mockPusherConfig,
+        }));
+
+        await act(async () => {
+            const first = result.current.sendMessage('First build');
+            const second = result.current.sendMessage('Second build');
+            await second;
+            expect(resolveFirstRequest).not.toBeNull();
+            resolveFirstRequest?.({
+                data: { session_id: 'build-first', build_id: 'build-first' },
+            });
+            await first;
+        });
+
+        expect(result.current.progress.buildId).toBe('build-second');
+        expect(result.current.progress.statusMessage).toBe('Connected. Preparing response...');
     });
 });

@@ -111,15 +111,20 @@ function logBlueprintStep(
 
 export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): BuildSiteFromBlueprintResult {
   const generationLog: BlueprintGenerationLogEntry[] = []
+  const resolvedGenerationMode = input.generationMode ?? 'blueprint'
   let effectiveBlueprint = input.blueprint
   let builderProjectType: ProjectType | null = input.builderProjectTypeOverride ?? null
   let selectedSectionTypes: string[] = []
   let selectedComponentKeys: string[] = []
-  let usedEmergencyFallback = input.generationMode === 'emergency-fallback'
+  let usedEmergencyFallback = resolvedGenerationMode === 'emergency-fallback'
+  let validationPassed = false
 
   if (!input.blueprint) {
     throw new GenerationTraceError('project_blueprint_required', buildGenerationDiagnostics({
       prompt: input.prompt,
+      generationMode: resolvedGenerationMode,
+      validationPassed: false,
+      emergencyFallbackUsed: false,
       failedStep: 'blueprint',
       rootCause: 'project_blueprint_required',
     }))
@@ -128,12 +133,16 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
   const buildDiagnostics = (overrides: Partial<Omit<BuildGenerationDiagnostics, 'events'>> = {}): BuildGenerationDiagnostics => (
     buildGenerationDiagnostics({
       prompt: input.prompt,
+      generationMode: overrides.generationMode ?? (usedEmergencyFallback ? 'emergency-fallback' : resolvedGenerationMode),
       selectedProjectType: overrides.selectedProjectType
         ?? builderProjectType
         ?? mapBlueprintProjectTypeToBuilderProjectType(effectiveBlueprint.projectType),
       selectedBusinessType: overrides.selectedBusinessType ?? effectiveBlueprint.businessType ?? null,
+      selectedSectionTypes: overrides.selectedSectionTypes ?? selectedSectionTypes,
       selectedSections: overrides.selectedSections ?? selectedSectionTypes,
       selectedComponentKeys: overrides.selectedComponentKeys ?? selectedComponentKeys,
+      validationPassed: overrides.validationPassed ?? validationPassed,
+      emergencyFallbackUsed: overrides.emergencyFallbackUsed ?? usedEmergencyFallback,
       fallbackUsed: overrides.fallbackUsed ?? usedEmergencyFallback,
       failedStep: overrides.failedStep ?? null,
       rootCause: overrides.rootCause ?? null,
@@ -145,7 +154,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
     logBlueprintStep(generationLog, 'prompt', 'prompt received', {
       prompt: input.prompt,
       builderProjectTypeOverride: input.builderProjectTypeOverride ?? null,
-      generationMode: input.generationMode ?? 'blueprint',
+      generationMode: resolvedGenerationMode,
     })
     logBlueprintStep(generationLog, 'blueprint', 'blueprint created', effectiveBlueprint, 'success')
 
@@ -268,7 +277,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
         props: section.props,
         sectionId: `planned-section-${index + 1}`,
       })),
-      generationMode: input.generationMode ?? 'blueprint',
+      generationMode: resolvedGenerationMode,
       usedEmergencyFallback,
     })
     if (!validation.ok) {
@@ -279,12 +288,16 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
       throw new GenerationTraceError(errorMessage, buildDiagnostics({
         failedStep: 'validation',
         rootCause: errorMessage,
+        validationPassed: false,
       }))
     }
+    validationPassed = true
     logBlueprintStep(generationLog, 'validation', 'validation passed', {
       issues: [],
       selectedSections: selectedSectionTypes,
       selectedComponentKeys,
+      generationMode: resolvedGenerationMode,
+      usedEmergencyFallback,
     }, 'success')
 
     return {
@@ -300,7 +313,9 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
       sitePlan,
       generationLog,
       usedEmergencyFallback,
-      diagnostics: buildDiagnostics(),
+      diagnostics: buildDiagnostics({
+        validationPassed: true,
+      }),
     }
   } catch (error) {
     if (isGenerationTraceError(error)) {
@@ -316,6 +331,7 @@ export function buildSiteFromBlueprint(input: BuildSiteFromBlueprintInput): Buil
     throw new GenerationTraceError(message, buildDiagnostics({
       failedStep,
       rootCause: message,
+      validationPassed: false,
     }))
   }
 }
