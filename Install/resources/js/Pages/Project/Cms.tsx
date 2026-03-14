@@ -113,6 +113,7 @@ import {
     builderPageModelToContentJson,
     builderPageModelToSectionDrafts,
     getBuilderSectionExplicitProps,
+    type BuilderPageModel,
 } from '@/builder/model/pageModel';
 import {
     buildSectionPreviewText,
@@ -140,6 +141,13 @@ import { useCmsCanvasInteractionHandlers } from '@/builder/cms/useCmsCanvasInter
 import { useCmsEmbeddedBuilderSync } from '@/builder/cms/useCmsEmbeddedBuilderSync';
 import { useCmsFixedSectionVariantController } from '@/builder/cms/useCmsFixedSectionVariantController';
 import { CmsMediaFieldControl } from '@/builder/cms/CmsMediaFieldControl';
+import { ImageSearchModal } from '@/builder/assets/imageSearchModal';
+import {
+    buildStockImageImportContext,
+    inferStockImageOrientation,
+    inferStockImageQuery,
+} from '@/builder/assets/imageSelector';
+import type { ImportedStockMedia, StockImageImportRequest, StockImageOrientation } from '@/builder/assets/stockImageTypes';
 import { buildCmsInspectorMutationDispatcher } from '@/builder/cms/CmsMutationDispatcher';
 import { useCmsPageSelectionLifecycle } from '@/builder/cms/useCmsPageSelectionLifecycle';
 import { useCmsPreviewIframeBinding } from '@/builder/cms/useCmsPreviewIframeBinding';
@@ -193,6 +201,9 @@ import {
     type BuilderEditableTarget,
 } from '@/builder/editingState';
 import { applyAiSitePlan } from '@/builder/ai/builderRenderAdapter';
+import { useWorkspaceBackedBuilderAdapter } from '@/builder/codegen/workspaceBackedBuilderAdapter';
+import { prepareVisualBuilderCmsEditExecution } from '@/builder/cmsIntegration/editExecutors';
+import { resolveWebuV2FeatureFlags } from '@/lib/webuV2FeatureFlags';
 
 const CmsBookingPanel = lazy(async () => ({ default: (await import('@/components/Project/CmsBookingPanel')).CmsBookingPanel }));
 const CmsEcommercePanel = lazy(async () => ({ default: (await import('@/components/Project/CmsEcommercePanel')).CmsEcommercePanel }));
@@ -595,6 +606,15 @@ interface MediaPickerState {
     fieldLabel: string;
     mediaType: 'image' | 'video';
     currentValue: string;
+}
+
+interface StockImagePickerState {
+    open: boolean;
+    fieldLabel: string;
+    currentValue: string;
+    initialQuery: string;
+    orientation: StockImageOrientation | null;
+    importContext: Omit<StockImageImportRequest, 'provider' | 'image_id' | 'download_url' | 'project_id'>;
 }
 
 interface SiteSettingsResponse {
@@ -6792,6 +6812,12 @@ export default function Cms({
 }: CmsPageProps) {
     const { t, locale } = useTranslation();
     const page = usePage<PageProps>();
+    const webuV2Flags = useMemo(
+        () => resolveWebuV2FeatureFlags(page.props),
+        [page.props.featureFlags],
+    );
+    const workspaceBackedVisualBuilderEnabled = webuV2Flags.workspaceBackedVisualBuilder;
+    const imageToSiteImportEnabled = webuV2Flags.imageToSiteImport;
     const embeddedMode = useMemo(() => {
         const queryIndex = page.url.indexOf('?');
         if (queryIndex === -1) {
@@ -7075,6 +7101,16 @@ export default function Cms({
     const [mediaPickerDescription, setMediaPickerDescription] = useState('');
     const [mediaPickerSearch, setMediaPickerSearch] = useState('');
     const [isSavingMediaMeta, setIsSavingMediaMeta] = useState(false);
+    const [stockImagePicker, setStockImagePicker] = useState<StockImagePickerState>({
+        open: false,
+        fieldLabel: '',
+        currentValue: '',
+        initialQuery: '',
+        orientation: null,
+        importContext: {
+            imported_by: 'visual_builder',
+        },
+    });
 
     const sectionIdCounter = useRef(1);
     const sectionsDraftRef = useRef<SectionDraft[]>([]);
@@ -7092,6 +7128,7 @@ export default function Cms({
     const loggedUnknownBuilderPreviewSectionKeysRef = useRef<Set<string>>(new Set());
     const structurePanelInitializedRef = useRef(false);
     const mediaPickerApplyRef = useRef<((assetUrl: string) => void) | null>(null);
+    const stockImagePickerApplyRef = useRef<((media: ImportedStockMedia) => void) | null>(null);
     const preferredPageEditorModeRef = useRef<PageEditorMode | null>(null);
     const initialCmsCoreLoadedForLocaleRef = useRef<string | null>(null);
     const initialModuleRegistryLoadedForSiteRef = useRef<string | null>(null);
@@ -7534,6 +7571,30 @@ export default function Cms({
         selectedPageBridgeIdentity.pageId,
         selectedPageBridgeIdentity.pageSlug,
     ]);
+    const {
+        syncFromBuilderDrafts: syncWorkspaceBackedBuilderDrafts,
+        recordBuilderOperations: recordWorkspaceBackedBuilderOperations,
+        recordLayoutOverrideChange: recordWorkspaceBackedLayoutOverrideChange,
+        persistWorkspaceState: persistWorkspaceBackedBuilderState,
+    } = useWorkspaceBackedBuilderAdapter({
+        enabled: workspaceBackedVisualBuilderEnabled,
+        projectId: String(project.id),
+        projectName: site.name ?? project.name ?? 'Webu Project',
+        currentPage: {
+            id: selectedPageBridgeIdentity.pageId,
+            slug: selectedPageBridgeIdentity.pageSlug,
+            title: selectedPageBridgeIdentity.pageTitle,
+        },
+        currentRevisionCursor: {
+            revisionId: embeddedBuilderRevisionId,
+            revisionVersion: embeddedBuilderRevisionVersion,
+        },
+        getCurrentSectionsDraft: () => sectionsDraftRef.current,
+        getCurrentLayoutOverrides: () => ({
+            headerVariant: builderLayoutForm.headerVariant,
+            footerVariant: builderLayoutForm.footerVariant,
+        }),
+    });
     const emitCmsBuilderTelemetry = useCallback((
         eventName: string,
         options?: {
@@ -23235,12 +23296,22 @@ ${showRules}
 
     useLayoutEffect(() => {
         sectionsDraftRef.current = sectionsDraft;
+        syncWorkspaceBackedBuilderDrafts({
+            sectionDrafts: sectionsDraft,
+        });
         const tid = window.setTimeout(() => {
             syncPreviewVisibleSections();
             syncBuilderPreviewDraftBindings();
         }, BUILDER_PREVIEW_SYNC_DEBOUNCE_MS);
         return () => window.clearTimeout(tid);
-    }, [builderLayoutForm.footerVariant, builderLayoutForm.headerVariant, sectionsDraft, syncBuilderPreviewDraftBindings, syncPreviewVisibleSections]);
+    }, [
+        builderLayoutForm.footerVariant,
+        builderLayoutForm.headerVariant,
+        sectionsDraft,
+        syncBuilderPreviewDraftBindings,
+        syncPreviewVisibleSections,
+        syncWorkspaceBackedBuilderDrafts,
+    ]);
 
     useEffect(() => {
         pagesForMemoryRef.current = pages;
@@ -23605,15 +23676,31 @@ ${showRules}
             toast.error(parsedExtra.error ?? t('Invalid extra content JSON'));
             return null;
         }
+        const pageContext = {
+            id: selectedPageDetail?.page.id ?? selectedPageId,
+            slug: selectedPageDetail?.page.slug ?? selectedPageSummary?.slug ?? null,
+            title: selectedPageDetail?.page.title ?? selectedPageSummary?.title ?? null,
+            seoTitle: pageMetaForm.seo_title.trim() || (selectedPageDetail?.page.seo_title ?? null),
+            seoDescription: pageMetaForm.seo_description.trim() || (selectedPageDetail?.page.seo_description ?? null),
+        };
 
         if (effectivePageEditorMode === 'text') {
-            return builderPageModelToContentJson({
+            const pageModel: BuilderPageModel = {
                 schemaVersion: 1,
                 editorMode: 'text',
                 textEditorHtml: pageRichTextHtml,
                 sections: [],
                 extraContent: parsedExtra.value,
-            });
+            };
+            const contentJson = builderPageModelToContentJson(pageModel);
+
+            return prepareVisualBuilderCmsEditExecution({
+                page: pageContext,
+                model: pageModel,
+                contentJson,
+                editor: 'visual_builder',
+                createdBy: 'visual_builder',
+            }).contentJson;
         }
 
         const sectionErrors = new Map<string, string | null>();
@@ -23670,15 +23757,39 @@ ${showRules}
                     : props
             ),
         });
-
-        return builderPageModelToContentJson(pageModel, {
+        const contentJson = builderPageModelToContentJson(pageModel, {
             denormalizeProps: (sectionType, props) => denormalizeSectionPropsStyleForWrite(
                 /(product|shop|catalog|ecommerce)/.test(sectionType)
                     ? hydrateSectionDefaultsFromCms(sectionType, props)
                     : props
             ),
         });
-    }, [effectivePageEditorMode, extraContentJsonText, hydrateSectionDefaultsFromCms, pageRichTextHtml, setSectionsDraft, t]);
+
+        return prepareVisualBuilderCmsEditExecution({
+            page: pageContext,
+            model: pageModel,
+            contentJson,
+            editor: 'visual_builder',
+            createdBy: 'visual_builder',
+        }).contentJson;
+    }, [
+        effectivePageEditorMode,
+        extraContentJsonText,
+        hydrateSectionDefaultsFromCms,
+        pageMetaForm.seo_description,
+        pageMetaForm.seo_title,
+        pageRichTextHtml,
+        selectedPageDetail?.page.id,
+        selectedPageDetail?.page.seo_description,
+        selectedPageDetail?.page.seo_title,
+        selectedPageDetail?.page.slug,
+        selectedPageDetail?.page.title,
+        selectedPageId,
+        selectedPageSummary?.slug,
+        selectedPageSummary?.title,
+        setSectionsDraft,
+        t,
+    ]);
 
     const {
         layoutPrimitiveSectionKeys,
@@ -23723,6 +23834,11 @@ ${showRules}
         setBuilderSidebarMode,
         setActiveDragId,
         setBuilderCurrentDropTarget,
+        onOperationsApplied: (operations, nextSectionsDraft) => {
+            recordWorkspaceBackedBuilderOperations(operations, {
+                sectionDrafts: nextSectionsDraft,
+            });
+        },
         t,
     });
 
@@ -23888,13 +24004,46 @@ ${showRules}
             if (!imageSource) return;
             setIsDesignImportGenerating(true);
             try {
-                const { generateLayoutFromDesign } = await import('@/builder/ai/generateLayoutFromDesign');
-                const result = await generateLayoutFromDesign(imageSource, {
-                    projectType: payload.projectType,
-                    preferredStyle: payload.preferredStyle?.trim() || undefined,
-                });
-                setSectionsDraft(result.sectionsDraft);
-                useBuilderStore.getState().setProjectType(result.projectType);
+                if (imageToSiteImportEnabled) {
+                    const { createImageImportDesignExtraction } = await import('@/builder/image-import/designExtractionContract');
+                    const { createImageImportProjectPlan } = await import('@/builder/image-import/imageToProjectGraph');
+                    const extraction = await createImageImportDesignExtraction({
+                        image: imageSource,
+                        projectType: payload.projectType,
+                        preferredStyle: payload.preferredStyle?.trim() || undefined,
+                        sourceKind: payload.designImage ? 'upload' : 'url',
+                        sourceLabel: payload.designImage?.name ?? payload.designUrl?.trim() ?? null,
+                        mode: 'reference',
+                    });
+                    const plan = await createImageImportProjectPlan({
+                        projectId: String(project.id),
+                        projectName: site.name ?? project.name ?? 'Webu Project',
+                        pageId: selectedPageId ? String(selectedPageId) : null,
+                        pageSlug: selectedPageSummary?.slug ?? 'home',
+                        pageTitle: selectedPageSummary?.title ?? 'Home',
+                        projectType: payload.projectType,
+                        mode: extraction.mode,
+                        extraction,
+                    });
+                    const pageModel = plan.builderModels[0]?.model ?? null;
+                    if (!pageModel) {
+                        throw new Error('image_import_no_builder_model');
+                    }
+
+                    setSectionsDraft(builderPageModelToSectionDrafts(pageModel));
+                    useBuilderStore.getState().setProjectType(payload.projectType);
+                } else {
+                    const { generateLayoutFromDesign } = await import('@/builder/ai/generateLayoutFromDesign');
+                    const result = await generateLayoutFromDesign(imageSource, {
+                        projectType: payload.projectType,
+                        preferredStyle: payload.preferredStyle?.trim() || undefined,
+                        language: locale,
+                    });
+
+                    setSectionsDraft(result.sectionsDraft);
+                    useBuilderStore.getState().setProjectType(result.projectType);
+                }
+
                 scheduleStructuralDraftPersistRef.current?.();
                 toast.success(t('Page generated from design. You can edit sections in the canvas and sidebar.'));
                 setIsDesignImportOpen(false);
@@ -23904,7 +24053,7 @@ ${showRules}
                 setIsDesignImportGenerating(false);
             }
         },
-        [setSectionsDraft, t]
+        [imageToSiteImportEnabled, locale, project.id, project.name, selectedPageId, selectedPageSummary?.slug, selectedPageSummary?.title, setSectionsDraft, site.name, t]
     );
 
     const handleRefineLayoutSubmit = useCallback(
@@ -24311,6 +24460,9 @@ ${showRules}
         if (result.changed) {
             sectionsDraftRef.current = result.state.sectionsDraft;
             applyMutationState(result.state);
+            recordWorkspaceBackedBuilderOperations(operations, {
+                sectionDrafts: result.state.sectionsDraft,
+            });
 
             if (options.scheduleStructuralPersist && result.structuralChange) {
                 scheduleStructuralDraftPersistRef.current();
@@ -24324,7 +24476,14 @@ ${showRules}
         }
 
         return result;
-    }, [applyMutationState, createBuilderSectionDraft, selectedBuilderTarget, selectedSectionLocalId, t]);
+    }, [
+        applyMutationState,
+        createBuilderSectionDraft,
+        recordWorkspaceBackedBuilderOperations,
+        selectedBuilderTarget,
+        selectedSectionLocalId,
+        t,
+    ]);
 
     const updateSectionPathProp = useCallback((localId: string, path: string[], value: unknown) => {
         if (path.length === 0) {
@@ -24713,6 +24872,7 @@ ${showRules}
             });
 
             setThemeSettingsBase(nextThemeSettings);
+            recordWorkspaceBackedLayoutOverrideChange('visual_builder');
             if (!silent) {
                 toast.success(t('Global layout settings saved'));
             }
@@ -24727,7 +24887,7 @@ ${showRules}
         } finally {
             setIsSavingBuilderLayout(false);
         }
-    }, [builderLayoutForm, loadSiteSettings, site.id, t, themeSettingsBase]);
+    }, [builderLayoutForm, loadSiteSettings, recordWorkspaceBackedLayoutOverrideChange, site.id, t, themeSettingsBase]);
 
     useLayoutEffect(() => {
         handleSaveBuilderGlobalLayoutRef.current = handleSaveBuilderGlobalLayout;
@@ -24814,7 +24974,7 @@ ${showRules}
         }
 
         try {
-            const response = await axios.post<{ revision?: { id?: number }; binding_validation?: BindingValidationResult | null }>(`/panel/sites/${site.id}/pages/${selectedPageId}/revisions`, {
+            const response = await axios.post<{ revision?: { id?: number; version?: number }; binding_validation?: BindingValidationResult | null }>(`/panel/sites/${site.id}/pages/${selectedPageId}/revisions`, {
                 content_json: payload,
                 locale: activeContentLocale,
             });
@@ -24840,6 +25000,19 @@ ${showRules}
             }
 
             const hasPendingFollowUp = pendingDraftSaveOptionsRef.current !== null;
+            const revisionId = response.data?.revision?.id ?? null;
+            const revisionVersion = response.data?.revision?.version ?? null;
+            const workspacePersistResult = effectivePageEditorMode === 'builder'
+                ? await persistWorkspaceBackedBuilderState({
+                    revisionId,
+                    revisionVersion,
+                    regenerateWorkspace: true,
+                })
+                : null;
+
+            if (workspacePersistResult && !workspacePersistResult.success && !silent) {
+                toast.error(t('Draft saved but workspace sync failed'));
+            }
 
             if (refreshAfterSave && !hasPendingFollowUp) {
                 await loadPages(selectedPageId);
@@ -24884,7 +25057,6 @@ ${showRules}
                 },
             });
 
-            const revisionId = response.data?.revision?.id ?? null;
             if (revisionId !== null) {
                 try {
                     void persistDesignMemory(0.5);
@@ -24897,7 +25069,21 @@ ${showRules}
             toast.error(getApiErrorMessage(error, t('Failed to save draft revision')));
             return null;
         }
-    }, [activeContentLocale, buildContentJsonPayload, effectivePageEditorMode, emitCmsBuilderTelemetry, handleSaveBuilderGlobalLayout, isEmbeddedMode, loadPageDetail, loadPages, persistDesignMemory, selectedPageId, selectedPageSummary?.slug, t]);
+    }, [
+        activeContentLocale,
+        buildContentJsonPayload,
+        effectivePageEditorMode,
+        emitCmsBuilderTelemetry,
+        handleSaveBuilderGlobalLayout,
+        isEmbeddedMode,
+        loadPageDetail,
+        loadPages,
+        persistDesignMemory,
+        persistWorkspaceBackedBuilderState,
+        selectedPageId,
+        selectedPageSummary?.slug,
+        t,
+    ]);
 
     const saveDraftRevisionInternal = useCallback(async (
         options?: {
@@ -25682,6 +25868,13 @@ ${showRules}
         }
     }, [canUseMediaModule, loadSiteSettings, mediaCapabilities.enabled, site.id, t]);
 
+    const upsertMediaItem = useCallback((media: MediaItem) => {
+        setMediaItems((prev) => {
+            const filtered = prev.filter((item) => item.id !== media.id);
+            return [media, ...filtered];
+        });
+    }, []);
+
     const handleDeleteMedia = async (media: MediaItem) => {
         const confirmed = window.confirm(t('Delete this media asset?'));
         if (!confirmed) {
@@ -25828,9 +26021,60 @@ ${showRules}
         }
 
         mediaPickerApplyRef.current(mediaPickerSelectedItem.asset_url);
-        toast.success(t('Media applied'));
+            toast.success(t('Media applied'));
         closeMediaPicker();
     };
+
+    const closeStockImagePicker = useCallback(() => {
+        setStockImagePicker({
+            open: false,
+            fieldLabel: '',
+            currentValue: '',
+            initialQuery: '',
+            orientation: null,
+            importContext: {
+                imported_by: 'visual_builder',
+            },
+        });
+        stockImagePickerApplyRef.current = null;
+    }, []);
+
+    const openStockImagePicker = useCallback((options: {
+        fieldLabel: string;
+        currentValue: string;
+        initialQuery: string;
+        orientation: StockImageOrientation | null;
+        importContext?: Omit<StockImageImportRequest, 'provider' | 'image_id' | 'download_url' | 'project_id'>;
+        onApply?: (media: ImportedStockMedia) => void;
+    }) => {
+        if (!canUseMediaModule || !mediaCapabilities.enabled) {
+            toast.error(t('Your current plan does not include file storage'));
+            return;
+        }
+
+        stockImagePickerApplyRef.current = options.onApply ?? null;
+        setStockImagePicker({
+            open: true,
+            fieldLabel: options.fieldLabel,
+            currentValue: options.currentValue,
+            initialQuery: options.initialQuery,
+            orientation: options.orientation,
+            importContext: {
+                imported_by: 'visual_builder',
+                ...(options.importContext ?? {}),
+            },
+        });
+    }, [canUseMediaModule, mediaCapabilities.enabled, t]);
+
+    const handleImportedStockImage = useCallback((media: ImportedStockMedia) => {
+        upsertMediaItem(media);
+
+        if (stockImagePickerApplyRef.current) {
+            stockImagePickerApplyRef.current(media);
+        }
+
+        closeStockImagePicker();
+    }, [closeStockImagePicker, upsertMediaItem]);
 
     const openMediaManagerModal = useCallback(() => {
         openMediaPicker({
@@ -26750,6 +26994,16 @@ ${showRules}
         }
 
         if (field.type === 'string' && (isImageField || isVideoField)) {
+            const stockImageContext = {
+                fieldLabel: displayFieldLabel,
+                sectionType: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                componentKey: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                pageTitle: selectedPageSummary?.title ?? pageMetaForm.title ?? project.name,
+                projectName: project.name,
+                sectionLocalId: selectedSectionDraft?.localId ?? null,
+                pageSlug: selectedPageSummary?.slug ?? null,
+            };
+
             return (
                 <div key={`${options.itemKeyPrefix}-${pathKey}`}>
                     <CmsMediaFieldControl
@@ -26760,6 +27014,17 @@ ${showRules}
                         compact={compact}
                         onChange={(value) => options.onChangePath(field.path, value)}
                         uploadMediaFile={uploadMediaFile}
+                        openMediaPicker={openMediaPicker}
+                        onOpenStockImageSearch={isVideoField ? undefined : ({ fieldLabel, currentValue, onApply }) => {
+                            openStockImagePicker({
+                                fieldLabel,
+                                currentValue,
+                                initialQuery: inferStockImageQuery(stockImageContext),
+                                orientation: inferStockImageOrientation(stockImageContext),
+                                importContext: buildStockImageImportContext(project.id, stockImageContext),
+                                onApply: (media) => onApply?.(media.asset_url),
+                            });
+                        }}
                         labelClassName={CMS_BUILDER_PARAM_LABEL_CLASS}
                     />
                     {renderDynamicBindingHint(field, effectiveValue, { compact, bindingMeta: options.bindingMeta })}
@@ -27446,6 +27711,11 @@ ${showRules}
             isFooterSectionKey,
             createBuilderSectionDraft,
             applyMutationState,
+            onOperationsApplied: (operations, nextSectionsDraft) => {
+                recordWorkspaceBackedBuilderOperations(operations, {
+                    sectionDrafts: nextSectionsDraft,
+                });
+            },
             addSectionByKey,
             handleAddSectionInside,
             handleRemoveSection,
@@ -30642,6 +30912,48 @@ ${showRules}
                                             {isMediaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                                             <span className="sr-only">{t('Refresh')}</span>
                                         </Button>
+                                        {mediaPicker.mediaType === 'image' ? (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => openStockImagePicker({
+                                                    fieldLabel: mediaPicker.fieldLabel || t('Media Image'),
+                                                    currentValue: mediaPicker.currentValue,
+                                                    initialQuery: inferStockImageQuery({
+                                                        fieldLabel: mediaPicker.fieldLabel || t('Media Image'),
+                                                        pageTitle: selectedPageSummary?.title ?? pageMetaForm.title ?? project.name,
+                                                        projectName: project.name,
+                                                        sectionType: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                                                        componentKey: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                                                        sectionLocalId: selectedSectionDraft?.localId ?? null,
+                                                        pageSlug: selectedPageSummary?.slug ?? null,
+                                                    }),
+                                                    orientation: inferStockImageOrientation({
+                                                        fieldLabel: mediaPicker.fieldLabel || t('Media Image'),
+                                                        sectionType: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                                                        componentKey: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                                                    }),
+                                                    importContext: buildStockImageImportContext(project.id, {
+                                                        fieldLabel: mediaPicker.fieldLabel || t('Media Image'),
+                                                        pageTitle: selectedPageSummary?.title ?? pageMetaForm.title ?? project.name,
+                                                        projectName: project.name,
+                                                        sectionType: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                                                        componentKey: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                                                        sectionLocalId: selectedSectionDraft?.localId ?? null,
+                                                        pageSlug: selectedPageSummary?.slug ?? null,
+                                                    }),
+                                                    onApply: (media) => {
+                                                        setMediaPickerSelectedId(media.id);
+                                                        setMediaPickerAlt(readMediaMetaText(media, 'alt'));
+                                                        setMediaPickerDescription(readMediaMetaText(media, 'description'));
+                                                    },
+                                                })}
+                                            >
+                                                <ImagePlus className="mr-2 h-4 w-4" />
+                                                {t('Stock Search')}
+                                            </Button>
+                                        ) : null}
                                         <label
                                             htmlFor="cms-media-picker-upload"
                                             className={`inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium transition ${
@@ -30861,6 +31173,27 @@ ${showRules}
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <ImageSearchModal
+                open={stockImagePicker.open}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        closeStockImagePicker();
+                    }
+                }}
+                t={t}
+                projectId={project.id}
+                initialQuery={stockImagePicker.initialQuery}
+                orientation={stockImagePicker.orientation}
+                importContext={stockImagePicker.importContext}
+                overlayClassName={cmsModalOverlayClassName}
+                contentClassName={`${cmsModalContentClassName} max-w-6xl p-0 overflow-hidden`}
+                title={t('Stock Image Search')}
+                description={stockImagePicker.fieldLabel
+                    ? `${t('Find and import an image for')}: ${stockImagePicker.fieldLabel}`
+                    : t('Search across stock providers and import into the project media library')}
+                onImported={(media) => handleImportedStockImage(media)}
+            />
         </AdminLayout>
     );
 }

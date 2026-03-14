@@ -35,7 +35,13 @@ class FileEditor
             return false;
         }
 
-        $this->workspace->writeFile($project, $relativePath, $content);
+        $existing = $this->workspace->readFile($project, $relativePath);
+        $this->workspace->writeFile($project, $relativePath, $content, [
+            'actor' => 'ai',
+            'source' => 'ai_project_edit',
+            'operation_kind' => $existing === null ? 'create_file' : 'update_file',
+            'preview_refresh_requested' => true,
+        ]);
 
         return true;
     }
@@ -49,6 +55,11 @@ class FileEditor
             return false;
         }
 
-        return $this->workspace->deleteFile($project, $relativePath);
+        return $this->workspace->deleteFile($project, $relativePath, [
+            'actor' => 'ai',
+            'source' => 'ai_project_edit',
+            'operation_kind' => 'delete_file',
+            'preview_refresh_requested' => true,
+        ]);
     }
 }

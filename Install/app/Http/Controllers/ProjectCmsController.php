@@ -37,7 +37,6 @@ class ProjectCmsController extends Controller
         if ($project->latestGenerationRun?->isActive()) {
             return redirect()->route('chat', [
                 'project' => $project,
-                'tab' => 'inspect',
             ]);
         }
 

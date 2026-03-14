@@ -13,6 +13,17 @@ interface CmsMediaFieldControlProps {
     isVideoField: boolean;
     onChange: (value: string) => void;
     uploadMediaFile: (file: File) => Promise<{ asset_url: string } | null>;
+    openMediaPicker?: (options: {
+        fieldLabel: string;
+        mediaType: 'image' | 'video';
+        currentValue: string;
+        onApply?: (assetUrl: string) => void;
+    }) => void;
+    onOpenStockImageSearch?: (options: {
+        fieldLabel: string;
+        currentValue: string;
+        onApply?: (assetUrl: string) => void;
+    }) => void;
     compact?: boolean;
     pathCaption?: string;
     labelClassName?: string;
@@ -25,6 +36,8 @@ export function CmsMediaFieldControl({
     isVideoField,
     onChange,
     uploadMediaFile,
+    openMediaPicker,
+    onOpenStockImageSearch,
     compact = false,
     pathCaption,
     labelClassName,
@@ -37,6 +50,8 @@ export function CmsMediaFieldControl({
     const triggerLabel = isVideoField
         ? (hasValue ? t('Replace Video') : t('Upload Video'))
         : (hasValue ? t('Replace Image') : t('Upload Image'));
+    const canUseMediaLibrary = typeof openMediaPicker === 'function';
+    const canUseStockSearch = !isVideoField && typeof onOpenStockImageSearch === 'function';
 
     const openUploadPicker = (origin: HTMLElement | null) => {
         const input = origin
@@ -90,21 +105,66 @@ export function CmsMediaFieldControl({
                     placeholder="https://youtube.com/... or /storage/... video"
                 />
             ) : null}
-            <Button
-                type="button"
-                variant={triggerVariant}
-                size={triggerSize}
-                className="w-full"
-                onPointerDown={(event) => {
-                    event.stopPropagation();
-                }}
-                onClick={(event) => {
-                    event.stopPropagation();
-                    openUploadPicker(event.currentTarget);
-                }}
-            >
-                {triggerLabel}
-            </Button>
+            <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                    type="button"
+                    variant={triggerVariant}
+                    size={triggerSize}
+                    className={canUseMediaLibrary || canUseStockSearch ? 'w-full' : 'sm:col-span-2 w-full'}
+                    onPointerDown={(event) => {
+                        event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        openUploadPicker(event.currentTarget);
+                    }}
+                >
+                    {triggerLabel}
+                </Button>
+                {canUseMediaLibrary ? (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size={triggerSize}
+                        className="w-full"
+                        onPointerDown={(event) => {
+                            event.stopPropagation();
+                        }}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            openMediaPicker?.({
+                                fieldLabel,
+                                mediaType: isVideoField ? 'video' : 'image',
+                                currentValue: effectiveValue,
+                                onApply: (assetUrl) => onChange(assetUrl),
+                            });
+                        }}
+                    >
+                        {t('Media Library')}
+                    </Button>
+                ) : null}
+                {canUseStockSearch ? (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size={triggerSize}
+                        className={`${canUseMediaLibrary ? 'sm:col-span-2' : 'sm:col-span-1'} w-full`}
+                        onPointerDown={(event) => {
+                            event.stopPropagation();
+                        }}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenStockImageSearch?.({
+                                fieldLabel,
+                                currentValue: effectiveValue,
+                                onApply: (assetUrl) => onChange(assetUrl),
+                            });
+                        }}
+                    >
+                        {t('Search Stock')}
+                    </Button>
+                ) : null}
+            </div>
             {hasValue ? (
                 <div className="relative">
                     <div

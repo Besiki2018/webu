@@ -134,6 +134,17 @@ export interface ProjectWorkspaceModules {
     available: Record<string, boolean>;
 }
 
+export interface WebuV2FeatureFlags {
+    codeFirstInitialGeneration: boolean;
+    workspaceBackedVisualBuilder: boolean;
+    imageToSiteImport: boolean;
+    advancedAiWorkspaceEdits: boolean;
+}
+
+export interface SharedFeatureFlags {
+    webuV2: WebuV2FeatureFlags;
+}
+
 export type PageProps<
     T extends Record<string, unknown> = Record<string, unknown>,
 > = T & {
@@ -147,6 +158,7 @@ export type PageProps<
     appSettings: AppSettings;
     entitlements: Entitlements;
     projectWorkspaceModules: ProjectWorkspaceModules | null;
+    featureFlags: SharedFeatureFlags;
     recentProjects: Project[] | null;
     hasUpgradablePlans: boolean;
     isDemo?: boolean;

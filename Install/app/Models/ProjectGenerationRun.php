@@ -19,6 +19,14 @@ class ProjectGenerationRun extends Model
 
     public const STATUS_FINALIZING = 'finalizing';
 
+    public const STATUS_SCAFFOLDING = 'scaffolding';
+
+    public const STATUS_WRITING_FILES = 'writing_files';
+
+    public const STATUS_BUILDING_PREVIEW = 'building_preview';
+
+    public const STATUS_READY = 'ready';
+
     public const STATUS_COMPLETED = 'completed';
 
     public const STATUS_FAILED = 'failed';
@@ -63,11 +71,38 @@ class ProjectGenerationRun extends Model
 
     public function isActive(): bool
     {
-        return in_array($this->status, [
+        return in_array($this->status, self::activeStatuses(), true);
+    }
+
+    public function isReady(): bool
+    {
+        return in_array($this->status, self::readyStatuses(), true);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function activeStatuses(): array
+    {
+        return [
             self::STATUS_QUEUED,
             self::STATUS_PLANNING,
             self::STATUS_GENERATING,
             self::STATUS_FINALIZING,
-        ], true);
+            self::STATUS_SCAFFOLDING,
+            self::STATUS_WRITING_FILES,
+            self::STATUS_BUILDING_PREVIEW,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function readyStatuses(): array
+    {
+        return [
+            self::STATUS_READY,
+            self::STATUS_COMPLETED,
+        ];
     }
 }

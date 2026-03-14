@@ -4,10 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, Lock, Save } from 'lucide-react';
-import axios from 'axios';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTranslation } from '@/contexts/LanguageContext';
 import type { CodeFileSelectionMeta } from './FileTree';
+import { createWorkspaceFileClient } from '@/builder/workspace/workspaceFileClient';
+import { describeWorkspaceFileProvenance } from '@/builder/workspace/workspaceFileState';
 
 // Protected files that cannot be edited via the code editor.
 // Must match the Go backend's executor.ProtectedWriteFiles list.
@@ -108,31 +109,25 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     const selectedVirtualFile = selectedFile ? normalizedVirtualFiles.get(selectedFile) ?? null : null;
     const isVirtual = selectedVirtualFile !== null;
     const effectiveContent = selectedVirtualFile?.content ?? content;
+    const workspaceFileClient = useMemo(() => createWorkspaceFileClient(projectId, {
+        onPreviewRefresh: onSave,
+    }), [onSave, projectId]);
 
     const fetchFile = useCallback(async (path: string) => {
         setLoading(true);
         setError(null);
         try {
-            const workspaceRes = await axios.get<{ success?: boolean; content?: string }>(`/panel/projects/${projectId}/workspace/file`, { params: { path } });
-            if (workspaceRes.data?.success === true && typeof workspaceRes.data.content === 'string') {
-                setContent(workspaceRes.data.content);
-                setOriginalContent(workspaceRes.data.content);
-                setLoading(false);
-                return;
-            }
+            const workspaceRes = await workspaceFileClient.readFile(path);
+            setContent(workspaceRes.content);
+            setOriginalContent(workspaceRes.content);
+        } catch {
             setContent('');
             setOriginalContent('');
             setError(t('Failed to load file'));
-        } catch (err) {
-            if (axios.isAxiosError(err)) {
-                setError(err.response?.data?.error || t('Failed to load file'));
-            } else {
-                setError(t('Failed to load file'));
-            }
         } finally {
             setLoading(false);
         }
-    }, [projectId, t]);
+    }, [t, workspaceFileClient]);
 
     useEffect(() => {
         if (selectedVirtualFile) {
@@ -148,33 +143,23 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         }
     }, [fetchFile, selectedFile, selectedVirtualFile]);
 
-    const handleSave = async () => {
+    const handleSave = useCallback(async () => {
         if (!selectedFile || content === originalContent) return;
 
         setSaving(true);
         setError(null);
         try {
-            const workspaceRes = await axios.post<{ success?: boolean }>(`/panel/projects/${projectId}/workspace/file`, {
-                path: selectedFile,
-                content,
+            await workspaceFileClient.writeFile(selectedFile, content, {
+                actor: 'user',
+                source: 'code_editor',
             });
-            if (workspaceRes.data?.success === true) {
-                setOriginalContent(content);
-                await onSave?.();
-                setSaving(false);
-                return;
-            }
+            setOriginalContent(content);
+        } catch {
             setError(t('Failed to save file'));
-        } catch (err) {
-            if (axios.isAxiosError(err)) {
-                setError(err.response?.data?.error || t('Failed to save file'));
-            } else {
-                setError(t('Failed to save file'));
-            }
         } finally {
             setSaving(false);
         }
-    };
+    }, [content, selectedFile, t, workspaceFileClient]);
 
     const handleSaveRef = useRef(handleSave);
     handleSaveRef.current = handleSave;
@@ -209,6 +194,12 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         : null;
     const overrideBadge = !isVirtual && selectedFileMeta?.projectionSource === 'detached-projection'
         ? t('Custom override')
+        : null;
+    const provenanceBadge = !isVirtual
+        ? describeWorkspaceFileProvenance(selectedFileMeta?.provenance)
+        : null;
+    const diffSummary = !isVirtual && selectedFileMeta?.diff?.changedAt
+        ? `${selectedFileMeta.diff.status} • ${selectedFileMeta.diff.changedAt}`
         : null;
 
     // Auto-save: debounced save after content change (only for editable, non-virtual files)
@@ -328,6 +319,11 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
                             {overrideBadge}
                         </Badge>
                     ) : null}
+                    {provenanceBadge ? (
+                        <Badge variant="secondary" className="text-[10px] shrink-0">
+                            {provenanceBadge}
+                        </Badge>
+                    ) : null}
                     {isReadOnly && (
                         <Badge variant="secondary" className="gap-1 text-xs shrink-0">
                             <Lock className="h-3 w-3" />
@@ -340,6 +336,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {diffSummary && !error ? <span className="text-xs text-muted-foreground">{diffSummary}</span> : null}
                     {readOnlyReason && !error ? <span className="text-xs text-muted-foreground">{readOnlyReason}</span> : null}
                     {error && <span className="text-xs text-destructive">{error}</span>}
                     {!isReadOnly && (

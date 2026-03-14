@@ -15,6 +15,8 @@ class PathRulesTest extends TestCase
         $this->assertTrue(PathRules::isAllowed('src/lib/formatPrice.ts'));
         $this->assertTrue(PathRules::isAllowed('src/theme/tokens.css'));
         $this->assertTrue(PathRules::isAllowed('public/robots.txt'));
+        $this->assertTrue(PathRules::isAllowed('.webu/workspace-manifest.json'));
+        $this->assertTrue(PathRules::isAllowed('.webu/workspace-operation-log.json'));
     }
 
     public function test_synthetic_or_forbidden_workspace_paths_are_rejected(): void

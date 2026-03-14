@@ -4,23 +4,17 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RefreshCw, ChevronRight, ChevronDown, FileText, Folder, FolderOpen } from 'lucide-react';
-import axios from 'axios';
 import { useTranslation } from '@/contexts/LanguageContext';
-
-type ProjectionSource = 'custom' | 'cms-projection' | 'detached-projection' | null;
-
-interface FileEntry {
-    path: string;
-    name: string;
-    size: number;
-    is_dir: boolean;  // API returns snake_case
-    mod_time: string;
-    source_kind?: 'workspace';
-    is_editable?: boolean;
-    is_generated_projection?: boolean;
-    projection_role?: string | null;
-    projection_source?: ProjectionSource;
-}
+import { createWorkspaceFileClient } from '@/builder/workspace/workspaceFileClient';
+import {
+    buildWorkspaceFileSelectionMeta,
+    describeWorkspaceFileProvenance,
+    type ProjectionSource,
+    type WorkspaceFileDiffMetadata,
+    type WorkspaceFileProvenance,
+    type WorkspaceFileRecord,
+    type WorkspaceFileSelectionMeta,
+} from '@/builder/workspace/workspaceFileState';
 
 interface VirtualFileEntry {
     path: string;
@@ -28,14 +22,7 @@ interface VirtualFileEntry {
     sourceLabel?: string | null;
 }
 
-export interface CodeFileSelectionMeta {
-    sourceKind: 'workspace' | 'derived-preview';
-    isEditable: boolean;
-    isGeneratedProjection: boolean;
-    projectionRole?: string | null;
-    projectionSource?: ProjectionSource;
-    sourceLabel?: string | null;
-}
+export type CodeFileSelectionMeta = WorkspaceFileSelectionMeta;
 
 interface FileTreeProps {
     projectId: string;
@@ -62,6 +49,8 @@ interface TreeNodeData {
     projectionRole?: string | null;
     projectionSource?: ProjectionSource;
     sourceLabel?: string | null;
+    provenance?: WorkspaceFileProvenance | null;
+    diff?: WorkspaceFileDiffMetadata | null;
 }
 
 export function FileTree({
@@ -76,7 +65,7 @@ export function FileTree({
     isRegenerating = false,
 }: FileTreeProps) {
     const { t } = useTranslation();
-    const [files, setFiles] = useState<FileEntry[]>([]);
+    const [files, setFiles] = useState<WorkspaceFileRecord[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [expanded, setExpanded] = useState<Set<string>>(new Set(['.', 'src']));
@@ -133,14 +122,12 @@ export function FileTree({
         setLoading(true);
         setError(null);
         try {
-            const workspaceRes = await axios.get<{ success?: boolean; files?: FileEntry[] }>(`/panel/projects/${projectId}/workspace/files`);
-            if (workspaceRes.data?.success === true && Array.isArray(workspaceRes.data.files)) {
-                setFiles(workspaceRes.data.files);
-                setLoading(false);
-                return;
-            }
-            setError(t('Failed to load files'));
+            const client = createWorkspaceFileClient(projectId);
+            const result = await client.listFiles();
+            setFiles(result.files);
+        } catch {
             setFiles([]);
+            setError(t('Failed to load files'));
         } finally {
             setLoading(false);
         }
@@ -163,20 +150,22 @@ export function FileTree({
     };
 
     const workspaceFileCount = useMemo(
-        () => files.filter((f) => !f.is_dir).length,
+        () => files.filter((f) => !f.isDir).length,
         [files]
     );
     const workspaceTree = useMemo(() => buildTree(
         files.map((entry) => ({
             path: entry.path,
             displayPath: entry.path,
-            is_dir: entry.is_dir,
+            is_dir: entry.isDir,
             sourceKind: 'workspace' as const,
-            isEditable: entry.is_editable ?? true,
-            isGeneratedProjection: entry.is_generated_projection ?? false,
-            projectionRole: entry.projection_role ?? null,
-            projectionSource: entry.projection_source ?? null,
-            sourceLabel: t('Workspace'),
+            isEditable: entry.isEditable,
+            isGeneratedProjection: entry.isGeneratedProjection,
+            projectionRole: entry.projectionRole ?? null,
+            projectionSource: entry.projectionSource ?? null,
+            sourceLabel: entry.sourceLabel ?? t('Workspace'),
+            provenance: entry.provenance,
+            diff: entry.diff,
         }))
     ), [files, t]);
     const derivedTree = useMemo(() => buildTree(
@@ -328,6 +317,8 @@ interface TreeBuildEntry {
     projectionRole?: string | null;
     projectionSource?: ProjectionSource;
     sourceLabel?: string | null;
+    provenance?: WorkspaceFileProvenance | null;
+    diff?: WorkspaceFileDiffMetadata | null;
 }
 
 function buildTree(files: TreeBuildEntry[]): TreeNodeData {
@@ -363,6 +354,8 @@ function buildTree(files: TreeBuildEntry[]): TreeNodeData {
                     projectionRole: isLast ? file.projectionRole ?? null : null,
                     projectionSource: isLast ? file.projectionSource ?? null : null,
                     sourceLabel: isLast ? file.sourceLabel ?? null : null,
+                    provenance: isLast ? file.provenance ?? null : null,
+                    diff: isLast ? file.diff ?? null : null,
                 };
                 current.children.push(child);
             }
@@ -442,15 +435,25 @@ function TreeNode({ node, depth, expanded, onToggle, onSelect, selectedFile }: T
             return [{ label: 'Read-only', variant: 'secondary' as const }];
         }
 
+        const provenanceLabel = describeWorkspaceFileProvenance(node.provenance);
         if (node.projectionSource === 'detached-projection') {
-            return [{ label: 'Custom override', variant: 'outline' as const }];
+            return [
+                ...(provenanceLabel ? [{ label: provenanceLabel, variant: 'secondary' as const }] : []),
+                { label: 'Custom override', variant: 'outline' as const },
+            ];
         }
 
         if (node.isGeneratedProjection) {
-            return [{ label: 'CMS projection', variant: 'outline' as const }];
+            return [
+                ...(provenanceLabel ? [{ label: provenanceLabel, variant: 'secondary' as const }] : []),
+                { label: 'CMS projection', variant: 'outline' as const },
+            ];
         }
 
-        return [];
+        return [
+            ...(provenanceLabel ? [{ label: provenanceLabel, variant: 'secondary' as const }] : []),
+            ...(node.provenance?.locked ? [{ label: 'Locked', variant: 'outline' as const }] : []),
+        ];
     })() : [];
 
     return (
@@ -460,14 +463,53 @@ function TreeNode({ node, depth, expanded, onToggle, onSelect, selectedFile }: T
                     if (node.isDir) {
                         onToggle(node.path);
                     } else {
-                        onSelect(node.path, {
-                            sourceKind: node.sourceKind,
-                            isEditable: node.isEditable ?? (node.sourceKind === 'workspace'),
+                        if (node.sourceKind === 'derived-preview') {
+                            onSelect(node.path, {
+                                sourceKind: 'derived-preview',
+                                isEditable: false,
+                                isGeneratedProjection: false,
+                                projectionRole: node.projectionRole ?? null,
+                                projectionSource: node.projectionSource ?? null,
+                                sourceLabel: node.sourceLabel ?? null,
+                                provenance: null,
+                                diff: null,
+                            });
+                            return;
+                        }
+
+                        onSelect(node.path, buildWorkspaceFileSelectionMeta({
+                            path: node.path,
+                            name: node.name,
+                            size: 0,
+                            isDir: false,
+                            modTime: '',
+                            sourceKind: 'workspace',
+                            isEditable: node.isEditable ?? true,
                             isGeneratedProjection: node.isGeneratedProjection ?? false,
                             projectionRole: node.projectionRole ?? null,
                             projectionSource: node.projectionSource ?? null,
                             sourceLabel: node.sourceLabel ?? null,
-                        });
+                            provenance: node.provenance ?? {
+                                generatedBy: null,
+                                editState: 'user-edited',
+                                lastEditor: null,
+                                locked: false,
+                                templateOwned: false,
+                                dirty: false,
+                                lastOperationId: null,
+                                lastOperationKind: null,
+                            },
+                            diff: node.diff ?? {
+                                status: 'clean',
+                                operationKind: null,
+                                previousPath: null,
+                                changedAt: null,
+                                checksumBefore: null,
+                                checksumAfter: null,
+                                byteDelta: null,
+                                lineDelta: null,
+                            },
+                        }));
                     }
                 }}
                 className={`flex items-center gap-1.5 py-1 px-2 rounded cursor-pointer text-sm

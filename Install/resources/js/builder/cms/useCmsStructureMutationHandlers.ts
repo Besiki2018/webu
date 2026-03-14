@@ -65,6 +65,7 @@ interface UseCmsStructureMutationHandlersOptions {
     setBuilderSidebarMode: (mode: BuilderSidebarMode) => void;
     setActiveDragId: (value: string | null) => void;
     setBuilderCurrentDropTarget: StateUpdater<DropTarget | null>;
+    onOperationsApplied?: (operations: BuilderUpdateOperation[], nextSectionsDraft: SectionDraft[]) => void;
     t: (key: string) => string;
 }
 
@@ -178,6 +179,7 @@ export function useCmsStructureMutationHandlers({
     setBuilderSidebarMode,
     setActiveDragId,
     setBuilderCurrentDropTarget,
+    onOperationsApplied,
     t,
 }: UseCmsStructureMutationHandlersOptions) {
     const layoutPrimitiveSectionKeys = useMemo<string[]>(
@@ -259,14 +261,22 @@ export function useCmsStructureMutationHandlers({
     }), [formatPropsText, nextSectionLocalId]);
 
     const runStructureOperations = useCallback((operations: BuilderUpdateOperation[]) => (
-        applyBuilderUpdatePipeline({
+        (() => {
+            const result = applyBuilderUpdatePipeline({
             sectionsDraft: sectionsDraftRef.current,
             selectedSectionLocalId,
             selectedBuilderTarget,
         }, operations, {
             createSection: createSectionDraft,
-        })
-    ), [createSectionDraft, sectionsDraftRef, selectedBuilderTarget, selectedSectionLocalId]);
+        });
+
+            if (result.ok && result.changed) {
+                onOperationsApplied?.(operations, result.state.sectionsDraft);
+            }
+
+            return result;
+        })()
+    ), [createSectionDraft, onOperationsApplied, sectionsDraftRef, selectedBuilderTarget, selectedSectionLocalId]);
 
     const addSectionByKey = useCallback((
         sectionKey: string,

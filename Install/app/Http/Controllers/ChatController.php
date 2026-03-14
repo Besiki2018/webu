@@ -15,6 +15,7 @@ use App\Services\ChatPatchRollbackService;
 use App\Services\CmsComponentLibraryCatalogService;
 use App\Services\FirebaseService;
 use App\Services\InternalAiService;
+use App\Services\ProjectWorkspace\ProjectWorkspaceService;
 use App\Services\ProjectWorkspace\WorkspaceSectionRegistryService;
 use App\Services\SiteProvisioningService;
 use App\Support\CmsSectionLocalId;
@@ -37,7 +38,8 @@ class ChatController extends Controller
         protected ChatApplyPatchService $chatApplyPatch,
         protected ChatPatchRollbackService $chatPatchRollback,
         protected CmsComponentLibraryCatalogService $catalogService,
-        protected WorkspaceSectionRegistryService $workspaceSectionRegistry
+        protected WorkspaceSectionRegistryService $workspaceSectionRegistry,
+        protected ProjectWorkspaceService $projectWorkspace
     ) {}
 
     /**
@@ -72,9 +74,11 @@ class ChatController extends Controller
 
         // Check if preview exists for this project
         $generationRun = $project->latestGenerationRun;
-        $isManagedGenerationActive = $generationRun?->isActive() ?? false;
+        $generationPayload = $this->buildGenerationPayload($generationRun, $project);
+        $shouldHoldInitialGenerationSurface = $generationPayload !== null
+            && ($generationPayload['ready_for_builder'] ?? false) !== true;
 
-        $previewExists = ! $isManagedGenerationActive && Storage::disk('local')->exists("previews/{$project->id}");
+        $previewExists = ! $shouldHoldInitialGenerationSurface && Storage::disk('local')->exists("previews/{$project->id}");
         $previewUrl = $previewExists ? "/preview/{$project->id}" : null;
         $hasActiveSession = ! empty($project->build_session_id) && ! empty($project->builder_id);
         // Only reconnect if build is currently running (not idle, completed, failed, or cancelled)
@@ -82,7 +86,7 @@ class ChatController extends Controller
 
         $user = request()->user();
         $site = $project->site;
-        if (! $isManagedGenerationActive) {
+        if (! $shouldHoldInitialGenerationSurface) {
             $site = $this->siteProvisioningService->provisionForProject($project);
         }
         // Same catalog as /admin/component-library — Georgian labels, same components
@@ -110,7 +114,7 @@ class ChatController extends Controller
 
             return $carry;
         }, []));
-        $generatedPages = ($site && ! $isManagedGenerationActive)
+        $generatedPages = ($site && ! $shouldHoldInitialGenerationSurface)
             ? $this->resolveGeneratedPageSnapshots($site)
             : [];
         $hasGeneratedPages = count($generatedPages) > 0;
@@ -121,7 +125,7 @@ class ChatController extends Controller
             $templateSlug = 'default';
         }
         $cmsPreviewUrl = null;
-        if ($site && ! $isManagedGenerationActive) {
+        if ($site && ! $shouldHoldInitialGenerationSurface) {
             // live_design=1: use latest app.css and no payload cache so component-library design changes react immediately
             $cmsPreviewUrl = sprintf(
                 '/themes/%s?site=%s&slug=home&locale=%s&draft=1&live_design=1',
@@ -131,7 +135,7 @@ class ChatController extends Controller
             );
         }
         $baseDomain = SystemSetting::get('domain_base_domain', config('app.base_domain', 'example.com'));
-        $modulesPayload = $site && ! $isManagedGenerationActive
+        $modulesPayload = $site && ! $shouldHoldInitialGenerationSurface
             ? $this->moduleRegistry->modules($site, $user)
             : null;
 
@@ -172,7 +176,7 @@ class ChatController extends Controller
                 'build_status' => $project->build_status,
                 'can_reconnect' => $canReconnect,
                 'build_started_at' => $project->build_started_at?->toIso8601String(),
-                'generation' => $this->buildGenerationPayload($generationRun, $project),
+                'generation' => $generationPayload,
                 // Publishing fields
                 'subdomain' => $project->subdomain,
                 'published_title' => $project->published_title,
@@ -348,10 +352,17 @@ class ChatController extends Controller
             return null;
         }
 
+        $workspaceManifest = $this->projectWorkspace->getWorkspaceManifestSummary($project, $run->status);
+
         return [
             'id' => (string) $run->id,
             'status' => $run->status,
             'is_active' => $run->isActive(),
+            'ready_for_builder' => (bool) ($workspaceManifest['ready_for_builder'] ?? false),
+            'workspace_manifest_exists' => (bool) ($workspaceManifest['exists'] ?? false),
+            'workspace_preview_ready' => (bool) data_get($workspaceManifest, 'preview.ready', false),
+            'workspace_preview_phase' => (string) data_get($workspaceManifest, 'preview.phase', 'idle'),
+            'active_generation_run_id' => data_get($workspaceManifest, 'active_generation_run_id'),
             'progress_message' => $run->progress_message,
             'error_message' => $run->error_message,
             'started_at' => $run->started_at?->toIso8601String(),

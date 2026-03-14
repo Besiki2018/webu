@@ -13,10 +13,19 @@ class Media extends Model
     protected $table = 'media';
 
     protected $fillable = [
+        'tenant_id',
+        'project_id',
+        'website_id',
         'site_id',
         'path',
+        'url',
+        'file_name',
         'mime',
+        'mime_type',
         'size',
+        'width',
+        'height',
+        'alt',
         'meta_json',
     ];
 
@@ -24,6 +33,8 @@ class Media extends Model
     {
         return [
             'size' => 'integer',
+            'width' => 'integer',
+            'height' => 'integer',
             'meta_json' => 'array',
         ];
     }
@@ -33,4 +44,3 @@ class Media extends Model
         return $this->belongsTo(Site::class);
     }
 }
-

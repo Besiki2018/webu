@@ -76,6 +76,40 @@ describe('useSessionReconnection', () => {
         });
     });
 
+    it('reconnect after reload: automatically resumes the active generation session on mount', async () => {
+        mockedAxios.get.mockResolvedValueOnce({
+            data: {
+                has_session: true,
+                can_reconnect: true,
+                build_session_id: 'session-789',
+                status: 'running',
+                preview_url: '/preview/789',
+            },
+        });
+
+        const onReconnected = vi.fn();
+        renderHook(() =>
+            useSessionReconnection({
+                projectId,
+                initialSessionId: 'session-789',
+                initialCanReconnect: true,
+                onReconnected,
+            })
+        );
+
+        await waitFor(() => {
+            expect(onReconnected).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    sessionId: 'session-789',
+                    status: 'running',
+                    canReconnect: true,
+                    previewUrl: '/preview/789',
+                })
+            );
+        });
+        expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    });
+
     it('reconnect path: onSessionNotFound called when no active session', async () => {
         mockedAxios.get.mockResolvedValueOnce({
             data: { has_session: false, can_reconnect: false },

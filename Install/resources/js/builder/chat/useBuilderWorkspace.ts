@@ -47,6 +47,8 @@ interface UseBuilderWorkspaceOptions {
     projectId: string;
     viewMode: ChatViewMode;
     setViewMode: Dispatch<SetStateAction<ChatViewMode>>;
+    canOpenInspectMode?: boolean;
+    onInspectBlocked?: () => void;
     seededBuilderLibraryItems: BuilderLibraryItem[];
     activeBuilderCodePage: WorkspaceBuilderCodePage | null;
     builderStructureItems: WorkspaceBuilderStructureItem[];
@@ -83,6 +85,8 @@ export function useBuilderWorkspace({
     projectId,
     viewMode,
     setViewMode,
+    canOpenInspectMode = true,
+    onInspectBlocked,
     seededBuilderLibraryItems,
     activeBuilderCodePage,
     builderStructureItems,
@@ -401,6 +405,12 @@ export function useBuilderWorkspace({
     });
 
     const openVisualBuilder = useCallback(() => {
+        if (!canOpenInspectMode) {
+            setViewMode('preview');
+            onInspectBlocked?.();
+            return;
+        }
+
         setIsSidebarVisible(true);
         markBuilderSidebarReady(false);
         markBuilderPreviewReady(false);
@@ -417,8 +427,10 @@ export function useBuilderWorkspace({
         });
     }, [
         clearBuilderSelection,
+        canOpenInspectMode,
         markBuilderPreviewReady,
         markBuilderSidebarReady,
+        onInspectBlocked,
         postBuilderCommand,
         setActiveLibraryItem,
         setBuilderPaneMode,
@@ -461,12 +473,18 @@ export function useBuilderWorkspace({
         }
 
         if (nextMode === 'inspect') {
+            if (!canOpenInspectMode) {
+                setViewMode('preview');
+                onInspectBlocked?.();
+                return;
+            }
+
             openVisualBuilder();
             return;
         }
 
         setViewMode(nextMode);
-    }, [clearBuilderSelection, openVisualBuilder, postBuilderCommand, setActiveLibraryItem, setBuilderPaneMode, setViewMode, viewMode]);
+    }, [canOpenInspectMode, clearBuilderSelection, onInspectBlocked, openVisualBuilder, postBuilderCommand, setActiveLibraryItem, setBuilderPaneMode, setViewMode, viewMode]);
 
     const handleSidebarToggle = useCallback(() => {
         if (viewMode === 'inspect') {

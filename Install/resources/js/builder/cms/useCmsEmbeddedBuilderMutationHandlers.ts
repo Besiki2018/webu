@@ -1,5 +1,6 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { applyBuilderChangeSetPipeline, applyBuilderUpdatePipeline } from '@/builder/state/updatePipeline';
+import type { BuilderUpdateOperation } from '@/builder/state/updatePipeline';
 import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
 import type { BuilderEditableTarget } from '@/builder/editingState';
 import type {
@@ -36,6 +37,7 @@ interface UseCmsEmbeddedBuilderMutationHandlersOptions {
     isFooterSectionKey: (key: unknown) => boolean;
     createBuilderSectionDraft: (input: { sectionType: string; props?: Record<string, unknown>; localId?: string | null }) => SectionDraft | null;
     applyMutationState: (state: BuilderMutationStateLike) => void;
+    onOperationsApplied?: (operations: BuilderUpdateOperation[], nextSectionsDraft: SectionDraft[]) => void;
     addSectionByKey: (
         sectionKey: string,
         source?: 'library' | 'toolbar',
@@ -89,6 +91,7 @@ export function useCmsEmbeddedBuilderMutationHandlers({
     isFooterSectionKey,
     createBuilderSectionDraft,
     applyMutationState,
+    onOperationsApplied,
     addSectionByKey,
     handleAddSectionInside,
     handleRemoveSection,
@@ -114,6 +117,12 @@ export function useCmsEmbeddedBuilderMutationHandlers({
         if (result.ok && result.changed) {
             sectionsDraftRef.current = result.state.sectionsDraft;
             applyMutationState(result.state);
+            onOperationsApplied?.(
+                Array.isArray((payload.changeSet as { operations?: unknown } | null)?.operations)
+                    ? ((payload.changeSet as { operations?: BuilderUpdateOperation[] }).operations ?? [])
+                    : [],
+                result.state.sectionsDraft,
+            );
         }
 
         emitEmbeddedBuilderMutationResult(emit, {
@@ -123,7 +132,7 @@ export function useCmsEmbeddedBuilderMutationHandlers({
             changed: result.changed,
             error: result.ok ? null : (result.errors[0]?.message ?? null),
         });
-    }, [applyMutationState, createBuilderSectionDraft, sectionsDraftRef, selectedBuilderTarget, selectedSectionLocalId]);
+    }, [applyMutationState, createBuilderSectionDraft, onOperationsApplied, sectionsDraftRef, selectedBuilderTarget, selectedSectionLocalId]);
 
     const handleEmbeddedBuilderSaveDraft = useCallback((emit: EmitEmbeddedBuilderMessage) => {
         void (async () => {

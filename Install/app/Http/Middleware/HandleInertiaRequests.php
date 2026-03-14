@@ -99,6 +99,14 @@ class HandleInertiaRequests extends Middleware
             'entitlements' => fn () => app(EntitlementService::class)->getForUser($request->user()),
             // Current project workspace module availability (template + plan + global flags).
             'projectWorkspaceModules' => fn () => $this->getProjectWorkspaceModules($request),
+            'featureFlags' => [
+                'webuV2' => [
+                    'codeFirstInitialGeneration' => (bool) config('webu_v2.flags.code_first_initial_generation', true),
+                    'workspaceBackedVisualBuilder' => (bool) config('webu_v2.flags.workspace_backed_visual_builder', true),
+                    'imageToSiteImport' => (bool) config('webu_v2.flags.image_to_site_import', true),
+                    'advancedAiWorkspaceEdits' => (bool) config('webu_v2.flags.advanced_ai_workspace_edits', true),
+                ],
+            ],
             // Unread notification count for badge
             'unreadNotificationCount' => fn () => $request->user()
                 ? UserNotification::where('user_id', $request->user()->id)
@@ -142,6 +150,14 @@ class HandleInertiaRequests extends Middleware
             'userCredits' => null,
             'entitlements' => ['features' => []],
             'projectWorkspaceModules' => null,
+            'featureFlags' => [
+                'webuV2' => [
+                    'codeFirstInitialGeneration' => (bool) config('webu_v2.flags.code_first_initial_generation', true),
+                    'workspaceBackedVisualBuilder' => (bool) config('webu_v2.flags.workspace_backed_visual_builder', true),
+                    'imageToSiteImport' => (bool) config('webu_v2.flags.image_to_site_import', true),
+                    'advancedAiWorkspaceEdits' => (bool) config('webu_v2.flags.advanced_ai_workspace_edits', true),
+                ],
+            ],
             'unreadNotificationCount' => 0,
         ];
     }

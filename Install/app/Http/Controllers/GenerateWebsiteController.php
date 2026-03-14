@@ -11,7 +11,7 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Ultimate AI website generation: CMS-first, single flow.
- * Creates Website + Project + Site + pages/sections and opens the visual builder.
+ * Creates Website + Project + Site + pages/sections and redirects into the code-first chat workspace.
  */
 class GenerateWebsiteController extends Controller
 {
@@ -21,6 +21,12 @@ class GenerateWebsiteController extends Controller
 
     public function __invoke(Request $request): RedirectResponse|SymfonyResponse
     {
+        if (! (bool) config('webu_v2.flags.code_first_initial_generation', true)) {
+            return back()->withErrors([
+                'prompt' => __('Code-first generation is currently disabled. Use the classic project creation flow.'),
+            ]);
+        }
+
         $validated = $request->validate([
             'prompt' => 'required|string|max:2000',
             'language' => 'nullable|string|in:ka,en,both',
@@ -52,12 +58,7 @@ class GenerateWebsiteController extends Controller
 
         $hasActiveGeneration = ProjectGenerationRun::query()
             ->where('user_id', $user->id)
-            ->whereIn('status', [
-                ProjectGenerationRun::STATUS_QUEUED,
-                ProjectGenerationRun::STATUS_PLANNING,
-                ProjectGenerationRun::STATUS_GENERATING,
-                ProjectGenerationRun::STATUS_FINALIZING,
-            ])
+            ->whereIn('status', ProjectGenerationRun::activeStatuses())
             ->exists();
 
         if ($hasActiveGeneration) {
@@ -93,14 +94,13 @@ class GenerateWebsiteController extends Controller
 
         $url = route('chat', [
             'project' => $project,
-            'tab' => 'inspect',
         ]);
         $request->session()->put(self::PENDING_REDIRECT_URL_SESSION_KEY, $url);
         $request->session()->put(self::PENDING_REDIRECT_AT_SESSION_KEY, now()->toIso8601String());
 
         return redirect()->to($url)->with(
             'success',
-            __('Website generation started. The visual builder will open when the project is ready.')
+            __('Website generation started. The workspace will unlock visual editing when the project is ready.')
         );
     }
 }

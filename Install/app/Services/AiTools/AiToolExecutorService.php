@@ -113,7 +113,13 @@ class AiToolExecutorService
             return ['success' => false, 'error' => 'Path not allowed'];
         }
 
-        $this->workspace->writeFile($project, $path, $content);
+        $existing = $this->workspace->readFile($project, $path);
+        $this->workspace->writeFile($project, $path, $content, [
+            'actor' => 'ai',
+            'source' => 'ai_tool_executor',
+            'operation_kind' => $existing === null ? 'create_file' : 'update_file',
+            'preview_refresh_requested' => true,
+        ]);
         $this->scanner->invalidateIndex($project);
 
         return ['success' => true, 'data' => ['path' => $path]];
@@ -133,7 +139,12 @@ class AiToolExecutorService
             return ['success' => false, 'error' => 'Path not allowed'];
         }
 
-        $deleted = $this->workspace->deleteFile($project, $path);
+        $deleted = $this->workspace->deleteFile($project, $path, [
+            'actor' => 'ai',
+            'source' => 'ai_tool_executor',
+            'operation_kind' => 'delete_file',
+            'preview_refresh_requested' => true,
+        ]);
         if (! $deleted) {
             return ['success' => false, 'error' => 'File not found or could not delete'];
         }

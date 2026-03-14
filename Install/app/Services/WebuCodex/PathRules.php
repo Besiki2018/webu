@@ -8,6 +8,12 @@ namespace App\Services\WebuCodex;
  */
 class PathRules
 {
+    /** Explicitly allowed metadata files required by the workspace-backed builder runtime. */
+    public const ALLOWED_EXACT_PATHS = [
+        '.webu/workspace-manifest.json',
+        '.webu/workspace-operation-log.json',
+    ];
+
     /** Allowed path prefixes (relative to workspace root). Only these dirs may be read/written by AI. */
     public const ALLOWED_PREFIXES = [
         'src',
@@ -46,6 +52,10 @@ class PathRules
         $path = self::normalizePath($relativePath);
         if ($path === '') {
             return false;
+        }
+
+        if (in_array($path, self::ALLOWED_EXACT_PATHS, true)) {
+            return true;
         }
 
         foreach (self::FORBIDDEN_SEGMENTS as $segment) {

@@ -36,12 +36,13 @@ test.describe('Generate website flow', () => {
     await expect(page.getByRole('textbox').first()).toBeVisible({ timeout: 10000 });
   });
 
-  test('Create redirects directly to inspect builder route', async ({ page }) => {
+  test('Create redirects to the chat workspace before inspect mode is unlocked', async ({ page }) => {
     await openCreatePage(page);
     await fillCreatePrompt(page, `Coffee shop landing ${Date.now()}`);
     await clickGenerate(page);
 
-    await expect(page).toHaveURL(/\/project\/[^/?]+\?tab=inspect/, { timeout: 35000 });
+    await expect(page).toHaveURL(/\/project\/[^/?]+(?:\?.*)?$/, { timeout: 35000 });
+    expect(page.url()).not.toContain('tab=inspect');
   });
 
   test('Preview stays unmounted while generation overlay is visible', async ({ page }) => {
@@ -49,7 +50,8 @@ test.describe('Generate website flow', () => {
     await fillCreatePrompt(page, `Pet store landing ${Date.now()}`);
     await clickGenerate(page);
 
-    await expect(page).toHaveURL(/\/project\/[^/?]+\?tab=inspect/, { timeout: 35000 });
+    await expect(page).toHaveURL(/\/project\/[^/?]+(?:\?.*)?$/, { timeout: 35000 });
+    expect(page.url()).not.toContain('tab=inspect');
 
     const generationOverlay = page.locator('[aria-label="Generating your website..."]').first();
     const previewFrame = page.locator('iframe[src*="/themes/"][src*="draft=1"]').first();

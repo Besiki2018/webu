@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { toast } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -32,6 +32,7 @@ import { LogOut, AlertCircle } from 'lucide-react';
 import { route } from 'ziggy-js';
 import { DemoResetNotice } from '@/components/DemoResetNotice';
 import axios from 'axios';
+import { resolveWebuV2FeatureFlags } from '@/lib/webuV2FeatureFlags';
 
 const CREATE_PENDING_REDIRECT_STORAGE_KEY = 'webu-create-pending-redirect';
 
@@ -50,12 +51,17 @@ export default function Create({
     const [suggestions, setSuggestions] = useState(() => filterCreatePromptExamples(initialSuggestions));
     const [typingPrompts, setTypingPrompts] = useState(() => filterCreatePromptExamples(initialTypingPrompts));
     const [isLoadingAi, setIsLoadingAi] = useState(true);
-    const { errors, broadcastConfig, userCredits, unreadNotificationCount } = usePage<PageProps & {
+    const pageProps = usePage<PageProps & {
         errors?: { prompt?: string };
         broadcastConfig: BroadcastConfig | null;
         userCredits: UserCredits | null;
         unreadNotificationCount: number;
     }>().props;
+    const { errors, broadcastConfig, userCredits, unreadNotificationCount } = pageProps;
+    const webuV2Flags = useMemo(
+        () => resolveWebuV2FeatureFlags(pageProps),
+        [pageProps.featureFlags],
+    );
     const { isNavigating, destinationUrl } = usePageTransition();
 
     // Notification state
@@ -279,7 +285,7 @@ export default function Create({
                                 <div className="create-chat-shell mt-8 w-full max-w-[56rem]">
                                     <PromptInput
                                         onSubmit={handlePromptSubmit}
-                                        onQuickGenerate={canCreateProject ? handleQuickGenerate : undefined}
+                                        onQuickGenerate={canCreateProject && webuV2Flags.codeFirstInitialGeneration ? handleQuickGenerate : undefined}
                                         disabled={!canCreateProject}
                                         suggestions={suggestions}
                                         typingPrompts={typingPrompts}

@@ -7,6 +7,7 @@ use App\Cms\Contracts\CmsRepositoryContract;
 use App\Models\Page;
 use App\Models\PageRevision;
 use App\Models\Project;
+use App\Models\ProjectGenerationRun;
 use App\Models\Site;
 use App\Services\WebuCodex\PathRules;
 use Illuminate\Support\Facades\File;
@@ -30,8 +31,29 @@ use Illuminate\Support\Facades\Log;
 class ProjectWorkspaceService
 {
     private const CMS_AUTHORITY_FILE = '.webu/cms-authority.json';
+    private const PAGE_BINDING_ROOT_KEY = 'webu_cms_binding';
     private const WORKSPACE_PROJECTION_FILE = '.webu/workspace-projection.json';
+    private const WORKSPACE_MANIFEST_FILE = '.webu/workspace-manifest.json';
+    private const WORKSPACE_OPERATION_LOG_FILE = '.webu/workspace-operation-log.json';
+    private const WORKSPACE_OPERATION_LOG_LIMIT = 250;
     private const GENERATED_PROJECTION_MARKER = '@webu-generated-projection';
+    private const PROTECTED_WORKSPACE_FILES = [
+        'vite.config.ts',
+        'tsconfig.json',
+        'package.json',
+        'package-lock.json',
+        'components.json',
+        'tailwind.config.ts',
+        'tailwind.config.js',
+        'postcss.config.js',
+        'postcss.config.cjs',
+        'index.html',
+        'src/main.tsx',
+        'src/index.css',
+        'template.json',
+        self::WORKSPACE_MANIFEST_FILE,
+        self::WORKSPACE_OPERATION_LOG_FILE,
+    ];
 
     /** Section type (CMS) → React component name for generated code. */
     private const SECTION_TYPE_TO_COMPONENT = [
@@ -133,6 +155,10 @@ class ProjectWorkspaceService
             $hasSectionFiles = $this->hasWorkspaceSectionFiles($root);
         }
 
+        if ($site !== null && $hasPageFiles && ! $this->workspaceManifestExists($project)) {
+            $this->syncWorkspaceManifestFromProjection($project);
+        }
+
         return [
             'root' => $root,
             'scaffold_seeded' => $scaffoldSeeded,
@@ -229,6 +255,9 @@ class ProjectWorkspaceService
             $resolvedPayload = $this->localizedPayload->resolve($content, $site->locale, $site->locale);
             $resolvedContent = is_array($resolvedPayload['content'] ?? null) ? $resolvedPayload['content'] : [];
             $sections = is_array($resolvedContent['sections'] ?? null) ? $resolvedContent['sections'] : [];
+            $pageBinding = is_array($resolvedContent[self::PAGE_BINDING_ROOT_KEY] ?? null)
+                ? $resolvedContent[self::PAGE_BINDING_ROOT_KEY]
+                : [];
 
             $slug = (string) $page->slug;
             if ($slug === '') {
@@ -240,7 +269,7 @@ class ProjectWorkspaceService
             File::ensureDirectoryExists($pagePath, 0775, true);
 
             $sectionDetails = $this->mapSectionsForPage($sections);
-            $pageProjection = $this->buildPageProjectionEntry($page, $slug, $sectionDetails);
+            $pageProjection = $this->buildPageProjectionEntry($page, $slug, $sectionDetails, $pageBinding);
             $pageProjectionEntries[] = $pageProjection;
             $usedComponentProjectionMap = $this->mergeUsedComponentProjectionMap($usedComponentProjectionMap, $slug, $sectionDetails);
 
@@ -312,13 +341,129 @@ class ProjectWorkspaceService
      * Initialize full project codebase: workspace + template + CMS-to-code.
      * Call when project/site is ready for AI-editable code.
      */
-    public function initializeProjectCodebase(Project $project): string
+    public function initializeProjectCodebase(Project $project, array $context = []): string
     {
         $this->ensureWorkspaceRoot($project);
         $this->seedTemplate($project, false);
         $this->generateFromCms($project);
+        $this->syncWorkspaceManifestFromProjection($project, [
+            'active_generation_run_id' => isset($context['active_generation_run_id']) && is_string($context['active_generation_run_id'])
+                ? trim((string) $context['active_generation_run_id'])
+                : null,
+            'phase' => isset($context['phase']) && is_string($context['phase'])
+                ? trim((string) $context['phase'])
+                : ProjectGenerationRun::STATUS_WRITING_FILES,
+            'preview_ready' => false,
+            'preview_url' => null,
+            'error_message' => null,
+        ]);
 
         return storage_path('workspaces/'.(string) $project->id);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function readWorkspaceManifest(Project $project): array
+    {
+        return $this->readWorkspaceManifestDocument($project);
+    }
+
+    /**
+     * @return array{
+     *     exists: bool,
+     *     ready_for_builder: bool,
+     *     active_generation_run_id: string|null,
+     *     generated_page_count: int,
+     *     updated_at: string|null,
+     *     preview: array{
+     *         ready: bool,
+     *         phase: string,
+     *         preview_url: string|null,
+     *         built_at: string|null,
+     *         error_message: string|null
+     *     }
+     * }
+     */
+    public function getWorkspaceManifestSummary(Project $project, ?string $generationStatus = null): array
+    {
+        $exists = $this->workspaceManifestExists($project);
+        $manifest = $this->readWorkspaceManifestDocument($project);
+        $preview = is_array($manifest['preview'] ?? null) ? $manifest['preview'] : $this->defaultWorkspaceManifestPreview();
+        $phase = $this->normalizeWorkspacePreviewPhase(is_string($preview['phase'] ?? null) ? (string) $preview['phase'] : null);
+        $isLegacyReady = in_array(trim(strtolower((string) $generationStatus)), ['completed', 'complete'], true);
+        $readyForBuilder = $exists
+            ? ((bool) ($preview['ready'] ?? false) && $phase === ProjectGenerationRun::STATUS_READY)
+            : $isLegacyReady;
+
+        return [
+            'exists' => $exists,
+            'ready_for_builder' => $readyForBuilder,
+            'active_generation_run_id' => is_string($manifest['activeGenerationRunId'] ?? null)
+                ? (string) $manifest['activeGenerationRunId']
+                : null,
+            'generated_page_count' => count(is_array($manifest['generatedPages'] ?? null) ? $manifest['generatedPages'] : []),
+            'updated_at' => is_string($manifest['updatedAt'] ?? null) ? (string) $manifest['updatedAt'] : null,
+            'preview' => [
+                'ready' => (bool) ($preview['ready'] ?? false),
+                'phase' => $phase,
+                'preview_url' => is_string($preview['previewUrl'] ?? null) ? (string) $preview['previewUrl'] : null,
+                'built_at' => is_string($preview['builtAt'] ?? null) ? (string) $preview['builtAt'] : null,
+                'error_message' => is_string($preview['errorMessage'] ?? null) ? (string) $preview['errorMessage'] : null,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    public function syncInitialGenerationState(Project $project, array $context = []): array
+    {
+        if (! $this->workspaceManifestExists($project)) {
+            $this->syncWorkspaceManifestFromProjection($project, $context);
+        }
+
+        $manifest = $this->readWorkspaceManifestDocument($project);
+        $timestamp = now()->toIso8601String();
+        $phase = $this->normalizeWorkspacePreviewPhase(is_string($context['phase'] ?? null) ? (string) $context['phase'] : (string) ($manifest['preview']['phase'] ?? 'idle'));
+        $runId = isset($context['active_generation_run_id']) && is_string($context['active_generation_run_id']) && trim((string) $context['active_generation_run_id']) !== ''
+            ? trim((string) $context['active_generation_run_id'])
+            : (is_string($manifest['activeGenerationRunId'] ?? null) ? (string) $manifest['activeGenerationRunId'] : null);
+        $isActivePhase = in_array($phase, [
+            ProjectGenerationRun::STATUS_QUEUED,
+            ProjectGenerationRun::STATUS_PLANNING,
+            ProjectGenerationRun::STATUS_GENERATING,
+            ProjectGenerationRun::STATUS_FINALIZING,
+            ProjectGenerationRun::STATUS_SCAFFOLDING,
+            ProjectGenerationRun::STATUS_WRITING_FILES,
+            ProjectGenerationRun::STATUS_BUILDING_PREVIEW,
+        ], true);
+
+        $manifest['schemaVersion'] = 1;
+        $manifest['projectId'] = (string) $project->id;
+        $manifest['rootDir'] = $this->ensureWorkspaceRoot($project);
+        $manifest['manifestPath'] = self::WORKSPACE_MANIFEST_FILE;
+        $manifest['activeGenerationRunId'] = $isActivePhase ? $runId : null;
+        $manifest['preview'] = is_array($manifest['preview'] ?? null) ? $manifest['preview'] : $this->defaultWorkspaceManifestPreview();
+        $manifest['preview']['phase'] = $phase;
+        $manifest['preview']['ready'] = $phase === ProjectGenerationRun::STATUS_READY;
+        $manifest['preview']['previewUrl'] = isset($context['preview_url']) && is_string($context['preview_url']) && trim((string) $context['preview_url']) !== ''
+            ? trim((string) $context['preview_url'])
+            : (is_string($manifest['preview']['previewUrl'] ?? null) ? (string) $manifest['preview']['previewUrl'] : null);
+        $manifest['preview']['builtAt'] = $phase === ProjectGenerationRun::STATUS_READY
+            ? (is_string($manifest['preview']['builtAt'] ?? null) && trim((string) $manifest['preview']['builtAt']) !== ''
+                ? (string) $manifest['preview']['builtAt']
+                : $timestamp)
+            : null;
+        $manifest['preview']['errorMessage'] = $phase === ProjectGenerationRun::STATUS_FAILED
+            ? (is_string($context['error_message'] ?? null) ? trim((string) $context['error_message']) : null)
+            : null;
+        $manifest['updatedAt'] = $timestamp;
+
+        $this->writeWorkspaceManifestDocument($project, $manifest);
+
+        return $manifest;
     }
 
     public function invalidateWorkspaceProjection(Project $project): void
@@ -408,19 +553,26 @@ class ProjectWorkspaceService
      * Writing a CMS-managed projection file detaches it from future automatic
      * regeneration by removing the projection metadata banner.
      */
-    public function writeFile(Project $project, string $relativePath, string $content): bool
+    public function writeFile(Project $project, string $relativePath, string $content, array $context = []): bool
     {
-        $root = $this->ensureWorkspaceRoot($project);
-        $this->seedTemplate($project, false);
-        $path = $root.'/'.ltrim(str_replace('..', '', $relativePath), '/');
-        $dir = dirname($path);
-        if (! is_dir($dir)) {
-            File::ensureDirectoryExists($dir, 0775, true);
-        }
-        if ($this->fileContainsProjectionMarker($path) || str_contains($content, self::GENERATED_PROJECTION_MARKER)) {
-            $content = $this->stripProjectionBanner($content);
-        }
-        File::put($path, $content);
+        $normalizedPath = PathRules::normalizePath($relativePath);
+        $actor = is_string($context['actor'] ?? null) ? trim((string) $context['actor']) : 'user';
+        $this->assertWorkspacePathWritable($normalizedPath, $actor);
+        $previousContent = $this->readFile($project, $normalizedPath);
+        $didExist = $previousContent !== null;
+
+        $this->writeWorkspaceFileContents($project, $normalizedPath, $content);
+        $this->recordWorkspaceMutation($project, [
+            'actor' => $context['actor'] ?? 'user',
+            'source' => $context['source'] ?? 'workspace_file_api',
+            'operation_kind' => $context['operation_kind'] ?? ($didExist ? 'update_file' : 'create_file'),
+            'path' => $normalizedPath,
+            'previous_path' => $context['previous_path'] ?? null,
+            'preview_refresh_requested' => $context['preview_refresh_requested'] ?? true,
+            'reason' => $context['reason'] ?? null,
+            'before_content' => $previousContent,
+            'after_content' => $content,
+        ]);
 
         return true;
     }
@@ -452,16 +604,95 @@ class ProjectWorkspaceService
     /**
      * Delete a file in the workspace (for AI deleteFile).
      */
-    public function deleteFile(Project $project, string $relativePath): bool
+    public function deleteFile(Project $project, string $relativePath, array $context = []): bool
     {
-        $root = $this->ensureWorkspaceRoot($project);
-        $path = $root.'/'.ltrim(str_replace('..', '', $relativePath), '/');
-        if (! is_file($path)) {
+        $normalizedPath = PathRules::normalizePath($relativePath);
+        $actor = is_string($context['actor'] ?? null) ? trim((string) $context['actor']) : 'user';
+        $this->assertWorkspacePathWritable($normalizedPath, $actor);
+        $previousContent = $this->readFile($project, $normalizedPath);
+        if ($previousContent === null) {
             return false;
         }
-        File::delete($path);
+
+        $this->deleteWorkspaceFileContents($project, $normalizedPath);
+        $this->recordWorkspaceMutation($project, [
+            'actor' => $context['actor'] ?? 'user',
+            'source' => $context['source'] ?? 'workspace_file_api',
+            'operation_kind' => $context['operation_kind'] ?? 'delete_file',
+            'path' => $normalizedPath,
+            'previous_path' => $context['previous_path'] ?? null,
+            'preview_refresh_requested' => $context['preview_refresh_requested'] ?? true,
+            'reason' => $context['reason'] ?? null,
+            'before_content' => $previousContent,
+            'after_content' => null,
+        ]);
 
         return true;
+    }
+
+    public function moveFile(Project $project, string $fromRelativePath, string $toRelativePath, array $context = []): bool
+    {
+        $fromPath = PathRules::normalizePath($fromRelativePath);
+        $toPath = PathRules::normalizePath($toRelativePath);
+        $actor = is_string($context['actor'] ?? null) ? trim((string) $context['actor']) : 'user';
+        $this->assertWorkspacePathWritable($fromPath, $actor);
+        $this->assertWorkspacePathWritable($toPath, $actor);
+        $content = $this->readFile($project, $fromPath);
+        if ($content === null) {
+            return false;
+        }
+
+        $this->writeWorkspaceFileContents($project, $toPath, $content);
+        $this->deleteWorkspaceFileContents($project, $fromPath);
+        $this->recordWorkspaceMutation($project, [
+            'actor' => $context['actor'] ?? 'user',
+            'source' => $context['source'] ?? 'workspace_file_api',
+            'operation_kind' => $context['operation_kind'] ?? 'move_file',
+            'path' => $toPath,
+            'previous_path' => $fromPath,
+            'preview_refresh_requested' => $context['preview_refresh_requested'] ?? true,
+            'reason' => $context['reason'] ?? null,
+            'before_content' => $content,
+            'after_content' => $content,
+        ]);
+
+        return true;
+    }
+
+    public function recordWorkspaceSyncOperations(Project $project, array $paths, array $context = []): void
+    {
+        $actor = is_string($context['actor'] ?? null) ? trim((string) $context['actor']) : 'visual_builder';
+        $source = is_string($context['source'] ?? null) && trim((string) $context['source']) !== ''
+            ? trim((string) $context['source'])
+            : 'workspace_sync';
+        $operationKind = is_string($context['operation_kind'] ?? null) && trim((string) $context['operation_kind']) !== ''
+            ? trim((string) $context['operation_kind'])
+            : 'apply_patch_set';
+        $reason = is_string($context['reason'] ?? null) && trim((string) $context['reason']) !== ''
+            ? trim((string) $context['reason'])
+            : null;
+        $previewRefreshRequested = (bool) ($context['preview_refresh_requested'] ?? true);
+        $normalizedPaths = array_values(array_unique(array_filter(array_map(static function ($path): string {
+            return is_string($path) ? PathRules::normalizePath($path) : '';
+        }, $paths), static function (string $path): bool {
+            return $path !== '' && PathRules::isAllowed($path);
+        })));
+
+        foreach ($normalizedPaths as $path) {
+            $content = $this->readFile($project, $path);
+            $effectiveOperationKind = $content === null ? 'delete_file' : $operationKind;
+            $this->recordWorkspaceMutation($project, [
+                'actor' => $actor,
+                'source' => $source,
+                'operation_kind' => $effectiveOperationKind,
+                'path' => $path,
+                'previous_path' => null,
+                'preview_refresh_requested' => $previewRefreshRequested,
+                'reason' => $reason,
+                'before_content' => null,
+                'after_content' => $content,
+            ]);
+        }
     }
 
     /**
@@ -518,7 +749,7 @@ class ProjectWorkspaceService
                     'is_dir' => $file->isDir(),
                     'mod_time' => $file->isFile() ? date('c', (int) $file->getMTime()) : '',
                     'source_kind' => 'workspace',
-                    'is_editable' => true,
+                    'is_editable' => ! $this->isProtectedWorkspaceFile($relative),
                     'is_generated_projection' => $isGeneratedProjection,
                     'projection_role' => is_string($projectionMeta['projection_role'] ?? null) ? $projectionMeta['projection_role'] : null,
                     'projection_source' => $projectionSource,
@@ -533,6 +764,879 @@ class ProjectWorkspaceService
         });
 
         return array_values($out);
+    }
+
+    private function isProtectedWorkspaceFile(string $path): bool
+    {
+        return in_array(PathRules::normalizePath($path), self::PROTECTED_WORKSPACE_FILES, true);
+    }
+
+    private function isWorkspaceMetadataFile(string $path): bool
+    {
+        return in_array(PathRules::normalizePath($path), [
+            self::WORKSPACE_MANIFEST_FILE,
+            self::WORKSPACE_OPERATION_LOG_FILE,
+        ], true);
+    }
+
+    private function assertWorkspacePathWritable(string $path, string $actor): void
+    {
+        $normalizedPath = PathRules::normalizePath($path);
+        if (! $this->isProtectedWorkspaceFile($normalizedPath)) {
+            return;
+        }
+
+        if ($this->isWorkspaceMetadataFile($normalizedPath) && in_array($actor, ['visual_builder', 'system'], true)) {
+            return;
+        }
+
+        throw new \RuntimeException(sprintf('Protected workspace file cannot be modified: %s', $normalizedPath));
+    }
+
+    private function writeWorkspaceFileContents(Project $project, string $relativePath, string $content): void
+    {
+        $root = $this->ensureWorkspaceRoot($project);
+        $this->seedTemplate($project, false);
+        $path = $root.'/'.ltrim(str_replace('..', '', $relativePath), '/');
+        $dir = dirname($path);
+        if (! is_dir($dir)) {
+            File::ensureDirectoryExists($dir, 0775, true);
+        }
+        if ($this->fileContainsProjectionMarker($path) || str_contains($content, self::GENERATED_PROJECTION_MARKER)) {
+            $content = $this->stripProjectionBanner($content);
+        }
+        File::put($path, $content);
+    }
+
+    private function deleteWorkspaceFileContents(Project $project, string $relativePath): void
+    {
+        $root = $this->ensureWorkspaceRoot($project);
+        $path = $root.'/'.ltrim(str_replace('..', '', $relativePath), '/');
+        if (is_file($path)) {
+            File::delete($path);
+        }
+    }
+
+    private function workspaceManifestPath(Project $project): string
+    {
+        return $this->ensureWorkspaceRoot($project).'/'.self::WORKSPACE_MANIFEST_FILE;
+    }
+
+    private function workspaceManifestExists(Project $project): bool
+    {
+        return is_file($this->workspaceManifestPath($project));
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    private function syncWorkspaceManifestFromProjection(Project $project, array $context = []): array
+    {
+        $root = $this->ensureWorkspaceRoot($project);
+        $existingManifest = $this->readWorkspaceManifestDocument($project);
+        $projection = $this->readWorkspaceProjection($project);
+        $projectionCatalog = $this->workspaceProjectionFileCatalog($projection);
+        $timestamp = now()->toIso8601String();
+        $activeGenerationRunId = isset($context['active_generation_run_id']) && is_string($context['active_generation_run_id']) && trim((string) $context['active_generation_run_id']) !== ''
+            ? trim((string) $context['active_generation_run_id'])
+            : (is_string($existingManifest['activeGenerationRunId'] ?? null) ? (string) $existingManifest['activeGenerationRunId'] : null);
+        $phase = $this->normalizeWorkspacePreviewPhase(is_string($context['phase'] ?? null) ? (string) $context['phase'] : (string) ($existingManifest['preview']['phase'] ?? 'idle'));
+        $previewReady = (bool) ($context['preview_ready'] ?? ($phase === ProjectGenerationRun::STATUS_READY));
+
+        $manifest = [
+            'schemaVersion' => 1,
+            'projectId' => (string) $project->id,
+            'rootDir' => $root,
+            'manifestPath' => self::WORKSPACE_MANIFEST_FILE,
+            'activeGenerationRunId' => in_array($phase, ProjectGenerationRun::activeStatuses(), true) ? $activeGenerationRunId : null,
+            'generatedPages' => $this->buildWorkspaceManifestGeneratedPages($projection),
+            'fileOwnership' => $this->buildWorkspaceManifestProjectionOwnershipEntries(
+                $project,
+                $projectionCatalog,
+                $projection,
+                $existingManifest,
+                $activeGenerationRunId
+            ),
+            'componentProvenance' => $this->buildWorkspaceManifestComponentProvenanceEntries(
+                $projection,
+                $existingManifest,
+                $activeGenerationRunId
+            ),
+            'preview' => [
+                ...$this->defaultWorkspaceManifestPreview(),
+                ...(is_array($existingManifest['preview'] ?? null) ? $existingManifest['preview'] : []),
+                'ready' => $phase === ProjectGenerationRun::STATUS_READY ? $previewReady : false,
+                'phase' => $phase,
+                'previewUrl' => isset($context['preview_url']) && is_string($context['preview_url']) && trim((string) $context['preview_url']) !== ''
+                    ? trim((string) $context['preview_url'])
+                    : (is_string($existingManifest['preview']['previewUrl'] ?? null) ? (string) $existingManifest['preview']['previewUrl'] : null),
+                'builtAt' => $phase === ProjectGenerationRun::STATUS_READY && $previewReady ? $timestamp : null,
+                'errorMessage' => isset($context['error_message']) && is_string($context['error_message']) && trim((string) $context['error_message']) !== ''
+                    ? trim((string) $context['error_message'])
+                    : null,
+            ],
+            'cmsBinding' => is_array($existingManifest['cmsBinding'] ?? null)
+                ? $existingManifest['cmsBinding']
+                : (is_array($projection['pages'][0]['cms_binding'] ?? null) ? $projection['pages'][0]['cms_binding'] : null),
+            'updatedAt' => $timestamp,
+        ];
+
+        $this->writeWorkspaceManifestDocument($project, $manifest);
+
+        return $manifest;
+    }
+
+    private function normalizeWorkspacePreviewPhase(?string $phase): string
+    {
+        return match (trim(strtolower((string) $phase))) {
+            ProjectGenerationRun::STATUS_QUEUED => ProjectGenerationRun::STATUS_QUEUED,
+            ProjectGenerationRun::STATUS_PLANNING => ProjectGenerationRun::STATUS_PLANNING,
+            ProjectGenerationRun::STATUS_GENERATING,
+            ProjectGenerationRun::STATUS_SCAFFOLDING => ProjectGenerationRun::STATUS_SCAFFOLDING,
+            ProjectGenerationRun::STATUS_FINALIZING,
+            ProjectGenerationRun::STATUS_BUILDING_PREVIEW => ProjectGenerationRun::STATUS_BUILDING_PREVIEW,
+            ProjectGenerationRun::STATUS_WRITING_FILES => ProjectGenerationRun::STATUS_WRITING_FILES,
+            ProjectGenerationRun::STATUS_READY,
+            ProjectGenerationRun::STATUS_COMPLETED => ProjectGenerationRun::STATUS_READY,
+            ProjectGenerationRun::STATUS_FAILED => ProjectGenerationRun::STATUS_FAILED,
+            default => 'idle',
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $projection
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildWorkspaceManifestGeneratedPages(array $projection): array
+    {
+        $pages = is_array($projection['pages'] ?? null) ? $projection['pages'] : [];
+
+        return array_values(array_filter(array_map(static function ($page): ?array {
+            if (! is_array($page)) {
+                return null;
+            }
+
+            $slug = is_string($page['slug'] ?? null) ? trim((string) $page['slug']) : '';
+            if ($slug === '') {
+                return null;
+            }
+
+            $sections = is_array($page['sections'] ?? null) ? $page['sections'] : [];
+
+            return [
+                'pageId' => isset($page['page_id']) ? (string) $page['page_id'] : '',
+                'slug' => $slug,
+                'title' => is_string($page['title'] ?? null) ? (string) $page['title'] : $slug,
+                'routePath' => $slug === 'home' ? '/' : '/'.$slug,
+                'entryFilePath' => is_string($page['path'] ?? null) ? (string) $page['path'] : null,
+                'layoutId' => 'site-layout',
+                'sectionIds' => array_values(array_filter(array_map(static fn ($section): string => (
+                    is_array($section) && is_string($section['local_id'] ?? null)
+                        ? trim((string) $section['local_id'])
+                        : ''
+                ), $sections))),
+                'cmsBacked' => isset($page['cms_backed']) ? (bool) $page['cms_backed'] : true,
+                'contentOwner' => is_string($page['content_owner'] ?? null) ? (string) $page['content_owner'] : 'mixed',
+                'cmsFieldPaths' => is_array($page['content_field_paths'] ?? null) ? $page['content_field_paths'] : [],
+                'visualFieldPaths' => is_array($page['visual_field_paths'] ?? null) ? $page['visual_field_paths'] : [],
+                'codeFieldPaths' => is_array($page['code_field_paths'] ?? null) ? $page['code_field_paths'] : [],
+                'syncDirection' => is_string($page['sync_direction'] ?? null) ? (string) $page['sync_direction'] : 'cms_to_workspace',
+                'conflictStatus' => is_string($page['conflict_status'] ?? null) ? (string) $page['conflict_status'] : 'clean',
+            ];
+        }, $pages)));
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $projectionCatalog
+     * @param  array<string, mixed>  $projection
+     * @param  array<string, mixed>  $existingManifest
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildWorkspaceManifestProjectionOwnershipEntries(
+        Project $project,
+        array $projectionCatalog,
+        array $projection,
+        array $existingManifest,
+        ?string $activeGenerationRunId
+    ): array {
+        $generatedPages = $this->buildWorkspaceManifestGeneratedPages($projection);
+        $pageIdBySlug = [];
+        foreach ($generatedPages as $page) {
+            $slug = is_string($page['slug'] ?? null) ? trim((string) $page['slug']) : '';
+            if ($slug !== '') {
+                $pageIdBySlug[$slug] = isset($page['pageId']) ? (string) $page['pageId'] : null;
+            }
+        }
+
+        $existingEntries = [];
+        foreach (is_array($existingManifest['fileOwnership'] ?? null) ? $existingManifest['fileOwnership'] : [] as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $path = is_string($entry['path'] ?? null) ? trim((string) $entry['path']) : '';
+            if ($path !== '') {
+                $existingEntries[$path] = $entry;
+            }
+        }
+
+        $entries = [];
+        foreach ($projectionCatalog as $path => $meta) {
+            if (! is_string($path) || trim($path) === '' || ! is_array($meta)) {
+                continue;
+            }
+
+            $normalizedPath = PathRules::normalizePath($path);
+            $existing = is_array($existingEntries[$normalizedPath] ?? null) ? $existingEntries[$normalizedPath] : [];
+            $pageSlugs = array_values(array_filter(array_map(static fn ($slug): string => (
+                is_string($slug) ? trim($slug) : ''
+            ), is_array($meta['pages'] ?? null) ? $meta['pages'] : [])));
+            $pageIds = array_values(array_filter(array_map(
+                static fn (string $slug): ?string => isset($pageIdBySlug[$slug]) && is_string($pageIdBySlug[$slug]) && $pageIdBySlug[$slug] !== ''
+                    ? $pageIdBySlug[$slug]
+                    : null,
+                $pageSlugs
+            )));
+            $originatingPageSlug = is_string($meta['page_slug'] ?? null)
+                ? trim((string) $meta['page_slug'])
+                : ($pageSlugs[0] ?? null);
+            $originatingPageId = $originatingPageSlug !== null && isset($pageIdBySlug[$originatingPageSlug])
+                ? $pageIdBySlug[$originatingPageSlug]
+                : null;
+            $componentName = is_string($meta['component_name'] ?? null) ? trim((string) $meta['component_name']) : '';
+            $componentKeys = array_values(array_filter(array_map(static fn ($value): string => (
+                is_string($value) ? trim($value) : ''
+            ), is_array($meta['section_types'] ?? null) ? $meta['section_types'] : [])));
+            if ($componentName !== '') {
+                $componentKeys[] = $componentName;
+            }
+
+            $entries[] = [
+                'path' => $normalizedPath,
+                'kind' => $this->inferWorkspaceFileKind($normalizedPath),
+                'ownerType' => $this->inferWorkspaceOwnerType($normalizedPath),
+                'ownerId' => $this->resolveWorkspaceManifestOwnerId($normalizedPath, $meta, $originatingPageId, $originatingPageSlug),
+                'generatedBy' => 'ai',
+                'editState' => is_string($existing['editState'] ?? null) ? (string) $existing['editState'] : 'ai-generated',
+                'pageIds' => $pageIds,
+                'componentIds' => $componentName !== '' ? [$componentName] : [],
+                'activeGenerationRunId' => $activeGenerationRunId,
+                'checksum' => $this->workspaceFileChecksum($project, $normalizedPath),
+                'sectionLocalIds' => is_array($existing['sectionLocalIds'] ?? null) ? $existing['sectionLocalIds'] : [],
+                'componentKeys' => array_values(array_unique(array_filter([
+                    ...(is_array($existing['componentKeys'] ?? null) ? $existing['componentKeys'] : []),
+                    ...$componentKeys,
+                ]))),
+                'originatingPageId' => $originatingPageId,
+                'originatingPageSlug' => $originatingPageSlug,
+                'lastEditor' => is_string($existing['lastEditor'] ?? null) ? (string) $existing['lastEditor'] : 'ai',
+                'dirty' => false,
+                'updatedAt' => is_string($existing['updatedAt'] ?? null) ? (string) $existing['updatedAt'] : null,
+                'locked' => isset($existing['locked']) ? (bool) $existing['locked'] : $this->isLockedWorkspaceFile($normalizedPath),
+                'templateOwned' => isset($existing['templateOwned'])
+                    ? (bool) $existing['templateOwned']
+                    : $this->isTemplateOwnedWorkspaceFile($normalizedPath, $meta),
+                'lastOperationId' => is_string($existing['lastOperationId'] ?? null) ? (string) $existing['lastOperationId'] : null,
+                'lastOperationKind' => is_string($existing['lastOperationKind'] ?? null) ? (string) $existing['lastOperationKind'] : null,
+                'cmsBacked' => isset($meta['cms_backed']) ? (bool) $meta['cms_backed'] : (bool) ($existing['cmsBacked'] ?? true),
+                'contentOwner' => is_string($meta['content_owner'] ?? null)
+                    ? (string) $meta['content_owner']
+                    : (is_string($existing['contentOwner'] ?? null) ? (string) $existing['contentOwner'] : 'mixed'),
+                'cmsFieldPaths' => array_values(array_unique(array_filter([
+                    ...((is_array($existing['cmsFieldPaths'] ?? null) ? $existing['cmsFieldPaths'] : [])),
+                    ...(is_array($meta['content_field_paths'] ?? null) ? $meta['content_field_paths'] : []),
+                ]))),
+                'visualFieldPaths' => array_values(array_unique(array_filter([
+                    ...((is_array($existing['visualFieldPaths'] ?? null) ? $existing['visualFieldPaths'] : [])),
+                    ...(is_array($meta['visual_field_paths'] ?? null) ? $meta['visual_field_paths'] : []),
+                ]))),
+                'codeFieldPaths' => array_values(array_unique(array_filter([
+                    ...((is_array($existing['codeFieldPaths'] ?? null) ? $existing['codeFieldPaths'] : [])),
+                    ...(is_array($meta['code_field_paths'] ?? null) ? $meta['code_field_paths'] : []),
+                ]))),
+                'syncDirection' => is_string($meta['sync_direction'] ?? null)
+                    ? (string) $meta['sync_direction']
+                    : (is_string($existing['syncDirection'] ?? null) ? (string) $existing['syncDirection'] : 'cms_to_workspace'),
+                'conflictStatus' => is_string($meta['conflict_status'] ?? null)
+                    ? (string) $meta['conflict_status']
+                    : (is_string($existing['conflictStatus'] ?? null) ? (string) $existing['conflictStatus'] : 'clean'),
+            ];
+        }
+
+        usort($entries, static fn (array $left, array $right): int => strcmp((string) ($left['path'] ?? ''), (string) ($right['path'] ?? '')));
+
+        return array_values($entries);
+    }
+
+    /**
+     * @param  array<string, mixed>  $projection
+     * @param  array<string, mixed>  $existingManifest
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildWorkspaceManifestComponentProvenanceEntries(
+        array $projection,
+        array $existingManifest,
+        ?string $activeGenerationRunId
+    ): array {
+        $pageIdBySlug = [];
+        foreach ($this->buildWorkspaceManifestGeneratedPages($projection) as $page) {
+            $slug = is_string($page['slug'] ?? null) ? trim((string) $page['slug']) : '';
+            if ($slug !== '') {
+                $pageIdBySlug[$slug] = isset($page['pageId']) ? (string) $page['pageId'] : null;
+            }
+        }
+
+        $existingEntries = [];
+        foreach (is_array($existingManifest['componentProvenance'] ?? null) ? $existingManifest['componentProvenance'] : [] as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $componentId = is_string($entry['componentId'] ?? null) ? trim((string) $entry['componentId']) : '';
+            if ($componentId !== '') {
+                $existingEntries[$componentId] = $entry;
+            }
+        }
+
+        $components = [
+            ...(is_array($projection['components'] ?? null) ? $projection['components'] : []),
+            ...(is_array($projection['layouts'] ?? null) ? $projection['layouts'] : []),
+        ];
+
+        $entries = [];
+        foreach ($components as $component) {
+            if (! is_array($component)) {
+                continue;
+            }
+
+            $componentName = is_string($component['component_name'] ?? null) ? trim((string) $component['component_name']) : '';
+            $path = is_string($component['path'] ?? null) ? trim((string) $component['path']) : '';
+            if ($componentName === '' && $path === '') {
+                continue;
+            }
+
+            $componentId = $componentName !== '' ? $componentName : $path;
+            $existing = is_array($existingEntries[$componentId] ?? null) ? $existingEntries[$componentId] : [];
+            $pageSlug = is_array($component['pages'] ?? null) && is_string($component['pages'][0] ?? null)
+                ? trim((string) $component['pages'][0])
+                : null;
+            $registryKey = is_array($component['types'] ?? null) && is_string($component['types'][0] ?? null)
+                ? trim((string) $component['types'][0])
+                : ($componentName !== '' ? $componentName : null);
+
+            $entries[] = [
+                'componentId' => $componentId,
+                'registryKey' => $registryKey !== '' ? $registryKey : null,
+                'pageId' => $pageSlug !== null && isset($pageIdBySlug[$pageSlug]) ? $pageIdBySlug[$pageSlug] : null,
+                'sectionId' => is_array($component['local_ids'] ?? null) && is_string($component['local_ids'][0] ?? null)
+                    ? trim((string) $component['local_ids'][0])
+                    : null,
+                'source' => 'ai',
+                'filePaths' => $path !== '' ? [$path] : (is_array($existing['filePaths'] ?? null) ? $existing['filePaths'] : []),
+                'runId' => $activeGenerationRunId,
+                'lastEditor' => is_string($existing['lastEditor'] ?? null) ? (string) $existing['lastEditor'] : 'ai',
+            ];
+        }
+
+        usort($entries, static fn (array $left, array $right): int => strcmp((string) ($left['componentId'] ?? ''), (string) ($right['componentId'] ?? '')));
+
+        return array_values($entries);
+    }
+
+    /**
+     * @param  array<string, mixed>  $projectionMeta
+     */
+    private function resolveWorkspaceManifestOwnerId(string $path, array $projectionMeta, ?string $originatingPageId, ?string $originatingPageSlug): ?string
+    {
+        if ($this->inferWorkspaceOwnerType($path) === 'page') {
+            return $originatingPageId ?? $originatingPageSlug ?? $path;
+        }
+
+        if ($this->inferWorkspaceOwnerType($path) === 'component' || $this->inferWorkspaceOwnerType($path) === 'layout') {
+            $componentName = is_string($projectionMeta['component_name'] ?? null) ? trim((string) $projectionMeta['component_name']) : '';
+
+            return $componentName !== '' ? $componentName : $path;
+        }
+
+        return $path;
+    }
+
+    private function workspaceFileChecksum(Project $project, string $path): ?string
+    {
+        $content = $this->readFile($project, $path);
+
+        return is_string($content) ? sha1($content) : null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function readWorkspaceManifestDocument(Project $project): array
+    {
+        $root = $this->ensureWorkspaceRoot($project);
+        $path = $root.'/'.self::WORKSPACE_MANIFEST_FILE;
+        if (! is_file($path)) {
+            return $this->defaultWorkspaceManifestDocument($project, $root);
+        }
+
+        $decoded = json_decode((string) File::get($path), true);
+        if (! is_array($decoded)) {
+            return $this->defaultWorkspaceManifestDocument($project, $root);
+        }
+
+        $decoded['schemaVersion'] = 1;
+        $decoded['projectId'] = (string) ($decoded['projectId'] ?? $project->id);
+        $decoded['rootDir'] = (string) ($decoded['rootDir'] ?? $root);
+        $decoded['manifestPath'] = (string) ($decoded['manifestPath'] ?? self::WORKSPACE_MANIFEST_FILE);
+        $decoded['generatedPages'] = is_array($decoded['generatedPages'] ?? null) ? $decoded['generatedPages'] : [];
+        $decoded['fileOwnership'] = is_array($decoded['fileOwnership'] ?? null) ? $decoded['fileOwnership'] : [];
+        $decoded['componentProvenance'] = is_array($decoded['componentProvenance'] ?? null) ? $decoded['componentProvenance'] : [];
+        $decoded['preview'] = is_array($decoded['preview'] ?? null) ? $decoded['preview'] : $this->defaultWorkspaceManifestPreview();
+        $decoded['cmsBinding'] = is_array($decoded['cmsBinding'] ?? null) ? $decoded['cmsBinding'] : null;
+        $decoded['updatedAt'] = is_string($decoded['updatedAt'] ?? null) ? $decoded['updatedAt'] : null;
+
+        return $decoded;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function defaultWorkspaceManifestDocument(Project $project, string $root): array
+    {
+        return [
+            'schemaVersion' => 1,
+            'projectId' => (string) $project->id,
+            'rootDir' => $root,
+            'manifestPath' => self::WORKSPACE_MANIFEST_FILE,
+            'activeGenerationRunId' => null,
+            'generatedPages' => [],
+            'fileOwnership' => [],
+            'componentProvenance' => [],
+            'preview' => $this->defaultWorkspaceManifestPreview(),
+            'cmsBinding' => null,
+            'updatedAt' => null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function defaultWorkspaceManifestPreview(): array
+    {
+        return [
+            'ready' => false,
+            'phase' => 'idle',
+            'buildId' => null,
+            'previewUrl' => null,
+            'artifactHash' => null,
+            'workspaceHash' => null,
+            'builtAt' => null,
+            'errorMessage' => null,
+        ];
+    }
+
+    private function writeWorkspaceManifestDocument(Project $project, array $manifest): void
+    {
+        $root = $this->ensureWorkspaceRoot($project);
+        $path = $root.'/'.self::WORKSPACE_MANIFEST_FILE;
+        File::ensureDirectoryExists(dirname($path), 0775, true);
+        File::put($path, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function readWorkspaceOperationLogDocument(Project $project): array
+    {
+        $root = $this->ensureWorkspaceRoot($project);
+        $path = $root.'/'.self::WORKSPACE_OPERATION_LOG_FILE;
+        if (! is_file($path)) {
+            return [
+                'schemaVersion' => 1,
+                'projectId' => (string) $project->id,
+                'entries' => [],
+                'updatedAt' => null,
+            ];
+        }
+
+        $decoded = json_decode((string) File::get($path), true);
+        if (! is_array($decoded)) {
+            return [
+                'schemaVersion' => 1,
+                'projectId' => (string) $project->id,
+                'entries' => [],
+                'updatedAt' => null,
+            ];
+        }
+
+        return [
+            'schemaVersion' => 1,
+            'projectId' => (string) ($decoded['projectId'] ?? $project->id),
+            'entries' => is_array($decoded['entries'] ?? null) ? $decoded['entries'] : [],
+            'updatedAt' => is_string($decoded['updatedAt'] ?? null) ? $decoded['updatedAt'] : null,
+        ];
+    }
+
+    private function writeWorkspaceOperationLogDocument(Project $project, array $log): void
+    {
+        $root = $this->ensureWorkspaceRoot($project);
+        $path = $root.'/'.self::WORKSPACE_OPERATION_LOG_FILE;
+        File::ensureDirectoryExists(dirname($path), 0775, true);
+        File::put($path, json_encode($log, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function recordWorkspaceMutation(Project $project, array $context): void
+    {
+        $root = $this->ensureWorkspaceRoot($project);
+        $manifest = $this->readWorkspaceManifestDocument($project);
+        $log = $this->readWorkspaceOperationLogDocument($project);
+        $projectionCatalog = $this->workspaceProjectionFileCatalog($this->readWorkspaceProjection($project));
+        $normalized = $this->normalizeWorkspaceMutationContext($context);
+        $timestamp = now()->toIso8601String();
+
+        $manifest['updatedAt'] = $timestamp;
+        $manifest['rootDir'] = $root;
+        $manifest['projectId'] = (string) $project->id;
+        $manifest['manifestPath'] = self::WORKSPACE_MANIFEST_FILE;
+        $manifest['preview'] = is_array($manifest['preview'] ?? null) ? $manifest['preview'] : $this->defaultWorkspaceManifestPreview();
+        $manifest['preview']['ready'] = false;
+        $manifest['preview']['phase'] = 'building_preview';
+        $manifest['preview']['builtAt'] = null;
+        $manifest['preview']['errorMessage'] = null;
+
+        $targetPath = $normalized['path'];
+        $previousPath = $normalized['previous_path'];
+        $currentOwnershipEntries = is_array($manifest['fileOwnership'] ?? null) ? $manifest['fileOwnership'] : [];
+        $existingEntry = null;
+        foreach ($currentOwnershipEntries as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $entryPath = (string) ($entry['path'] ?? '');
+            if ($entryPath === $targetPath || ($previousPath !== null && $entryPath === $previousPath)) {
+                $existingEntry = $entry;
+                break;
+            }
+        }
+
+        if (is_string($previousPath) && $previousPath !== '' && $previousPath !== $targetPath) {
+            $manifest['fileOwnership'] = array_values(array_filter(
+                $currentOwnershipEntries,
+                static fn ($entry): bool => is_array($entry) && (string) ($entry['path'] ?? '') !== $previousPath
+            ));
+        }
+
+        if ($normalized['operation_kind'] === 'delete_file') {
+            $manifest['fileOwnership'] = array_values(array_filter(
+                is_array($manifest['fileOwnership'] ?? null) ? $manifest['fileOwnership'] : [],
+                static fn ($entry): bool => is_array($entry) && (string) ($entry['path'] ?? '') !== $targetPath
+            ));
+        } else {
+            $manifest['fileOwnership'] = $this->upsertWorkspaceManifestOwnershipEntry(
+                is_array($manifest['fileOwnership'] ?? null) ? $manifest['fileOwnership'] : [],
+                $this->buildWorkspaceManifestOwnershipEntry(
+                    $project,
+                    $targetPath,
+                    is_array($projectionCatalog[$targetPath] ?? null) ? $projectionCatalog[$targetPath] : [],
+                    $normalized,
+                    $timestamp,
+                    is_array($existingEntry) ? $existingEntry : []
+                )
+            );
+        }
+
+        $operationId = $this->buildWorkspaceOperationId($targetPath, $normalized['operation_kind'], $timestamp);
+        $logEntry = [
+            'id' => $operationId,
+            'timestamp' => $timestamp,
+            'actor' => $normalized['actor'],
+            'source' => $normalized['source'],
+            'operation_kind' => $normalized['operation_kind'],
+            'path' => $targetPath,
+            'previous_path' => $previousPath,
+            'reason' => $normalized['reason'],
+            'preview_refresh_requested' => $normalized['preview_refresh_requested'],
+            'before' => $this->buildWorkspaceOperationFileSnapshot($normalized['before_content']),
+            'after' => $this->buildWorkspaceOperationFileSnapshot($normalized['after_content']),
+        ];
+
+        $log['entries'] = array_values(array_slice([
+            $logEntry,
+            ...(is_array($log['entries'] ?? null) ? $log['entries'] : []),
+        ], 0, self::WORKSPACE_OPERATION_LOG_LIMIT));
+        $log['updatedAt'] = $timestamp;
+        $log['projectId'] = (string) $project->id;
+        $log['schemaVersion'] = 1;
+
+        $this->writeWorkspaceManifestDocument($project, $manifest);
+        $this->writeWorkspaceOperationLogDocument($project, $log);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     * @return array{
+     *     actor: string,
+     *     source: string,
+     *     operation_kind: string,
+     *     path: string,
+     *     previous_path: string|null,
+     *     preview_refresh_requested: bool,
+     *     reason: string|null,
+     *     before_content: string|null,
+     *     after_content: string|null
+     * }
+     */
+    private function normalizeWorkspaceMutationContext(array $context): array
+    {
+        $actor = is_string($context['actor'] ?? null) ? trim((string) $context['actor']) : 'user';
+        if (! in_array($actor, ['ai', 'visual_builder', 'user', 'system'], true)) {
+            $actor = 'user';
+        }
+
+        $source = is_string($context['source'] ?? null) && trim((string) $context['source']) !== ''
+            ? trim((string) $context['source'])
+            : 'workspace_file_api';
+        $operationKind = is_string($context['operation_kind'] ?? null) && trim((string) $context['operation_kind']) !== ''
+            ? trim((string) $context['operation_kind'])
+            : 'update_file';
+
+        $path = PathRules::normalizePath((string) ($context['path'] ?? ''));
+        $previousPath = isset($context['previous_path']) && is_string($context['previous_path']) && trim((string) $context['previous_path']) !== ''
+            ? PathRules::normalizePath((string) $context['previous_path'])
+            : null;
+
+        return [
+            'actor' => $actor,
+            'source' => $source,
+            'operation_kind' => $operationKind,
+            'path' => $path,
+            'previous_path' => $previousPath,
+            'preview_refresh_requested' => (bool) ($context['preview_refresh_requested'] ?? true),
+            'reason' => isset($context['reason']) && is_string($context['reason']) && trim((string) $context['reason']) !== ''
+                ? trim((string) $context['reason'])
+                : null,
+            'before_content' => isset($context['before_content']) && is_string($context['before_content']) ? $context['before_content'] : null,
+            'after_content' => isset($context['after_content']) && is_string($context['after_content']) ? $context['after_content'] : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $projectionMeta
+     * @param  array<string, mixed>  $mutation
+     * @param  array<string, mixed>  $existingEntry
+     * @return array<string, mixed>
+     */
+    private function buildWorkspaceManifestOwnershipEntry(
+        Project $project,
+        string $path,
+        array $projectionMeta,
+        array $mutation,
+        string $timestamp,
+        array $existingEntry = []
+    ): array {
+        $root = $this->ensureWorkspaceRoot($project);
+        $existingGeneratedBy = is_string($existingEntry['generatedBy'] ?? null) ? (string) $existingEntry['generatedBy'] : null;
+        $existingEditState = is_string($existingEntry['editState'] ?? null) ? (string) $existingEntry['editState'] : null;
+        $generatedBy = $existingGeneratedBy ?? match ($mutation['actor']) {
+            'ai' => 'ai',
+            'system' => 'system',
+            default => 'user',
+        };
+        $editState = match (true) {
+            $existingEditState === 'mixed' => 'mixed',
+            $generatedBy === 'ai' && in_array($mutation['actor'], ['user', 'visual_builder'], true) => 'mixed',
+            $mutation['actor'] === 'ai', $mutation['actor'] === 'system' => 'ai-generated',
+            default => 'user-edited',
+        };
+        $pathOnDisk = $root.'/'.ltrim($path, '/');
+        $afterContent = $mutation['after_content'];
+
+        return [
+            'path' => $path,
+            'kind' => $this->inferWorkspaceFileKind($path),
+            'ownerType' => $this->inferWorkspaceOwnerType($path),
+            'ownerId' => (string) ($existingEntry['ownerId'] ?? $path),
+            'generatedBy' => $generatedBy,
+            'editState' => $editState,
+            'pageIds' => is_array($existingEntry['pageIds'] ?? null) ? $existingEntry['pageIds'] : [],
+            'componentIds' => is_array($existingEntry['componentIds'] ?? null) ? $existingEntry['componentIds'] : [],
+            'activeGenerationRunId' => is_string($existingEntry['activeGenerationRunId'] ?? null) ? (string) $existingEntry['activeGenerationRunId'] : null,
+            'checksum' => is_string($afterContent) ? sha1($afterContent) : (is_file($pathOnDisk) ? sha1((string) File::get($pathOnDisk)) : null),
+            'sectionLocalIds' => is_array($existingEntry['sectionLocalIds'] ?? null) ? $existingEntry['sectionLocalIds'] : [],
+            'componentKeys' => is_array($existingEntry['componentKeys'] ?? null) ? $existingEntry['componentKeys'] : [],
+            'originatingPageId' => isset($existingEntry['originatingPageId']) ? $existingEntry['originatingPageId'] : null,
+            'originatingPageSlug' => is_string($existingEntry['originatingPageSlug'] ?? null)
+                ? (string) $existingEntry['originatingPageSlug']
+                : (is_string($projectionMeta['page_slug'] ?? null) ? (string) $projectionMeta['page_slug'] : null),
+            'lastEditor' => $mutation['actor'],
+            'dirty' => true,
+            'updatedAt' => $timestamp,
+            'locked' => isset($existingEntry['locked']) ? (bool) $existingEntry['locked'] : $this->isLockedWorkspaceFile($path),
+            'templateOwned' => isset($existingEntry['templateOwned'])
+                ? (bool) $existingEntry['templateOwned']
+                : $this->isTemplateOwnedWorkspaceFile($path, $projectionMeta),
+            'lastOperationId' => $this->buildWorkspaceOperationId($path, $mutation['operation_kind'], $timestamp),
+            'lastOperationKind' => $mutation['operation_kind'],
+            'cmsBacked' => isset($existingEntry['cmsBacked'])
+                ? (bool) $existingEntry['cmsBacked']
+                : (isset($projectionMeta['cms_backed']) ? (bool) $projectionMeta['cms_backed'] : true),
+            'contentOwner' => is_string($existingEntry['contentOwner'] ?? null)
+                ? (string) $existingEntry['contentOwner']
+                : (is_string($projectionMeta['content_owner'] ?? null) ? (string) $projectionMeta['content_owner'] : 'mixed'),
+            'cmsFieldPaths' => is_array($existingEntry['cmsFieldPaths'] ?? null)
+                ? $existingEntry['cmsFieldPaths']
+                : (is_array($projectionMeta['content_field_paths'] ?? null) ? $projectionMeta['content_field_paths'] : []),
+            'visualFieldPaths' => is_array($existingEntry['visualFieldPaths'] ?? null)
+                ? $existingEntry['visualFieldPaths']
+                : (is_array($projectionMeta['visual_field_paths'] ?? null) ? $projectionMeta['visual_field_paths'] : []),
+            'codeFieldPaths' => is_array($existingEntry['codeFieldPaths'] ?? null)
+                ? $existingEntry['codeFieldPaths']
+                : (is_array($projectionMeta['code_field_paths'] ?? null) ? $projectionMeta['code_field_paths'] : []),
+            'syncDirection' => is_string($existingEntry['syncDirection'] ?? null)
+                ? (string) $existingEntry['syncDirection']
+                : (is_string($projectionMeta['sync_direction'] ?? null) ? (string) $projectionMeta['sync_direction'] : 'cms_to_workspace'),
+            'conflictStatus' => is_string($existingEntry['conflictStatus'] ?? null)
+                ? (string) $existingEntry['conflictStatus']
+                : (is_string($projectionMeta['conflict_status'] ?? null) ? (string) $projectionMeta['conflict_status'] : 'clean'),
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $entries
+     * @param  array<string, mixed>  $entry
+     * @return array<int, array<string, mixed>>
+     */
+    private function upsertWorkspaceManifestOwnershipEntry(array $entries, array $entry): array
+    {
+        $next = [];
+        $updated = false;
+
+        foreach ($entries as $existing) {
+            if (! is_array($existing)) {
+                continue;
+            }
+
+            if ((string) ($existing['path'] ?? '') === (string) ($entry['path'] ?? '')) {
+                $next[] = [
+                    ...$existing,
+                    ...$entry,
+                    'sectionLocalIds' => array_values(array_unique(array_filter([
+                        ...((is_array($existing['sectionLocalIds'] ?? null) ? $existing['sectionLocalIds'] : [])),
+                        ...((is_array($entry['sectionLocalIds'] ?? null) ? $entry['sectionLocalIds'] : [])),
+                    ]))),
+                    'componentKeys' => array_values(array_unique(array_filter([
+                        ...((is_array($existing['componentKeys'] ?? null) ? $existing['componentKeys'] : [])),
+                        ...((is_array($entry['componentKeys'] ?? null) ? $entry['componentKeys'] : [])),
+                    ]))),
+                    'cmsFieldPaths' => array_values(array_unique(array_filter([
+                        ...((is_array($existing['cmsFieldPaths'] ?? null) ? $existing['cmsFieldPaths'] : [])),
+                        ...((is_array($entry['cmsFieldPaths'] ?? null) ? $entry['cmsFieldPaths'] : [])),
+                    ]))),
+                    'visualFieldPaths' => array_values(array_unique(array_filter([
+                        ...((is_array($existing['visualFieldPaths'] ?? null) ? $existing['visualFieldPaths'] : [])),
+                        ...((is_array($entry['visualFieldPaths'] ?? null) ? $entry['visualFieldPaths'] : [])),
+                    ]))),
+                    'codeFieldPaths' => array_values(array_unique(array_filter([
+                        ...((is_array($existing['codeFieldPaths'] ?? null) ? $existing['codeFieldPaths'] : [])),
+                        ...((is_array($entry['codeFieldPaths'] ?? null) ? $entry['codeFieldPaths'] : [])),
+                    ]))),
+                ];
+                $updated = true;
+                continue;
+            }
+
+            $next[] = $existing;
+        }
+
+        if (! $updated) {
+            $next[] = $entry;
+        }
+
+        usort($next, static fn (array $left, array $right): int => strcmp((string) ($left['path'] ?? ''), (string) ($right['path'] ?? '')));
+
+        return array_values($next);
+    }
+
+    private function inferWorkspaceFileKind(string $path): string
+    {
+        if ($path === self::WORKSPACE_MANIFEST_FILE) {
+            return 'manifest';
+        }
+        if (str_starts_with($path, 'src/pages/')) {
+            return 'page';
+        }
+        if (str_starts_with($path, 'src/layouts/')) {
+            return 'layout';
+        }
+        if (str_starts_with($path, 'src/sections/') || str_starts_with($path, 'src/components/')) {
+            return 'component';
+        }
+        if (str_starts_with($path, 'src/styles/')) {
+            return 'style';
+        }
+        if (str_starts_with($path, 'public/')) {
+            return 'asset';
+        }
+
+        return 'other';
+    }
+
+    private function inferWorkspaceOwnerType(string $path): string
+    {
+        return match ($this->inferWorkspaceFileKind($path)) {
+            'page' => 'page',
+            'layout' => 'layout',
+            'component' => 'component',
+            'asset' => 'asset',
+            default => 'project',
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $projectionMeta
+     */
+    private function isTemplateOwnedWorkspaceFile(string $path, array $projectionMeta): bool
+    {
+        return $projectionMeta !== []
+            || $path === 'src/components/Header.tsx'
+            || $path === 'src/components/Footer.tsx'
+            || str_starts_with($path, 'src/pages/')
+            || str_starts_with($path, 'src/sections/')
+            || str_starts_with($path, 'src/layouts/');
+    }
+
+    private function isLockedWorkspaceFile(string $path): bool
+    {
+        return in_array($path, self::PROTECTED_WORKSPACE_FILES, true);
+    }
+
+    private function buildWorkspaceOperationId(string $path, string $operationKind, string $timestamp): string
+    {
+        return sha1($path.'|'.$operationKind.'|'.$timestamp);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildWorkspaceOperationFileSnapshot(?string $content): array
+    {
+        if ($content === null) {
+            return [
+                'exists' => false,
+                'checksum' => null,
+                'size' => 0,
+                'line_count' => 0,
+            ];
+        }
+
+        return [
+            'exists' => true,
+            'checksum' => sha1($content),
+            'size' => strlen($content),
+            'line_count' => substr_count($content, "\n") + 1,
+        ];
     }
 
     private function writeStructure(string $root, array $structure, bool $overwrite): void
@@ -647,7 +1751,7 @@ TSX;
      * @param  array<int, array{componentName: string, type: string, localId: string, props: array<string, mixed>}>  $sectionDetails
      * @return array<string, mixed>
      */
-    private function buildPageProjectionEntry(Page $page, string $slug, array $sectionDetails): array
+    private function buildPageProjectionEntry(Page $page, string $slug, array $sectionDetails, array $pageBinding = []): array
     {
         $layoutFiles = [
             'src/layouts/SiteLayout.tsx',
@@ -660,6 +1764,20 @@ TSX;
             'slug' => $slug,
             'title' => (string) ($page->title ?? ''),
             'path' => 'src/pages/'.$slug.'/Page.tsx',
+            'cms_binding' => $pageBinding,
+            'cms_backed' => true,
+            'content_owner' => is_string(data_get($pageBinding, 'page.content_owner'))
+                ? (string) data_get($pageBinding, 'page.content_owner')
+                : 'mixed',
+            'content_field_paths' => $this->extractAuthorityFieldList($pageBinding, 'content_fields'),
+            'visual_field_paths' => $this->extractAuthorityFieldList($pageBinding, 'visual_fields'),
+            'code_field_paths' => $this->extractAuthorityFieldList($pageBinding, 'code_owned_fields'),
+            'sync_direction' => is_string(data_get($pageBinding, 'page.sync_direction'))
+                ? (string) data_get($pageBinding, 'page.sync_direction')
+                : 'cms_to_workspace',
+            'conflict_status' => is_string(data_get($pageBinding, 'page.conflict_status'))
+                ? (string) data_get($pageBinding, 'page.conflict_status')
+                : 'clean',
             'layout_files' => $layoutFiles,
             'section_files' => array_values(array_unique(array_map(
                 static fn (array $section): string => 'src/sections/'.(string) ($section['componentName'] ?? '').'.tsx',
@@ -678,6 +1796,26 @@ TSX;
                     'prop_paths' => $this->flattenProjectionPropPaths($props),
                     'sample_props' => $props,
                     'variants' => $this->extractVariantUsage($props),
+                    'binding' => is_array($section['binding'] ?? null) ? $section['binding'] : [],
+                    'cms_backed' => (bool) data_get($section, 'authority.cms_backed', true),
+                    'content_owner' => is_string(data_get($section, 'authority.content_owner'))
+                        ? (string) data_get($section, 'authority.content_owner')
+                        : 'cms',
+                    'content_field_paths' => is_array(data_get($section, 'authority.content_fields'))
+                        ? data_get($section, 'authority.content_fields')
+                        : [],
+                    'visual_field_paths' => is_array(data_get($section, 'authority.visual_fields'))
+                        ? data_get($section, 'authority.visual_fields')
+                        : [],
+                    'code_field_paths' => is_array(data_get($section, 'authority.code_owned_fields'))
+                        ? data_get($section, 'authority.code_owned_fields')
+                        : [],
+                    'sync_direction' => is_string(data_get($section, 'authority.sync_direction'))
+                        ? (string) data_get($section, 'authority.sync_direction')
+                        : 'cms_to_workspace',
+                    'conflict_status' => is_string(data_get($section, 'authority.conflict_status'))
+                        ? (string) data_get($section, 'authority.conflict_status')
+                        : 'clean',
                 ];
             }, $sectionDetails)),
         ];
@@ -712,6 +1850,13 @@ TSX;
                 'prop_paths' => [],
                 'sample_props' => [],
                 'usage_count' => 0,
+                'cms_backed' => true,
+                'content_owner' => 'cms',
+                'content_field_paths' => [],
+                'visual_field_paths' => [],
+                'code_field_paths' => [],
+                'sync_direction' => 'cms_to_workspace',
+                'conflict_status' => 'clean',
                 'variants' => [
                     'layout' => [],
                     'style' => [],
@@ -747,6 +1892,28 @@ TSX;
                 $props
             );
             $entry['usage_count'] = (int) ($entry['usage_count'] ?? 0) + 1;
+            $entry['cms_backed'] = (bool) data_get($section, 'authority.cms_backed', true);
+            $entry['content_owner'] = is_string(data_get($section, 'authority.content_owner'))
+                ? (string) data_get($section, 'authority.content_owner')
+                : (string) ($entry['content_owner'] ?? 'cms');
+            $entry['content_field_paths'] = array_values(array_unique(array_filter([
+                ...((is_array($entry['content_field_paths'] ?? null) ? $entry['content_field_paths'] : [])),
+                ...(is_array(data_get($section, 'authority.content_fields')) ? data_get($section, 'authority.content_fields') : []),
+            ])));
+            $entry['visual_field_paths'] = array_values(array_unique(array_filter([
+                ...((is_array($entry['visual_field_paths'] ?? null) ? $entry['visual_field_paths'] : [])),
+                ...(is_array(data_get($section, 'authority.visual_fields')) ? data_get($section, 'authority.visual_fields') : []),
+            ])));
+            $entry['code_field_paths'] = array_values(array_unique(array_filter([
+                ...((is_array($entry['code_field_paths'] ?? null) ? $entry['code_field_paths'] : [])),
+                ...(is_array(data_get($section, 'authority.code_owned_fields')) ? data_get($section, 'authority.code_owned_fields') : []),
+            ])));
+            $entry['sync_direction'] = is_string(data_get($section, 'authority.sync_direction'))
+                ? (string) data_get($section, 'authority.sync_direction')
+                : (string) ($entry['sync_direction'] ?? 'cms_to_workspace');
+            $entry['conflict_status'] = is_string(data_get($section, 'authority.conflict_status'))
+                ? (string) data_get($section, 'authority.conflict_status')
+                : (string) ($entry['conflict_status'] ?? 'clean');
 
             $variants = $this->extractVariantUsage($props);
             foreach (['layout', 'style'] as $variantKey) {
@@ -765,8 +1932,35 @@ TSX;
     }
 
     /**
-     * @param  array<int, array{type?: string, props?: array, localId?: string}>  $sections
-     * @return array<int, array{componentName: string, type: string, localId: string, props: array<string, mixed>}>
+     * @param  array<string, mixed>  $pageBinding
+     * @return array<int, string>
+     */
+    private function extractAuthorityFieldList(array $pageBinding, string $key): array
+    {
+        $sections = is_array($pageBinding['sections'] ?? null) ? $pageBinding['sections'] : [];
+        $collected = [];
+
+        foreach ($sections as $section) {
+            if (! is_array($section)) {
+                continue;
+            }
+
+            $fields = is_array($section[$key] ?? null) ? $section[$key] : [];
+            foreach ($fields as $field) {
+                if (! is_string($field) || trim($field) === '') {
+                    continue;
+                }
+
+                $collected[] = trim($field);
+            }
+        }
+
+        return array_values(array_unique($collected));
+    }
+
+    /**
+     * @param  array<int, array{type?: string, props?: array, localId?: string, binding?: array}>  $sections
+     * @return array<int, array{componentName: string, type: string, localId: string, props: array<string, mixed>, binding: array<string, mixed>, authority: array<string, mixed>}>
      */
     private function mapSectionsForPage(array $sections): array
     {
@@ -784,6 +1978,8 @@ TSX;
             if ($localId === '') {
                 $localId = 'section-'.($index + 1);
             }
+            $binding = is_array($section['binding'] ?? null) ? $section['binding'] : [];
+            $authority = is_array($binding['webu_v2'] ?? null) ? $binding['webu_v2'] : [];
 
             $normalizedProps = $this->normalizeSectionPropsForWorkspace($componentName, $rawProps);
             $props = array_merge($rawProps, $normalizedProps, ['sectionId' => $localId]);
@@ -793,6 +1989,8 @@ TSX;
                 'type' => $type,
                 'localId' => $localId,
                 'props' => $props,
+                'binding' => $binding,
+                'authority' => $authority,
             ];
         }
 
@@ -2681,6 +3879,13 @@ TSX;
                 'projection_source' => 'cms-projection',
                 'is_generated_projection' => true,
                 'page_slug' => $page['slug'] ?? null,
+                'cms_backed' => $page['cms_backed'] ?? true,
+                'content_owner' => $page['content_owner'] ?? 'mixed',
+                'content_field_paths' => $page['content_field_paths'] ?? [],
+                'visual_field_paths' => $page['visual_field_paths'] ?? [],
+                'code_field_paths' => $page['code_field_paths'] ?? [],
+                'sync_direction' => $page['sync_direction'] ?? 'cms_to_workspace',
+                'conflict_status' => $page['conflict_status'] ?? 'clean',
                 'layout_files' => $page['layout_files'] ?? [],
                 'section_files' => $page['section_files'] ?? [],
             ];
@@ -2700,6 +3905,13 @@ TSX;
                 'is_generated_projection' => true,
                 'component_name' => $component['component_name'] ?? null,
                 'section_types' => $component['types'] ?? [],
+                'cms_backed' => $component['cms_backed'] ?? true,
+                'content_owner' => $component['content_owner'] ?? 'cms',
+                'content_field_paths' => $component['content_field_paths'] ?? [],
+                'visual_field_paths' => $component['visual_field_paths'] ?? [],
+                'code_field_paths' => $component['code_field_paths'] ?? [],
+                'sync_direction' => $component['sync_direction'] ?? 'cms_to_workspace',
+                'conflict_status' => $component['conflict_status'] ?? 'clean',
                 'prop_paths' => $component['prop_paths'] ?? [],
                 'pages' => $component['pages'] ?? [],
                 'page_paths' => $component['page_paths'] ?? [],

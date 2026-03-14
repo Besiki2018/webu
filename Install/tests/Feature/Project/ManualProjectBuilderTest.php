@@ -116,11 +116,9 @@ class ManualProjectBuilderTest extends TestCase
         $response
             ->assertRedirect(route('chat', [
                 'project' => $project,
-                'tab' => 'inspect',
             ]))
             ->assertSessionHas('create_pending_redirect_url', route('chat', [
                 'project' => $project,
-                'tab' => 'inspect',
             ]));
 
         $this->assertSame('Create a consulting landing page', $project->initial_prompt);

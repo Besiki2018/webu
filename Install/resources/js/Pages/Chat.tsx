@@ -30,8 +30,8 @@ import { useBuildCredits, BuildCreditsInfo } from '@/hooks/useBuildCredits';
 import type { ElementMention, PendingEdit } from '@/types/inspector';
 import { cn } from '@/lib/utils';
 import { getAgentErrorMessage } from '@/lib/agentErrorMessages';
-import { shouldPreferProjectEdit } from '@/lib/chatAgentRouting';
 import { detectReplyLanguage, resolveAiCommandLocale } from '@/lib/chatLocale';
+import { shouldPreferProjectEdit } from '@/lib/chatAgentRouting';
 import {
     changeSetHasUnsyncedOperations,
     extractPreviewLayoutOverrides,
@@ -57,6 +57,12 @@ import {
     formatImprovementSummary,
 } from '@/builder/ai/chatImprovementCommands';
 import { runDesignUpgrade, type ContentSectionType } from '@/builder/ai/designUpgrade';
+import { routeAiEditIntent } from '@/builder/ai/editIntentRouter';
+import {
+    executeGraphEdit,
+    type AiLayeredEditRevisionState,
+} from '@/builder/ai/graphEditExecutor';
+import { executeWorkspaceEdit } from '@/builder/ai/workspaceEditExecutor';
 import {
     buildDetailedAssistantMessage,
     getInitialViewMode,
@@ -93,6 +99,7 @@ import { buildBuilderPreviewUrl, useBuilderWorkspace, type BuilderLibraryItem } 
 import { buildCanonicalBridgeSelectedTargetPayload } from '@/builder/cms/canonicalSelectionPayload';
 import { BuilderWorkspaceShell } from '@/builder/workspace/BuilderWorkspaceShell';
 import { BuilderPreviewSurface } from '@/builder/workspace/BuilderPreviewSurface';
+import { createWorkspaceFileClient } from '@/builder/workspace/workspaceFileClient';
 import {
     BUILDER_GENERATION_STEPS,
     getBuilderGenerationHeadline,
@@ -101,6 +108,7 @@ import {
     resolveBuilderGenerationState,
     type BuilderGenerationState,
 } from '@/builder/state/builderGenerationState';
+import { resolveWebuV2FeatureFlags } from '@/lib/webuV2FeatureFlags';
 
 const FileTree = lazy(async () => ({ default: (await import('@/components/Code/FileTree')).FileTree }));
 const CodeEditor = lazy(async () => ({ default: (await import('@/components/Code/CodeEditor')).CodeEditor }));
@@ -121,6 +129,11 @@ const RESPONSE_STRINGS: Record<'en' | 'ka', {
     requestCouldNotBeApplied: string;
     requestCouldNotBeCompleted: string;
     projectEditRequestFailed: string;
+    changedPageStructure: string;
+    changedPages: string;
+    modifiedWorkspaceFiles: string;
+    regeneratedWorkspace: string;
+    couldNotSafelyApply: string;
 }> = {
     en: {
         madeFollowingChanges: "I've made the following changes:",
@@ -134,6 +147,11 @@ const RESPONSE_STRINGS: Record<'en' | 'ka', {
         requestCouldNotBeApplied: 'The request could not be applied.',
         requestCouldNotBeCompleted: 'Request could not be completed.',
         projectEditRequestFailed: 'Project edit request failed. Check that the workspace is initialized and AI is configured.',
+        changedPageStructure: 'Changed page structure.',
+        changedPages: 'Changed pages in the project.',
+        modifiedWorkspaceFiles: 'Modified workspace files.',
+        regeneratedWorkspace: 'Regenerated workspace code.',
+        couldNotSafelyApply: 'Could not safely apply the request.',
     },
     ka: {
         madeFollowingChanges: 'შევასრულე შემდეგი ცვლილებები:',
@@ -147,6 +165,11 @@ const RESPONSE_STRINGS: Record<'en' | 'ka', {
         requestCouldNotBeApplied: 'მოთხოვნა ვერ შესრულდა.',
         requestCouldNotBeCompleted: 'მოთხოვნის შესრულება ვერ მოხდა.',
         projectEditRequestFailed: 'პროექტის რედაქტირება ვერ მოხდა. შეამოწმე, რომ სამუშაო სივრცე ინიციალიზებულია და AI კონფიგურირებულია.',
+        changedPageStructure: 'გვერდის სტრუქტურა შევცვალე.',
+        changedPages: 'პროექტში გვერდები შევცვალე.',
+        modifiedWorkspaceFiles: 'workspace ფაილები შევცვალე.',
+        regeneratedWorkspace: 'workspace კოდი ხელახლა დავაგენერირე.',
+        couldNotSafelyApply: 'მოთხოვნა უსაფრთხოდ ვერ შევასრულე.',
     },
 };
 
@@ -188,6 +211,11 @@ interface ProjectGenerationPayload {
     id: string;
     status: string;
     is_active: boolean;
+    ready_for_builder?: boolean;
+    workspace_manifest_exists?: boolean;
+    workspace_preview_ready?: boolean;
+    workspace_preview_phase?: string;
+    active_generation_run_id?: string | null;
     progress_message?: string | null;
     error_message?: string | null;
     started_at?: string | null;
@@ -344,6 +372,10 @@ export default function Chat({
     const pageProps = usePage<PageProps & { unreadNotificationCount: number }>().props;
     const unreadNotificationCount = pageProps.unreadNotificationCount ?? 0;
     const appSettings = pageProps.appSettings ?? FALLBACK_APP_SETTINGS;
+    const webuV2Flags = useMemo(
+        () => resolveWebuV2FeatureFlags(pageProps),
+        [pageProps.featureFlags],
+    );
 
     // Notification state
     const { addNotification } = useNotifications(unreadNotificationCount);
@@ -449,6 +481,12 @@ export default function Chat({
         [projectGeneration?.status],
     );
     const isProjectGenerationActive = Boolean(projectGeneration?.is_active);
+    const generationReadyForBuilder = projectGeneration?.ready_for_builder === true;
+    const hasValidInitialGenerationPreview = Boolean(project.cms_preview_url ?? project.preview_url);
+    const hasBlockingInitialGeneration = Boolean(projectGeneration)
+        && builderGenerationState !== 'failed'
+        && (!generationReadyForBuilder || !hasValidInitialGenerationPreview);
+    const canOpenInspectMode = !hasBlockingInitialGeneration && hasValidInitialGenerationPreview;
 
     const handleCodeFileSelect = useCallback((path: string, meta: CodeFileSelectionMeta) => {
         setSelectedFile(path);
@@ -574,6 +612,55 @@ export default function Chat({
         setFileRefreshTrigger((current) => current + 1);
         await triggerBuild();
     }, [triggerBuild]);
+
+    const buildLayeredLaneAssistantMessage = useCallback((
+        replyLang: 'en' | 'ka',
+        input: {
+            status: 'applied' | 'noop' | 'failed' | 'conflicted';
+            intent: 'structure_change' | 'page_change' | 'file_change' | 'regeneration_request';
+            note: string | null;
+            details: string[];
+        },
+    ): string => {
+        const strings = RESPONSE_STRINGS[replyLang];
+
+        if (input.status === 'conflicted') {
+            return buildDetailedAssistantMessage(
+                strings.couldNotSafelyApply,
+                strings.changes,
+                input.details,
+                input.note,
+            );
+        }
+
+        if (input.status === 'noop') {
+            return buildDetailedAssistantMessage(
+                strings.noChangesApplied,
+                strings.changes,
+                input.details,
+                input.note,
+            );
+        }
+
+        if (input.status === 'failed') {
+            return input.note || strings.requestCouldNotBeApplied;
+        }
+
+        const intro = input.intent === 'structure_change'
+            ? strings.changedPageStructure
+            : input.intent === 'page_change'
+                ? strings.changedPages
+                : input.intent === 'regeneration_request'
+                    ? strings.regeneratedWorkspace
+                    : strings.modifiedWorkspaceFiles;
+
+        return buildDetailedAssistantMessage(
+            intro,
+            strings.changes,
+            input.details,
+            input.note,
+        );
+    }, []);
 
     const {
         analyze: analyzePageStructure,
@@ -706,12 +793,17 @@ export default function Chat({
         handleVisualBuilderToggle,
         handleWorkspaceModeChange,
         handleSidebarToggle,
+        latestBuilderStateCursorRef,
         preferPersistedStructureStateRef,
         justPlacedSectionRef,
     } = useBuilderWorkspace({
         projectId: project.id,
         viewMode,
         setViewMode,
+        canOpenInspectMode,
+        onInspectBlocked: () => {
+            toast.message(t('The visual builder unlocks after files and preview are ready.'));
+        },
         seededBuilderLibraryItems,
         activeBuilderCodePage,
         builderStructureItems,
@@ -724,7 +816,57 @@ export default function Chat({
     });
 
     useEffect(() => {
-        if (!projectGeneration?.status_url || !projectGeneration.is_active) {
+        if (viewMode === 'inspect' && !canOpenInspectMode) {
+            setViewMode('preview');
+        }
+    }, [canOpenInspectMode, setViewMode, viewMode]);
+
+    const workspaceRevisionClient = useMemo(
+        () => createWorkspaceFileClient(project.id),
+        [project.id],
+    );
+
+    const readAiEditRevisionState = useCallback(async (): Promise<AiLayeredEditRevisionState> => {
+        const builderCursor = latestBuilderStateCursorRef.current
+            ? {
+                pageId: latestBuilderStateCursorRef.current.pageId,
+                pageSlug: latestBuilderStateCursorRef.current.pageSlug,
+                stateVersion: latestBuilderStateCursorRef.current.stateVersion,
+                revisionVersion: latestBuilderStateCursorRef.current.revisionVersion,
+            }
+            : null;
+
+        try {
+            const result = await workspaceRevisionClient.listFiles();
+            return {
+                manifestUpdatedAt: result.manifest.updatedAt,
+                activeGenerationRunId: result.manifest.activeGenerationRunId,
+                builderStateCursor: builderCursor,
+                pageId: activeBuilderPageIdentity.pageId ?? null,
+                pageSlug: activeBuilderPageIdentity.pageSlug ?? null,
+            };
+        } catch {
+            return {
+                manifestUpdatedAt: null,
+                activeGenerationRunId: null,
+                builderStateCursor: builderCursor,
+                pageId: activeBuilderPageIdentity.pageId ?? null,
+                pageSlug: activeBuilderPageIdentity.pageSlug ?? null,
+            };
+        }
+    }, [
+        activeBuilderPageIdentity.pageId,
+        activeBuilderPageIdentity.pageSlug,
+        latestBuilderStateCursorRef,
+        workspaceRevisionClient,
+    ]);
+
+    useEffect(() => {
+        const shouldPollGeneration = Boolean(projectGeneration?.status_url)
+            && builderGenerationState !== 'failed'
+            && projectGeneration?.ready_for_builder !== true;
+
+        if (!shouldPollGeneration || !projectGeneration?.status_url) {
             return;
         }
 
@@ -752,7 +894,7 @@ export default function Chat({
                 setProjectGeneration(nextGeneration);
 
                 const nextStatus = (nextGeneration?.status ?? '').trim().toLowerCase();
-                if (nextStatus === 'completed' || nextStatus === 'complete') {
+                if (nextGeneration?.ready_for_builder === true) {
                     if (!generationReloadRequestedRef.current) {
                         generationReloadRequestedRef.current = true;
                         router.reload({
@@ -782,7 +924,7 @@ export default function Chat({
                 window.clearTimeout(timeoutId);
             }
         };
-    }, [projectGeneration?.id, projectGeneration?.is_active, projectGeneration?.status_url]);
+    }, [builderGenerationState, projectGeneration?.id, projectGeneration?.ready_for_builder, projectGeneration?.status_url]);
 
     useEffect(() => {
         setExpandedStructureItemIds((current) => current.filter((localId) => (
@@ -1208,13 +1350,15 @@ export default function Chat({
             clearAiSiteEditorError();
             setAgentRunFailedAt(null);
 
-            const tryAiProjectEdit = async (options: { silentFailure?: boolean } = {}): Promise<boolean> => {
-                const { silentFailure = false } = options;
+            const executeProjectEditRequest = async () => {
                 try {
                     const res = await axios.post<{
                         success: boolean;
                         summary: string;
                         changes: Array<{ path: string; op: string }>;
+                        created?: string[];
+                        updated?: string[];
+                        deleted?: string[];
                         diagnostic_log?: string[];
                         error?: string;
                         no_change_reason?: string;
@@ -1223,87 +1367,236 @@ export default function Chat({
                         message: msg,
                         ...(selectedElementPayload ? { selected_element: selectedElementPayload } : {}),
                     });
-                    const data = res.data;
-                    const hasFileChanges = Array.isArray(data.changes) && data.changes.length > 0;
+
+                    return res.data;
+                } catch (err: unknown) {
                     const replyLang = detectReplyLanguage(msg, appLocale);
                     const strings = RESPONSE_STRINGS[replyLang];
-                    if (!data.success) {
-                        if (silentFailure) {
-                            return false;
-                        }
-                        const errorText = replyLang === 'ka'
-                            ? strings.requestCouldNotBeApplied
-                            : (data.error || data.no_change_reason || strings.requestCouldNotBeApplied);
-                        addMessage({
-                            id: `agent-project-edit-fail-${Date.now()}`,
-                            type: 'assistant',
-                            content: errorText,
-                            timestamp: new Date(),
-                            diagnosticLog: data.diagnostic_log?.length ? data.diagnostic_log : undefined,
-                        });
-                        axios.post(`/panel/projects/${project.id}/chat-append`, {
-                            entries: [{ role: 'user', content: msg }, { role: 'assistant', content: errorText }],
-                        }).catch(() => {});
-                        return true;
-                    }
-                    if (silentFailure && !hasFileChanges) {
-                        return false;
-                    }
-                    const actionLog = hasFileChanges
-                        ? data.changes.map((c) => `${c.op}: ${c.path}`)
-                        : undefined;
-                    const summaryNote = hasFileChanges
-                        ? (data.summary || strings.updatedProjectSummary)
-                        : (data.summary || (data.no_change_reason ? `${strings.noChangesApplied} ${data.no_change_reason}` : strings.noChangesApplied));
-                    const content = buildDetailedAssistantMessage(
-                        hasFileChanges ? strings.doneApplied : strings.noChangesApplied,
-                        strings.changes,
-                        actionLog,
-                        summaryNote,
-                    );
+                    const projectEditErrorData = axios.isAxiosError(err) ? err.response?.data as { error?: string; diagnostic_log?: string[] } | undefined : undefined;
+
+                    return {
+                        success: false,
+                        summary: '',
+                        changes: [],
+                        diagnostic_log: Array.isArray(projectEditErrorData?.diagnostic_log) ? projectEditErrorData?.diagnostic_log : [],
+                        error: replyLang === 'ka'
+                            ? (axios.isAxiosError(err) && err.response?.status === 422
+                                ? strings.requestCouldNotBeCompleted
+                                : strings.projectEditRequestFailed)
+                            : (projectEditErrorData?.error
+                                ? String(projectEditErrorData.error)
+                                : axios.isAxiosError(err) && err.response?.status === 422
+                                    ? projectEditErrorData?.error || strings.requestCouldNotBeCompleted
+                                    : strings.projectEditRequestFailed),
+                        files_changed: false,
+                    };
+                }
+            };
+
+            const tryLayeredAiEdit = async (): Promise<boolean> => {
+                if (!webuV2Flags.advancedAiWorkspaceEdits) {
+                    return false;
+                }
+
+                const route = routeAiEditIntent({
+                    message: msg,
+                    hasSelectedElement: selectedElementPayload !== null,
+                    viewMode,
+                    selectedFile,
+                });
+
+                if (route.intent === 'prop_patch') {
+                    return false;
+                }
+
+                const replyLang = detectReplyLanguage(msg, appLocale);
+                const expectedRevision = await readAiEditRevisionState();
+
+                if (route.intent === 'regeneration_request') {
+                    const result = await executeWorkspaceEdit({
+                        intent: 'regeneration_request',
+                        expectedRevision,
+                        getCurrentRevision: readAiEditRevisionState,
+                        execute: async () => {
+                            try {
+                                const res = await axios.post<{ success?: boolean; error?: string }>(
+                                    `/panel/projects/${project.id}/workspace/regenerate`
+                                );
+
+                                return {
+                                    success: res.data?.success === true,
+                                    summary: res.data?.success === true ? 'Regenerated workspace code from the canonical site state.' : null,
+                                    changed_paths: [],
+                                    error: res.data?.error ?? undefined,
+                                };
+                            } catch (err: unknown) {
+                                const message = axios.isAxiosError(err) && err.response?.data?.error
+                                    ? String(err.response.data.error)
+                                    : RESPONSE_STRINGS[replyLang].projectEditRequestFailed;
+
+                                return {
+                                    success: false,
+                                    error: message,
+                                    changed_paths: [],
+                                };
+                            }
+                        },
+                    });
+                    const content = buildLayeredLaneAssistantMessage(replyLang, {
+                        status: result.status,
+                        intent: route.intent,
+                        note: result.note,
+                        details: result.details,
+                    });
+
                     addMessage({
-                        id: `agent-project-edit-${Date.now()}`,
+                        id: `agent-regenerate-${Date.now()}`,
                         type: 'assistant',
                         content,
                         timestamp: new Date(),
-                        actionLog,
-                        diagnosticLog: data.diagnostic_log?.length ? data.diagnostic_log : undefined,
+                        actionLog: result.details.length ? result.details : undefined,
+                        diagnosticLog: result.diagnosticLog.length ? result.diagnosticLog : undefined,
                     });
-                    if (data.files_changed) {
+
+                    if (result.shouldRefreshWorkspace) {
                         await refreshWorkspaceAfterChange();
                     }
+
+                    if (result.status === 'failed' || result.status === 'conflicted') {
+                        setAgentRunFailedAt(Date.now());
+                    }
+
                     axios.post(`/panel/projects/${project.id}/chat-append`, {
                         entries: [{ role: 'user', content: msg }, { role: 'assistant', content }],
                     }).catch(() => {});
                     return true;
-                } catch (err: unknown) {
-                    if (silentFailure) {
-                        return false;
-                    }
-                    const replyLang = detectReplyLanguage(msg, appLocale);
-                    const strings = RESPONSE_STRINGS[replyLang];
-                    const projectEditErrorData = axios.isAxiosError(err) ? err.response?.data as { error?: string; diagnostic_log?: string[] } | undefined : undefined;
-                    const errMsg = replyLang === 'ka'
-                        ? (axios.isAxiosError(err) && err.response?.status === 422
-                            ? strings.requestCouldNotBeCompleted
-                            : strings.projectEditRequestFailed)
-                        : (projectEditErrorData?.error
-                            ? String(projectEditErrorData.error)
-                            : axios.isAxiosError(err) && err.response?.status === 422
-                                ? projectEditErrorData?.error || strings.requestCouldNotBeCompleted
-                                : strings.projectEditRequestFailed);
-                    addMessage({
-                        id: `agent-project-edit-error-${Date.now()}`,
-                        type: 'assistant',
-                        content: errMsg,
-                        timestamp: new Date(),
-                        diagnosticLog: Array.isArray(projectEditErrorData?.diagnostic_log) ? projectEditErrorData?.diagnostic_log : undefined,
+                }
+
+                if (route.intent === 'file_change') {
+                    const result = await executeWorkspaceEdit({
+                        intent: 'file_change',
+                        expectedRevision,
+                        getCurrentRevision: readAiEditRevisionState,
+                        execute: executeProjectEditRequest,
                     });
+                    const content = buildLayeredLaneAssistantMessage(replyLang, {
+                        status: result.status,
+                        intent: route.intent,
+                        note: result.note,
+                        details: result.details,
+                    });
+
+                    addMessage({
+                        id: `agent-workspace-edit-${Date.now()}`,
+                        type: 'assistant',
+                        content,
+                        timestamp: new Date(),
+                        actionLog: result.details.length ? result.details : undefined,
+                        diagnosticLog: result.diagnosticLog.length ? result.diagnosticLog : undefined,
+                    });
+
+                    if (result.shouldRefreshWorkspace) {
+                        await refreshWorkspaceAfterChange();
+                    }
+
+                    if (result.status === 'applied') {
+                        setLastAgentRecentEdits(result.details.join('; ').slice(0, 500));
+                    }
+
+                    if (result.status === 'failed' || result.status === 'conflicted') {
+                        setAgentRunFailedAt(Date.now());
+                    }
+
                     axios.post(`/panel/projects/${project.id}/chat-append`, {
-                        entries: [{ role: 'user', content: msg }, { role: 'assistant', content: errMsg }],
+                        entries: [{ role: 'user', content: msg }, { role: 'assistant', content }],
                     }).catch(() => {});
                     return true;
                 }
+
+                if (route.intent === 'page_change') {
+                    const result = await executeGraphEdit({
+                        intent: 'page_change',
+                        expectedRevision,
+                        getCurrentRevision: readAiEditRevisionState,
+                        execute: executeProjectEditRequest,
+                    });
+                    const content = buildLayeredLaneAssistantMessage(replyLang, {
+                        status: result.status,
+                        intent: route.intent,
+                        note: result.note,
+                        details: result.details,
+                    });
+
+                    addMessage({
+                        id: `agent-page-change-${Date.now()}`,
+                        type: 'assistant',
+                        content,
+                        timestamp: new Date(),
+                        actionLog: result.details.length ? result.details : undefined,
+                        diagnosticLog: result.diagnosticLog.length ? result.diagnosticLog : undefined,
+                    });
+
+                    if (result.status === 'applied') {
+                        setLastAgentRecentEdits(result.details.join('; ').slice(0, 500));
+                        await refreshWorkspaceAfterChange();
+                    } else if (result.status === 'failed' || result.status === 'conflicted') {
+                        setAgentRunFailedAt(Date.now());
+                    }
+
+                    axios.post(`/panel/projects/${project.id}/chat-append`, {
+                        entries: [{ role: 'user', content: msg }, { role: 'assistant', content }],
+                    }).catch(() => {});
+                    return true;
+                }
+
+                const pageSlug = activeBuilderPageIdentity.pageSlug ?? 'home';
+                const pageId = activeBuilderPageIdentity.pageId ?? undefined;
+                const result = await executeGraphEdit({
+                    intent: 'structure_change',
+                    expectedRevision,
+                    getCurrentRevision: readAiEditRevisionState,
+                    execute: async () => runUnifiedEdit(msg, {
+                        page_slug: pageSlug,
+                        page_id: pageId,
+                        locale: commandLocale,
+                        selected_target: selectedTargetContext,
+                        recent_edits: lastAgentRecentEdits,
+                    }),
+                });
+
+                const content = buildLayeredLaneAssistantMessage(replyLang, {
+                    status: result.status,
+                    intent: route.intent,
+                    note: result.note,
+                    details: result.details,
+                });
+
+                addMessage({
+                    id: `agent-structure-change-${Date.now()}`,
+                    type: 'assistant',
+                    content,
+                    timestamp: new Date(),
+                    actionLog: result.details.length ? result.details : undefined,
+                    diagnosticLog: result.diagnosticLog.length ? result.diagnosticLog : undefined,
+                });
+
+                if (result.status === 'applied') {
+                    const syncedBuilderChangeSet = result.syncableChangeSet
+                        ? syncBuilderChangeSet(result.syncableChangeSet as ChangeSet)
+                        : false;
+                    applyPreviewLayoutOverrides(result.previewOverrides);
+                    setLastAgentRecentEdits(result.details.join('; ').slice(0, 500));
+                    if (!syncedBuilderChangeSet || result.hasUnsyncedOps) {
+                        setPreviewRefreshTrigger(Date.now());
+                    }
+                } else if (result.status === 'failed' || result.status === 'conflicted') {
+                    setAgentRunFailedAt(Date.now());
+                }
+
+                axios.post(`/panel/projects/${project.id}/chat-append`, {
+                    entries: [{ role: 'user', content: msg }, { role: 'assistant', content }],
+                }).catch(() => {});
+                return true;
             };
 
             addMessage({ id: `user-${Date.now()}`, type: 'user', content: msg, timestamp: new Date() });
@@ -1336,16 +1629,72 @@ export default function Chat({
                 }).catch(() => {});
                 return;
             }
-            const preferProjectEdit = shouldPreferProjectEdit(msg, {
+
+            const handledByLayeredEdit = await tryLayeredAiEdit();
+            if (handledByLayeredEdit) {
+                return;
+            }
+
+            if (!webuV2Flags.advancedAiWorkspaceEdits && shouldPreferProjectEdit(msg, {
                 hasSelectedElement: selectedElementPayload !== null,
                 viewMode,
-            });
-            if (preferProjectEdit) {
-                const handledByProjectEdit = await tryAiProjectEdit({ silentFailure: true });
-                if (handledByProjectEdit) {
+            })) {
+                const projectEditResult = await executeProjectEditRequest();
+                if (projectEditResult.success) {
+                    const replyStr = RESPONSE_STRINGS[replyLang];
+                    const summaryNote = projectEditResult.summary.trim() !== ''
+                        ? projectEditResult.summary.trim()
+                        : null;
+                    const actionLog = [
+                        ...(projectEditResult.created ?? []).map((path) => `Created ${path}`),
+                        ...(projectEditResult.updated ?? []).map((path) => `Updated ${path}`),
+                        ...(projectEditResult.deleted ?? []).map((path) => `Deleted ${path}`),
+                        ...(projectEditResult.changes ?? []).map((change) => `${change.op}: ${change.path}`),
+                    ];
+                    const assistantContent = actionLog.length > 0 || summaryNote
+                        ? buildDetailedAssistantMessage(
+                            replyStr.modifiedWorkspaceFiles,
+                            replyStr.changes,
+                            actionLog,
+                            summaryNote,
+                        )
+                        : replyStr.noChangesApplied;
+
+                    addMessage({
+                        id: `agent-project-edit-${Date.now()}`,
+                        type: 'assistant',
+                        content: assistantContent,
+                        timestamp: new Date(),
+                        actionLog: actionLog.length ? actionLog : undefined,
+                        diagnosticLog: projectEditResult.diagnostic_log?.length ? projectEditResult.diagnostic_log : undefined,
+                    });
+
+                    if (projectEditResult.files_changed) {
+                        setLastAgentRecentEdits((summaryNote ?? actionLog.join('; ')).slice(0, 500));
+                        await refreshWorkspaceAfterChange();
+                    }
+
+                    axios.post(`/panel/projects/${project.id}/chat-append`, {
+                        entries: [{ role: 'user', content: msg }, { role: 'assistant', content: assistantContent }],
+                    }).catch(() => {});
                     return;
                 }
+
+                const errorContent = getAgentErrorMessage(projectEditResult.error, undefined, replyLang);
+                addMessage({
+                    id: `agent-project-edit-fail-${Date.now()}`,
+                    type: 'assistant',
+                    content: errorContent,
+                    timestamp: new Date(),
+                    diagnosticLog: projectEditResult.diagnostic_log?.length ? projectEditResult.diagnostic_log : undefined,
+                });
+                setAgentRunFailedAt(Date.now());
+                axios.post(`/panel/projects/${project.id}/chat-append`, {
+                    entries: [{ role: 'user', content: msg }, { role: 'assistant', content: errorContent }],
+                }).catch(() => {});
+                return;
             }
+
             const pageSlug = activeBuilderPageIdentity.pageSlug ?? 'home';
             const pageId = activeBuilderPageIdentity.pageId ?? undefined;
             const result = await runUnifiedEdit(msg, {
@@ -1400,10 +1749,6 @@ export default function Chat({
                     entries: [{ role: 'user', content: msg }, { role: 'assistant', content: assistantContent }],
                 }).catch(() => {});
                 return;
-            }
-            if (preferProjectEdit) {
-                const handled = await tryAiProjectEdit();
-                if (handled) return;
             }
             const errorContent = getAgentErrorMessage(result.error, result.error_code, detectReplyLanguage(msg));
             addMessage({
@@ -2001,8 +2346,8 @@ export default function Chat({
     );
     const isInspectBuilderMode = viewMode === 'inspect';
     const shouldRenderChatWorkspace = viewMode !== 'inspect';
-    const shouldBlockBuilderDuringGeneration = isProjectGenerationActive
-        && isBuilderGenerationBlocking(builderGenerationState);
+    const shouldBlockBuilderDuringGeneration = hasBlockingInitialGeneration
+        || (isProjectGenerationActive && isBuilderGenerationBlocking(builderGenerationState));
 
     const workspaceSidebarContent = (
         <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col md:w-auto">

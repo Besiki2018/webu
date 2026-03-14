@@ -163,12 +163,7 @@ class ProjectController extends Controller
 
         $hasActiveGeneration = ProjectGenerationRun::query()
             ->where('user_id', $user->id)
-            ->whereIn('status', [
-                ProjectGenerationRun::STATUS_QUEUED,
-                ProjectGenerationRun::STATUS_PLANNING,
-                ProjectGenerationRun::STATUS_GENERATING,
-                ProjectGenerationRun::STATUS_FINALIZING,
-            ])
+            ->whereIn('status', ProjectGenerationRun::activeStatuses())
             ->exists();
 
         if ($hasActiveGeneration) {
@@ -203,7 +198,6 @@ class ProjectController extends Controller
 
         return $this->inertiaAwareRedirect($request, route('chat', [
             'project' => $project,
-            'tab' => 'inspect',
         ]));
     }
 

@@ -24,6 +24,7 @@ use App\Http\Controllers\Admin\AdminUniversalCmsController;
 use App\Http\Controllers\Admin\BugfixerController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AppPreviewController;
+use App\Http\Controllers\AssetProviderController;
 use App\Http\Controllers\BuildCreditController;
 use App\Http\Controllers\BuilderProxyController;
 use App\Http\Controllers\ChatController;
@@ -272,6 +273,7 @@ Route::middleware('installed')->group(function () {
         Route::get('/panel/projects/{project}/workspace/parsed-pages', [ProjectWorkspaceController::class, 'parsedPages'])->name('panel.projects.workspace.parsed-pages');
         Route::get('/panel/projects/{project}/workspace/file', [ProjectWorkspaceController::class, 'readFile'])->name('panel.projects.workspace.file.read');
         Route::post('/panel/projects/{project}/workspace/file', [ProjectWorkspaceController::class, 'writeFile'])->name('panel.projects.workspace.file.write');
+        Route::post('/panel/projects/{project}/workspace/file/move', [ProjectWorkspaceController::class, 'moveFile'])->name('panel.projects.workspace.file.move');
         Route::delete('/panel/projects/{project}/workspace/file', [ProjectWorkspaceController::class, 'deleteFile'])->name('panel.projects.workspace.file.delete');
         Route::post('/panel/projects/{project}/ai-tools/execute', [ProjectAiToolsController::class, 'execute'])->name('panel.projects.ai-tools.execute');
         Route::post('/panel/projects/{project}/ai/site-plan', [ProjectSitePlannerController::class, 'store'])->name('panel.projects.ai.site-plan');
@@ -297,6 +299,10 @@ Route::middleware('installed')->group(function () {
 
     // Publishing
     Route::middleware(['auth', 'verified'])->group(function () {
+        Route::post('/api/assets/search', [AssetProviderController::class, 'search'])->name('api.assets.search');
+        Route::post('/api/assets/import', [AssetProviderController::class, 'import'])
+            ->middleware('entitlement:file_storage')
+            ->name('api.assets.import');
         Route::post('/api/subdomain/check-availability', [ProjectPublishController::class, 'checkAvailability'])
             ->middleware('entitlement:subdomains');
         Route::post('/project/{project}/publish', [ProjectPublishController::class, 'publish'])

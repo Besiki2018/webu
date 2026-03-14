@@ -5,6 +5,7 @@ namespace Tests\Feature\Project;
 use App\Models\Page;
 use App\Models\PageRevision;
 use App\Models\Project;
+use App\Models\ProjectGenerationRun;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\ProjectWorkspace\ProjectWorkspaceService;
@@ -164,6 +165,97 @@ class ProjectWorkspaceCodeGenerationTest extends TestCase
         $this->assertFileExists($workspaceRoot.'/src/main.tsx');
     }
 
+    public function test_workspace_generation_preserves_cms_authority_metadata_in_projection_and_manifest(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $workspaceRoot = storage_path('workspaces/'.$project->id);
+        File::deleteDirectory($workspaceRoot);
+
+        $site = app(SiteProvisioningService::class)->provisionForProject($project->fresh(['template', 'user']));
+        $homePage = Page::query()
+            ->where('site_id', $site->id)
+            ->where('slug', 'home')
+            ->firstOrFail();
+
+        $contentJson = [
+            'webu_cms_binding' => [
+                'authorities' => [
+                    'content' => 'cms',
+                    'layout' => 'cms_revision',
+                    'code' => 'workspace',
+                    'preview' => 'derived',
+                ],
+                'page' => [
+                    'content_owner' => 'mixed',
+                    'sync_direction' => 'cms_to_workspace',
+                    'conflict_status' => 'clean',
+                ],
+                'sections' => [
+                    [
+                        'local_id' => 'hero-1',
+                        'content_fields' => ['headline', 'subtitle'],
+                        'visual_fields' => ['variant'],
+                        'code_owned_fields' => [],
+                    ],
+                ],
+            ],
+            'sections' => [
+                [
+                    'type' => 'hero',
+                    'localId' => 'hero-1',
+                    'props' => [
+                        'headline' => 'Authority headline',
+                        'subtitle' => 'Authority subtitle',
+                        'variant' => 'split',
+                    ],
+                    'binding' => [
+                        'webu_v2' => [
+                            'cms_backed' => true,
+                            'content_owner' => 'mixed',
+                            'content_fields' => ['headline', 'subtitle'],
+                            'visual_fields' => ['variant'],
+                            'code_owned_fields' => [],
+                            'sync_direction' => 'bidirectional',
+                            'conflict_status' => 'clean',
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $revision = PageRevision::query()
+            ->where('site_id', $site->id)
+            ->where('page_id', $homePage->id)
+            ->latest('version')
+            ->first();
+
+        if ($revision) {
+            $revision->update(['content_json' => $contentJson]);
+        } else {
+            PageRevision::query()->create([
+                'site_id' => $site->id,
+                'page_id' => $homePage->id,
+                'version' => 1,
+                'content_json' => $contentJson,
+            ]);
+        }
+
+        app(ProjectWorkspaceService::class)->initializeProjectCodebase($project);
+
+        $projection = json_decode((string) File::get($workspaceRoot.'/.webu/workspace-projection.json'), true);
+        $manifest = json_decode((string) File::get($workspaceRoot.'/.webu/workspace-manifest.json'), true);
+
+        $this->assertTrue((bool) data_get($projection, 'pages.0.cms_backed'));
+        $this->assertSame('mixed', data_get($projection, 'pages.0.content_owner'));
+        $this->assertSame(['headline', 'subtitle'], data_get($projection, 'pages.0.sections.0.content_field_paths'));
+        $this->assertSame(['variant'], data_get($projection, 'pages.0.sections.0.visual_field_paths'));
+        $homePageManifest = collect(data_get($manifest, 'fileOwnership', []))
+            ->firstWhere('path', 'src/pages/home/Page.tsx');
+        $this->assertTrue((bool) data_get($homePageManifest, 'cmsBacked'));
+        $this->assertNotEmpty(data_get($homePageManifest, 'cmsFieldPaths'));
+    }
+
     public function test_workspace_generation_normalizes_fixed_components_and_nested_editable_paths(): void
     {
         $user = User::factory()->create();
@@ -210,6 +302,106 @@ class ProjectWorkspaceCodeGenerationTest extends TestCase
         $this->assertStringContainsString('data-webu-field-url={`menuItems.${index}.href`}', $headerContent);
         $this->assertStringContainsString('data-webu-field={`links.${index}.label`}', $footerContent);
         $this->assertStringContainsString('data-webu-field={`socialLinks.${index}.label`}', $footerContent);
+    }
+
+    public function test_initialize_project_codebase_writes_manifest_baseline_for_initial_generation(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $workspaceRoot = storage_path('workspaces/'.$project->id);
+        File::deleteDirectory($workspaceRoot);
+
+        $site = app(SiteProvisioningService::class)->provisionForProject($project->fresh(['template', 'user']));
+        $homePage = Page::query()
+            ->where('site_id', $site->id)
+            ->where('slug', 'home')
+            ->firstOrFail();
+
+        $revision = PageRevision::query()
+            ->where('site_id', $site->id)
+            ->where('page_id', $homePage->id)
+            ->latest('version')
+            ->first();
+
+        $revision?->update([
+            'content_json' => [
+                'sections' => [
+                    [
+                        'type' => 'hero',
+                        'localId' => 'hero-initial-1',
+                        'props' => [
+                            'headline' => 'Initial hero',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        app(ProjectWorkspaceService::class)->initializeProjectCodebase($project, [
+            'active_generation_run_id' => 'run-initial-123',
+            'phase' => ProjectGenerationRun::STATUS_WRITING_FILES,
+        ]);
+
+        $manifest = json_decode((string) File::get($workspaceRoot.'/.webu/workspace-manifest.json'), true);
+
+        $this->assertIsArray($manifest);
+        $this->assertSame((string) $project->id, data_get($manifest, 'projectId'));
+        $this->assertSame('run-initial-123', data_get($manifest, 'activeGenerationRunId'));
+        $this->assertSame(ProjectGenerationRun::STATUS_WRITING_FILES, data_get($manifest, 'preview.phase'));
+        $this->assertFalse((bool) data_get($manifest, 'preview.ready'));
+        $this->assertSame('home', data_get($manifest, 'generatedPages.0.slug'));
+        $this->assertSame('/', data_get($manifest, 'generatedPages.0.routePath'));
+        $this->assertNotEmpty(data_get($manifest, 'fileOwnership'));
+
+        $pageEntry = collect(data_get($manifest, 'fileOwnership', []))
+            ->firstWhere('path', 'src/pages/home/Page.tsx');
+
+        $this->assertNotNull($pageEntry);
+        $this->assertSame('ai-generated', data_get($pageEntry, 'editState'));
+        $this->assertSame('home', data_get($pageEntry, 'originatingPageSlug'));
+    }
+
+    public function test_workspace_file_writes_update_manifest_and_operation_log(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $workspaceRoot = storage_path('workspaces/'.$project->id);
+        File::deleteDirectory($workspaceRoot);
+
+        $workspace = app(ProjectWorkspaceService::class);
+        $workspace->writeFile($project, 'src/utils/format.ts', <<<'TS'
+export function formatCurrency(value: number): string {
+    return `$${value.toFixed(2)}`;
+}
+TS, [
+            'actor' => 'user',
+            'source' => 'code_editor',
+            'reason' => 'manual_rollout_test',
+        ]);
+
+        $manifest = json_decode((string) File::get($workspaceRoot.'/.webu/workspace-manifest.json'), true);
+        $operationLog = json_decode((string) File::get($workspaceRoot.'/.webu/workspace-operation-log.json'), true);
+
+        $this->assertIsArray($manifest);
+        $this->assertIsArray($operationLog);
+        $this->assertSame('building_preview', data_get($manifest, 'preview.phase'));
+        $this->assertFalse((bool) data_get($manifest, 'preview.ready'));
+
+        $ownershipEntry = collect(data_get($manifest, 'fileOwnership', []))
+            ->firstWhere('path', 'src/utils/format.ts');
+
+        $this->assertNotNull($ownershipEntry);
+        $this->assertSame('user-edited', data_get($ownershipEntry, 'editState'));
+        $this->assertSame('user', data_get($ownershipEntry, 'lastEditor'));
+        $this->assertTrue((bool) data_get($ownershipEntry, 'dirty'));
+        $this->assertSame('create_file', data_get($ownershipEntry, 'lastOperationKind'));
+
+        $latestOperation = data_get($operationLog, 'entries.0');
+        $this->assertIsArray($latestOperation);
+        $this->assertSame('src/utils/format.ts', data_get($latestOperation, 'path'));
+        $this->assertSame('create_file', data_get($latestOperation, 'operation_kind'));
+        $this->assertSame('manual_rollout_test', data_get($latestOperation, 'reason'));
+        $this->assertSame('user', data_get($latestOperation, 'actor'));
     }
 
     public function test_workspace_generation_upgrades_bare_placeholder_components_and_sections(): void

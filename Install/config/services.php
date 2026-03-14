@@ -76,6 +76,19 @@ return [
         'api_key' => env('ANTHROPIC_API_KEY'),
     ],
 
+    'unsplash' => [
+        'access_key' => env('UNSPLASH_ACCESS_KEY'),
+        'secret_key' => env('UNSPLASH_SECRET_KEY'),
+    ],
+
+    'pexels' => [
+        'key' => env('PEXELS_API_KEY'),
+    ],
+
+    'freepik' => [
+        'key' => env('FREEPIK_API_KEY'),
+    ],
+
     'firebase' => [
         'system_api_key' => env('FIREBASE_SYSTEM_API_KEY'),
         'system_auth_domain' => env('FIREBASE_SYSTEM_AUTH_DOMAIN'),

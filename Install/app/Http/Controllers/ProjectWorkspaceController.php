@@ -57,7 +57,22 @@ class ProjectWorkspaceController extends Controller
         $this->authorize('update', $project);
 
         try {
+            $validated = $request->validate([
+                'workspace_context' => 'sometimes|array',
+                'workspace_context.actor' => 'sometimes|string|in:ai,user,visual_builder,system',
+                'workspace_context.source' => 'sometimes|string|max:120',
+                'workspace_context.operation_kind' => 'sometimes|string|max:120',
+                'workspace_context.preview_refresh_requested' => 'sometimes|boolean',
+                'workspace_context.reason' => 'sometimes|nullable|string|max:255',
+                'workspace_context.touched_paths' => 'sometimes|array|max:200',
+                'workspace_context.touched_paths.*' => 'string|max:500',
+            ]);
             $this->workspace->generateFromCms($project);
+            $context = is_array($validated['workspace_context'] ?? null) ? $validated['workspace_context'] : [];
+            $paths = is_array($context['touched_paths'] ?? null) ? $context['touched_paths'] : [];
+            if ($paths !== []) {
+                $this->workspace->recordWorkspaceSyncOperations($project, $paths, $context);
+            }
             $this->codebaseScanner->invalidateIndex($project);
         } catch (\Throwable $e) {
             return response()->json([
@@ -162,7 +177,7 @@ class ProjectWorkspaceController extends Controller
         }
         $path = PathRules::normalizePath($path);
         if (! PathRules::isAllowed($path)) {
-            return response()->json(['success' => false, 'error' => 'Path not allowed. Use only src/pages, src/components, src/sections, src/layouts, src/styles, public.'], 422);
+            return response()->json(['success' => false, 'error' => 'Path not allowed. Use only src/pages, src/components, src/sections, src/layouts, src/styles, public, .webu/workspace-manifest.json, or .webu/workspace-operation-log.json.'], 422);
         }
 
         $this->workspace->ensureProjectCodebaseReady($project);
@@ -188,17 +203,25 @@ class ProjectWorkspaceController extends Controller
         $validated = $request->validate([
             'path' => 'required|string|max:500',
             'content' => 'required|string|max:1048576',
+            'workspace_context' => 'sometimes|array',
+            'workspace_context.actor' => 'sometimes|string|in:ai,user,visual_builder,system',
+            'workspace_context.source' => 'sometimes|string|max:120',
+            'workspace_context.operation_kind' => 'sometimes|string|max:120',
+            'workspace_context.previous_path' => 'sometimes|nullable|string|max:500',
+            'workspace_context.preview_refresh_requested' => 'sometimes|boolean',
+            'workspace_context.reason' => 'sometimes|nullable|string|max:255',
         ]);
         $path = PathRules::normalizePath($validated['path']);
         if (! PathRules::isAllowed($path)) {
             return response()->json([
                 'success' => false,
-                'error' => 'Path not allowed. Use only src/pages, src/components, src/sections, src/layouts, src/styles, public.',
+                'error' => 'Path not allowed. Use only src/pages, src/components, src/sections, src/layouts, src/styles, public, .webu/workspace-manifest.json, or .webu/workspace-operation-log.json.',
             ], 422);
         }
 
         try {
-            $this->workspace->writeFile($project, $path, $validated['content']);
+            $context = is_array($validated['workspace_context'] ?? null) ? $validated['workspace_context'] : [];
+            $this->workspace->writeFile($project, $path, $validated['content'], $context);
             $this->codebaseScanner->invalidateIndex($project);
         } catch (\Throwable $e) {
             return response()->json([
@@ -220,7 +243,17 @@ class ProjectWorkspaceController extends Controller
     {
         $this->authorize('update', $project);
 
-        $path = $request->query('path');
+        $validated = $request->validate([
+            'path' => 'required|string|max:500',
+            'workspace_context' => 'sometimes|array',
+            'workspace_context.actor' => 'sometimes|string|in:ai,user,visual_builder,system',
+            'workspace_context.source' => 'sometimes|string|max:120',
+            'workspace_context.operation_kind' => 'sometimes|string|max:120',
+            'workspace_context.previous_path' => 'sometimes|nullable|string|max:500',
+            'workspace_context.preview_refresh_requested' => 'sometimes|boolean',
+            'workspace_context.reason' => 'sometimes|nullable|string|max:255',
+        ]);
+        $path = $validated['path'] ?? null;
         if (! is_string($path) || $path === '') {
             return response()->json(['success' => false, 'error' => 'path required'], 422);
         }
@@ -229,7 +262,8 @@ class ProjectWorkspaceController extends Controller
             return response()->json(['success' => false, 'error' => 'Path not allowed. Use only allowed project directories.'], 422);
         }
 
-        $deleted = $this->workspace->deleteFile($project, $path);
+        $context = is_array($validated['workspace_context'] ?? null) ? $validated['workspace_context'] : [];
+        $deleted = $this->workspace->deleteFile($project, $path, $context);
         if (! $deleted) {
             return response()->json(['success' => false, 'error' => 'File not found or could not delete'], 404);
         }
@@ -239,6 +273,53 @@ class ProjectWorkspaceController extends Controller
         return response()->json([
             'success' => true,
             'path' => $path,
+        ]);
+    }
+
+    public function moveFile(Request $request, Project $project): JsonResponse
+    {
+        $this->authorize('update', $project);
+
+        $validated = $request->validate([
+            'from_path' => 'required|string|max:500',
+            'to_path' => 'required|string|max:500',
+            'workspace_context' => 'sometimes|array',
+            'workspace_context.actor' => 'sometimes|string|in:ai,user,visual_builder,system',
+            'workspace_context.source' => 'sometimes|string|max:120',
+            'workspace_context.operation_kind' => 'sometimes|string|max:120',
+            'workspace_context.previous_path' => 'sometimes|nullable|string|max:500',
+            'workspace_context.preview_refresh_requested' => 'sometimes|boolean',
+            'workspace_context.reason' => 'sometimes|nullable|string|max:255',
+        ]);
+
+        $fromPath = PathRules::normalizePath($validated['from_path']);
+        $toPath = PathRules::normalizePath($validated['to_path']);
+        if (! PathRules::isAllowed($fromPath) || ! PathRules::isAllowed($toPath)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Path not allowed. Use only allowed project directories.',
+            ], 422);
+        }
+
+        try {
+            $context = is_array($validated['workspace_context'] ?? null) ? $validated['workspace_context'] : [];
+            $context['previous_path'] = $fromPath;
+            $moved = $this->workspace->moveFile($project, $fromPath, $toPath, $context);
+            if (! $moved) {
+                return response()->json(['success' => false, 'error' => 'File not found or could not move'], 404);
+            }
+            $this->codebaseScanner->invalidateIndex($project);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'from_path' => $fromPath,
+            'to_path' => $toPath,
         ]);
     }
 }

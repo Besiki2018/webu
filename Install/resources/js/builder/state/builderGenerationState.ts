@@ -1,25 +1,34 @@
-export type BuilderGenerationState = 'idle' | 'queued' | 'planning' | 'generating' | 'finalizing' | 'complete' | 'failed';
+export type BuilderGenerationState =
+    | 'idle'
+    | 'queued'
+    | 'planning'
+    | 'scaffolding'
+    | 'writing_files'
+    | 'building_preview'
+    | 'ready'
+    | 'failed';
 
 export interface BuilderGenerationStep {
-    key: Extract<BuilderGenerationState, 'planning' | 'generating' | 'finalizing'>;
+    key: Extract<BuilderGenerationState, 'planning' | 'scaffolding' | 'writing_files' | 'building_preview'>;
     label: string;
 }
 
 export const BUILDER_GENERATION_STEPS: BuilderGenerationStep[] = [
-    { key: 'planning', label: 'Planning layout' },
-    { key: 'generating', label: 'Creating sections' },
-    { key: 'finalizing', label: 'Applying design' },
+    { key: 'planning', label: 'Planning' },
+    { key: 'scaffolding', label: 'Generating site structure' },
+    { key: 'writing_files', label: 'Writing files' },
+    { key: 'building_preview', label: 'Building preview' },
 ];
 
 export function isBuilderGenerationBlocking(state: BuilderGenerationState): boolean {
-    return state !== 'complete' && state !== 'failed';
+    return state !== 'ready' && state !== 'failed';
 }
 
 export function getBuilderGenerationStepStatus(
     state: BuilderGenerationState,
     step: BuilderGenerationStep['key'],
 ): 'pending' | 'active' | 'complete' {
-    const order: BuilderGenerationState[] = ['idle', 'queued', 'planning', 'generating', 'finalizing', 'complete'];
+    const order: BuilderGenerationState[] = ['idle', 'queued', 'planning', 'scaffolding', 'writing_files', 'building_preview', 'ready'];
     const currentIndex = order.indexOf(state);
     const stepIndex = order.indexOf(step);
 
@@ -27,7 +36,7 @@ export function getBuilderGenerationStepStatus(
         return 'pending';
     }
 
-    if (state === 'complete' || currentIndex > stepIndex) {
+    if (state === 'ready' || currentIndex > stepIndex) {
         return 'complete';
     }
 
@@ -44,11 +53,13 @@ export function getBuilderGenerationHeadline(state: BuilderGenerationState): str
             return 'Preparing your website...';
         case 'planning':
             return 'Planning your website...';
-        case 'generating':
-            return 'Generating your website...';
-        case 'finalizing':
-            return 'Finalizing your website...';
-        case 'complete':
+        case 'scaffolding':
+            return 'Generating your site structure...';
+        case 'writing_files':
+            return 'Writing your project files...';
+        case 'building_preview':
+            return 'Building your preview...';
+        case 'ready':
             return 'Website ready';
         case 'failed':
             return 'Website generation failed';
@@ -64,13 +75,21 @@ export function resolveBuilderGenerationState(status?: string | null): BuilderGe
             return 'queued';
         case 'planning':
             return 'planning';
+        case 'scaffolding':
         case 'generating':
-            return 'generating';
+        case 'generating_structure':
+        case 'generating_site_structure':
+            return 'scaffolding';
+        case 'writing_files':
+            return 'writing_files';
+        case 'building_preview':
         case 'finalizing':
-            return 'finalizing';
+        case 'installing':
+            return 'building_preview';
+        case 'ready':
         case 'completed':
         case 'complete':
-            return 'complete';
+            return 'ready';
         case 'failed':
             return 'failed';
         default:

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ProjectGenerationRun;
 use App\Services\AiWebsiteGeneration\GenerateWebsiteProjectService;
+use App\Services\ProjectWorkspace\ProjectWorkspaceService;
 use Illuminate\Support\Facades\Log;
 
 class ProjectGenerationRunner
@@ -11,6 +12,7 @@ class ProjectGenerationRunner
     public function __construct(
         protected GenerateWebsiteProjectService $generationService,
         protected SiteProvisioningService $siteProvisioning,
+        protected ProjectWorkspaceService $projectWorkspace,
     ) {}
 
     public function run(ProjectGenerationRun $run): void
@@ -20,13 +22,17 @@ class ProjectGenerationRunner
             return;
         }
 
-        if ($run->status === ProjectGenerationRun::STATUS_COMPLETED) {
+        if ($run->isReady()) {
             return;
         }
 
         $project = $run->project;
 
         $this->markStarted($run, ProjectGenerationRun::STATUS_PLANNING, 'Understanding your website brief.');
+        $this->projectWorkspace->syncInitialGenerationState($project, [
+            'active_generation_run_id' => (string) $run->id,
+            'phase' => ProjectGenerationRun::STATUS_PLANNING,
+        ]);
 
         try {
             $result = $this->generationService->generateIntoProject($project, [
@@ -34,16 +40,24 @@ class ProjectGenerationRunner
                 'language' => $run->requested_language,
                 'style' => $run->requested_style,
                 'websiteType' => $run->requested_website_type,
+                'generationRunId' => (string) $run->id,
                 'user_id' => $run->user_id ?: $project->user_id,
                 'ultra_cheap_mode' => (bool) data_get($run->requested_input, 'ultra_cheap_mode', true),
-            ], function (string $status, ?string $message = null) use ($run): void {
+            ], function (string $status, ?string $message = null) use ($run, $project): void {
                 $this->updateProgress($run->fresh() ?? $run, $status, $message);
+                $this->projectWorkspace->syncInitialGenerationState($project, [
+                    'active_generation_run_id' => (string) $run->id,
+                    'phase' => $status,
+                ]);
             });
 
             $this->siteProvisioning->provisionForProject($project->fresh());
+            $this->projectWorkspace->syncInitialGenerationState($project, [
+                'phase' => ProjectGenerationRun::STATUS_READY,
+            ]);
 
             $run->forceFill([
-                'status' => ProjectGenerationRun::STATUS_COMPLETED,
+                'status' => ProjectGenerationRun::STATUS_READY,
                 'progress_message' => 'Website ready.',
                 'error_message' => null,
                 'completed_at' => now(),
@@ -68,6 +82,10 @@ class ProjectGenerationRunner
                 'failed_at' => now(),
                 'completed_at' => null,
             ])->save();
+            $this->projectWorkspace->syncInitialGenerationState($project, [
+                'phase' => ProjectGenerationRun::STATUS_FAILED,
+                'error_message' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -85,7 +103,7 @@ class ProjectGenerationRunner
 
     private function updateProgress(ProjectGenerationRun $run, string $status, ?string $message = null): void
     {
-        if (! $run->exists || $run->status === ProjectGenerationRun::STATUS_COMPLETED) {
+        if (! $run->exists || $run->isReady()) {
             return;
         }
 
