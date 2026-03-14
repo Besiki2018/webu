@@ -385,6 +385,24 @@ function appendUniqueGenerationDiagnosticsEvent(
     return appendGenerationDiagnosticsEvent(diagnostics, entry, overrides);
 }
 
+function updateGenerationStageTiming(
+    diagnostics: BuildGenerationDiagnostics | null,
+    stage: keyof BuildGenerationDiagnostics['stageTimingsMs'],
+    durationMs: number,
+): BuildGenerationDiagnostics | null {
+    if (!diagnostics) {
+        return diagnostics;
+    }
+
+    return {
+        ...diagnostics,
+        stageTimingsMs: {
+            ...diagnostics.stageTimingsMs,
+            [stage]: durationMs,
+        },
+    };
+}
+
 export function useBuilderChat(projectId: string, options: UseBuilderChatOptions): UseBuilderChatReturn {
     const {
         pusherConfig,
@@ -1722,6 +1740,7 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         if (isBuildingPreview) return;
 
         const requestScope = cloneBuildScope(buildScopeRef.current);
+        const previewRenderingStartedAt = Date.now();
         setIsBuildingPreview(true);
         callbackRefs.current.onBuildStart?.();
 
@@ -1739,7 +1758,11 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 setProgress((prev) => ({
                     ...prev,
                     generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
-                        ensureGenerationDiagnostics(prev.generationDiagnostics),
+                        updateGenerationStageTiming(
+                            ensureGenerationDiagnostics(prev.generationDiagnostics),
+                            'previewRendering',
+                            Date.now() - previewRenderingStartedAt,
+                        ),
                         createGenerationLogEntry('preview', 'preview rendering failed', {
                             error: offlineMessage,
                         }, 'failure'),
@@ -1804,7 +1827,11 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             setProgress((prev) => ({
                 ...prev,
                 generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
-                    ensureGenerationDiagnostics(prev.generationDiagnostics),
+                    updateGenerationStageTiming(
+                        ensureGenerationDiagnostics(prev.generationDiagnostics),
+                        'previewRendering',
+                        Date.now() - previewRenderingStartedAt,
+                    ),
                     createGenerationLogEntry('preview', 'preview rendered', {
                         previewUrl: appliedPreviewUrl ?? previewUrl,
                         previewBuildId,
@@ -1828,7 +1855,11 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             setProgress((prev) => ({
                 ...prev,
                 generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
-                    ensureGenerationDiagnostics(prev.generationDiagnostics),
+                    updateGenerationStageTiming(
+                        ensureGenerationDiagnostics(prev.generationDiagnostics),
+                        'previewRendering',
+                        Date.now() - previewRenderingStartedAt,
+                    ),
                     createGenerationLogEntry('preview', 'preview rendering failed', {
                         error: errorMessage,
                     }, 'failure'),

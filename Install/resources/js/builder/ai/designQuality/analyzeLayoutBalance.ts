@@ -34,12 +34,40 @@ export function analyzeLayoutBalance(context: DesignQualityAnalysisContext): Des
       denseRunLength += 1
       if (denseRunLength >= 3) {
         issues.push('too many similar dense sections are stacked together')
+        if (sectionContext.variantOptions.length > 1) {
+          suggestions.push({
+            category: 'layoutBalance',
+            target: sectionContext.nodeId,
+            sectionIndex: sectionContext.sectionIndex,
+            action: 'swap_variant',
+            detail: 'Swap to a cleaner layout to break up repetitive dense sections.',
+          })
+        }
         score -= 8
       }
     } else {
       denseRunLength = 0
     }
   })
+
+  const coreSections = context.sections.filter((section) => section.sectionType !== 'header' && section.sectionType !== 'footer')
+  if (
+    coreSections.length <= 3
+    && coreSections.map((section) => section.sectionType).join('|') === 'hero|features|cta'
+  ) {
+    issues.push('page rhythm feels flat and too template-like')
+    const middleSection = coreSections[1] ?? null
+    if (middleSection?.variantOptions.length && middleSection.variantOptions.length > 1) {
+      suggestions.push({
+        category: 'layoutBalance',
+        target: middleSection.nodeId,
+        sectionIndex: middleSection.sectionIndex,
+        action: 'swap_variant',
+        detail: 'Use a more distinctive middle section variant to add rhythm.',
+      })
+    }
+    score -= 10
+  }
 
   const footerIndex = context.sections.findIndex((section) => section.sectionType === 'footer')
   if (footerIndex > 0) {
@@ -64,8 +92,14 @@ export function analyzeLayoutBalance(context: DesignQualityAnalysisContext): Des
     }
   }
 
+  const lightSections = context.sections.filter((section) => !DENSE_SECTION_TYPES.has(section.sectionType)).length
+  if (lightSections <= 2 && context.sections.length >= 5) {
+    issues.push('page rhythm is too dense from top to bottom')
+    score -= 6
+  }
+
   return {
-    score: Math.max(45, score),
+    score: Math.max(30, score),
     issues,
     suggestions,
   }

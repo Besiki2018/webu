@@ -88,6 +88,16 @@ export type BlueprintGenerationStep =
 export type BlueprintGenerationStatus = 'info' | 'success' | 'failure'
 export type BuildGenerationMode = 'blueprint' | 'direct-structure' | 'emergency-fallback'
 
+export interface BuildGenerationStageTimingsMs {
+  layoutPlanning: number
+  componentSelection: number
+  contentGeneration: number
+  treeAssembly: number
+  designOptimization: number
+  validation: number
+  previewRendering: number | null
+}
+
 export interface BlueprintGenerationLogEntry {
   step: BlueprintGenerationStep
   status: BlueprintGenerationStatus
@@ -110,6 +120,7 @@ export interface BuildGenerationDiagnostics {
   selectedComponentKeys: string[]
   fallbackUsed: boolean
   designQualityReport: DesignQualityReport | null
+  stageTimingsMs: BuildGenerationStageTimingsMs
   failedStep: BlueprintGenerationStep | null
   rootCause: string | null
   events: BlueprintGenerationLogEntry[]

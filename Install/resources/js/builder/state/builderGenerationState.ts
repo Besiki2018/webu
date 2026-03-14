@@ -29,13 +29,13 @@ export interface ResolveBuilderGenerationStateOptions {
 }
 
 export const BUILDER_GENERATION_STEPS: BuilderGenerationStep[] = [
-    { key: 'analyzing_prompt', label: 'Analyzing prompt' },
-    { key: 'planning_structure', label: 'Planning blueprint' },
+    { key: 'analyzing_prompt', label: 'Understanding project' },
+    { key: 'planning_structure', label: 'Planning layout' },
     { key: 'selecting_components', label: 'Selecting components' },
     { key: 'generating_content', label: 'Generating content' },
     { key: 'assembling_page', label: 'Assembling page' },
-    { key: 'validating_result', label: 'Validating result' },
-    { key: 'rendering_preview', label: 'Rendering preview' },
+    { key: 'validating_result', label: 'Design optimization' },
+    { key: 'rendering_preview', label: 'Finalizing preview' },
 ];
 
 export function isBuilderGenerationBlocking(state: BuilderGenerationState): boolean {
@@ -78,9 +78,9 @@ export function getBuilderGenerationStepStatus(
 export function getBuilderGenerationHeadline(state: BuilderGenerationState): string {
     switch (state) {
         case 'analyzing_prompt':
-            return 'Analyzing your prompt...';
+            return 'Understanding your project...';
         case 'planning_structure':
-            return 'Planning the blueprint...';
+            return 'Planning the layout...';
         case 'selecting_components':
             return 'Selecting components...';
         case 'generating_content':
@@ -88,9 +88,9 @@ export function getBuilderGenerationHeadline(state: BuilderGenerationState): str
         case 'assembling_page':
             return 'Assembling the page...';
         case 'validating_result':
-            return 'Validating the result...';
+            return 'Optimizing the design...';
         case 'rendering_preview':
-            return 'Rendering the preview...';
+            return 'Finalizing the preview...';
         case 'completed':
             return 'Website ready';
         case 'failed':
@@ -104,9 +104,9 @@ export function getBuilderGenerationHeadline(state: BuilderGenerationState): str
 export function getBuilderGenerationDefaultProgressMessage(state: BuilderGenerationState): string {
     switch (state) {
         case 'analyzing_prompt':
-            return 'Analyzing your prompt.';
+            return 'Understanding the project requirements.';
         case 'planning_structure':
-            return 'Planning the blueprint.';
+            return 'Planning the layout and blueprint.';
         case 'selecting_components':
             return 'Selecting the best components for the blueprint.';
         case 'generating_content':
@@ -114,9 +114,9 @@ export function getBuilderGenerationDefaultProgressMessage(state: BuilderGenerat
         case 'assembling_page':
             return 'Assembling the page tree and writing files.';
         case 'validating_result':
-            return 'Validating the generated output before preview.';
+            return 'Improving spacing, hierarchy, CTA clarity, and overall design quality.';
         case 'rendering_preview':
-            return 'Rendering the preview and validating workspace readiness.';
+            return 'Finalizing the preview and unlocking the canvas.';
         case 'completed':
             return 'Website ready.';
         case 'failed':

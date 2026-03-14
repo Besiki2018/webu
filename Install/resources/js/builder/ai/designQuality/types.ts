@@ -13,6 +13,7 @@ export type DesignQualityCategory =
 
 export type DesignQualityAction =
   | 'increase_padding_y'
+  | 'decrease_padding_y'
   | 'set_gap'
   | 'set_max_width'
   | 'set_text_color'

@@ -34,6 +34,28 @@ function getVerticalPadding(context: DesignQualityAnalysisContext['sections'][nu
   return 0
 }
 
+function getBodyLength(section: DesignQualityAnalysisContext['sections'][number]): number {
+  const candidates = [
+    getValueAtPath(section.resolvedProps, 'subtitle'),
+    getValueAtPath(section.resolvedProps, 'description'),
+    getValueAtPath(section.resolvedProps, 'body'),
+    getValueAtPath(section.resolvedProps, 'text'),
+  ]
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim() !== '') {
+      return candidate.trim().length
+    }
+  }
+
+  return 0
+}
+
+function getRepeaterItemCount(section: DesignQualityAnalysisContext['sections'][number]): number {
+  const items = getValueAtPath(section.resolvedProps, 'items')
+  return Array.isArray(items) ? items.length : 0
+}
+
 function supportsField(context: DesignQualityAnalysisContext['sections'][number], path: string): boolean {
   return context.schemaFieldPaths.has(path)
 }
@@ -58,9 +80,12 @@ export function analyzeSpacing(context: DesignQualityAnalysisContext): DesignQua
   const issues: string[] = []
   const suggestions: DesignQualitySuggestion[] = []
   let score = 100
+  let overcrowdedRuns = 0
 
   context.sections.forEach((sectionContext, index) => {
     const padding = getVerticalPadding(sectionContext)
+    const bodyLength = getBodyLength(sectionContext)
+    const itemCount = getRepeaterItemCount(sectionContext)
     const minimumPadding = sectionContext.sectionType === 'hero'
       ? 96
       : sectionContext.sectionType === 'cta'
@@ -68,11 +93,45 @@ export function analyzeSpacing(context: DesignQualityAnalysisContext): DesignQua
         : sectionContext.sectionType === 'footer'
           ? 48
           : 56
+    const maximumPadding = sectionContext.sectionType === 'hero'
+      ? 140
+      : sectionContext.sectionType === 'cta'
+        ? 120
+        : sectionContext.sectionType === 'footer'
+          ? 80
+          : 112
 
     if (padding < minimumPadding) {
       issues.push(`${sectionContext.sectionType} padding too small`)
       suggestions.push(createSpacingSuggestion(sectionContext, minimumPadding, `Increase ${sectionContext.sectionType} breathing room.`))
       score -= sectionContext.sectionType === 'hero' ? 12 : 8
+      overcrowdedRuns += 1
+    } else {
+      overcrowdedRuns = 0
+    }
+
+    if (padding > maximumPadding) {
+      issues.push(`${sectionContext.sectionType} spacing feels too loose`)
+      suggestions.push({
+        category: 'spacing',
+        target: sectionContext.nodeId,
+        sectionIndex: sectionContext.sectionIndex,
+        action: 'decrease_padding_y',
+        value: maximumPadding,
+        path: supportsField(sectionContext, 'padding_y') ? 'padding_y' : 'advanced.padding_top',
+        detail: `Tighten ${sectionContext.sectionType} spacing to avoid empty vertical gaps.`,
+      })
+      score -= 6
+    }
+
+    if (bodyLength > 140 && padding < Math.max(minimumPadding, 64)) {
+      issues.push(`${sectionContext.sectionType} text blocks sit too close to the edges`)
+      suggestions.push(createSpacingSuggestion(
+        sectionContext,
+        Math.max(minimumPadding, 72),
+        'Add more vertical breathing room around long-form text.',
+      ))
+      score -= 6
     }
 
     const previous = context.sections[index - 1]
@@ -91,6 +150,11 @@ export function analyzeSpacing(context: DesignQualityAnalysisContext): DesignQua
       }
     }
 
+    if (overcrowdedRuns >= 2) {
+      issues.push('multiple consecutive sections feel compressed')
+      score -= 5
+    }
+
     if ((sectionContext.sectionType === 'features' || sectionContext.sectionType === 'testimonials') && supportsField(sectionContext, 'gap')) {
       const gap = asNumber(getValueAtPath(sectionContext.props, 'gap') ?? getValueAtPath(sectionContext.defaultProps, 'gap'))
       if (gap !== null && gap < 24) {
@@ -107,10 +171,27 @@ export function analyzeSpacing(context: DesignQualityAnalysisContext): DesignQua
         score -= 4
       }
     }
+
+    if (
+      itemCount >= 4
+      && !supportsField(sectionContext, 'gap')
+      && sectionContext.variantOptions.length > 1
+      && (sectionContext.sectionType === 'features' || sectionContext.sectionType === 'testimonials' || sectionContext.sectionType === 'product_grid')
+    ) {
+      issues.push(`${sectionContext.sectionType} layout feels crowded for the amount of content`)
+      suggestions.push({
+        category: 'spacing',
+        target: sectionContext.nodeId,
+        sectionIndex: sectionContext.sectionIndex,
+        action: 'swap_variant',
+        detail: 'Switch to a roomier variant for dense card content.',
+      })
+      score -= 5
+    }
   })
 
   return {
-    score: Math.max(40, score),
+    score: Math.max(30, score),
     issues,
     suggestions,
   }

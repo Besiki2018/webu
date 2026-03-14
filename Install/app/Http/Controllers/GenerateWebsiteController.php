@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\RunProjectGeneration;
 use App\Models\ProjectGenerationRun;
 use App\Services\AiWebsiteGeneration\GenerateWebsiteProjectService;
+use App\Services\ProjectGenerationRecoveryService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -56,6 +57,8 @@ class GenerateWebsiteController extends Controller
                 'prompt' => $canBuild['reason'],
             ]);
         }
+
+        app(ProjectGenerationRecoveryService::class)->recoverStaleActiveRunsForUser($user->id);
 
         $hasActiveGeneration = ProjectGenerationRun::query()
             ->where('user_id', $user->id)

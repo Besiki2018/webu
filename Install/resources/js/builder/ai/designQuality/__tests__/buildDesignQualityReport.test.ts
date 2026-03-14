@@ -94,6 +94,9 @@ describe('design quality engine', () => {
     })
 
     expect(report.overallScore).toBeLessThan(90)
+    expect(report.threshold).toBe(80)
+    expect(report.categoryScores.spacing).toBeLessThan(100)
+    expect(report.categoryScores.contrast).toBeLessThan(100)
     expect(report.issues).toContain('hero padding too small')
     expect(report.issues.some((issue) => issue.includes('CTA text is too generic'))).toBe(true)
     expect(report.issues.some((issue) => issue.includes('contrast'))).toBe(true)
@@ -129,6 +132,20 @@ describe('design quality engine', () => {
 
     const hero = improved.siteSections.find((section) => section.layoutType === 'hero')
     const cta = improved.siteSections.find((section) => section.layoutType === 'cta')
+    const improvedTree = sectionPlanToComponentTree({
+      sections: improved.siteSections.map((section) => ({
+        componentKey: section.componentKey,
+        ...(section.variant ? { variant: section.variant } : {}),
+        props: section.props ?? {},
+      })),
+    })
+    const improvedReport = buildDesignQualityReport({
+      blueprint,
+      siteSections: improved.siteSections,
+      tree: improvedTree,
+      registryIndex,
+      threshold: report.threshold,
+    })
 
     expect(improved.changesApplied.length).toBeGreaterThan(0)
     expect(hero?.props).toMatchObject({
@@ -138,5 +155,7 @@ describe('design quality engine', () => {
       },
     })
     expect(cta?.props?.buttonText).toBe('Book a visit')
+    expect(cta?.props?.backgroundColor ?? cta?.props?.background_color).toBe('#1d4ed8')
+    expect(improvedReport.overallScore).toBeGreaterThan(report.overallScore)
   })
 })

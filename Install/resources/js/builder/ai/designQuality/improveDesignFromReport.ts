@@ -26,6 +26,10 @@ function supportsPath(section: DesignQualitySectionContext, path: string): boole
   return section.schemaFieldPaths.has(path)
 }
 
+function resolveSupportedPath(section: DesignQualitySectionContext, ...paths: string[]): string | null {
+  return paths.find((path) => supportsPath(section, path)) ?? null
+}
+
 function resolvePrimaryCtaLabel(input: ImproveDesignFromReportInput): string {
   const signals = [
     input.blueprint.projectType,
@@ -79,12 +83,33 @@ function applyPropSuggestion(
         ),
       }
     }
+    if (suggestion.action === 'decrease_padding_y' && supportsPath(sectionContext, 'advanced.padding_top') && supportsPath(sectionContext, 'advanced.padding_bottom')) {
+      const token = clampToken(Number(suggestion.value ?? 72), SPACING_TOKENS)
+      return {
+        ...section,
+        props: setValueAtPath(
+          setValueAtPath(section.props ?? {}, 'advanced.padding_top', token),
+          'advanced.padding_bottom',
+          token,
+        ),
+      }
+    }
     return section
   }
 
-  if (suggestion.action === 'increase_padding_y' || suggestion.action === 'set_gap') {
+  if (suggestion.action === 'increase_padding_y' || suggestion.action === 'decrease_padding_y' || suggestion.action === 'set_gap') {
     const token = clampToken(Number(suggestion.value ?? 64), SPACING_TOKENS)
     if (suggestion.action === 'increase_padding_y' && suggestion.path === 'advanced.padding_top' && supportsPath(sectionContext, 'advanced.padding_bottom')) {
+      return {
+        ...section,
+        props: setValueAtPath(
+          setValueAtPath(section.props ?? {}, 'advanced.padding_top', token),
+          'advanced.padding_bottom',
+          token,
+        ),
+      }
+    }
+    if (suggestion.action === 'decrease_padding_y' && suggestion.path === 'advanced.padding_top' && supportsPath(sectionContext, 'advanced.padding_bottom')) {
       return {
         ...section,
         props: setValueAtPath(
@@ -110,9 +135,27 @@ function applyPropSuggestion(
   }
 
   if (suggestion.action === 'set_text_color' || suggestion.action === 'set_background_color') {
+    const path = suggestion.action === 'set_text_color'
+      ? (resolveSupportedPath(sectionContext, suggestion.path, 'textColor', 'text_color') ?? suggestion.path)
+      : (resolveSupportedPath(sectionContext, suggestion.path, 'backgroundColor', 'background_color') ?? suggestion.path)
+    if (!path) {
+      return section
+    }
+
+    let nextProps = setValueAtPath(section.props ?? {}, path, clampColor(String(suggestion.value ?? '#0f172a')))
+    if (
+      suggestion.action === 'set_background_color'
+      && /#0f172a|#1d4ed8|#1e293b/i.test(String(suggestion.value ?? ''))
+    ) {
+      const textPath = resolveSupportedPath(sectionContext, 'textColor', 'text_color')
+      if (textPath) {
+        nextProps = setValueAtPath(nextProps, textPath, '#ffffff')
+      }
+    }
+
     return {
       ...section,
-      props: setValueAtPath(section.props ?? {}, suggestion.path, clampColor(String(suggestion.value ?? '#0f172a'))),
+      props: nextProps,
     }
   }
 
@@ -127,7 +170,10 @@ function applyVariantSuggestion(
     return section
   }
 
-  const nextVariant = sectionContext.variantOptions.find((variant) => variant !== section.variant)
+  const currentIndex = sectionContext.variantOptions.findIndex((variant) => variant === section.variant)
+  const nextVariant = sectionContext.variantOptions.find((variant, index) => (
+    variant !== section.variant && index > currentIndex
+  )) ?? sectionContext.variantOptions.find((variant) => variant !== section.variant)
   if (!nextVariant) {
     return section
   }
@@ -192,16 +238,31 @@ function applySectionSuggestion(
   }
 
   if (suggestion.action === 'swap_variant') {
-    nextSections[suggestion.sectionIndex] = applyVariantSuggestion(section, context)
+    const nextSection = applyVariantSuggestion(section, context)
+    if (nextSection === section) {
+      return sections
+    }
+
+    nextSections[suggestion.sectionIndex] = nextSection
     return nextSections
   }
 
   if (suggestion.action === 'strengthen_cta_label') {
-    nextSections[suggestion.sectionIndex] = applyCtaLabelSuggestion(section, context, input)
+    const nextSection = applyCtaLabelSuggestion(section, context, input)
+    if (nextSection === section) {
+      return sections
+    }
+
+    nextSections[suggestion.sectionIndex] = nextSection
     return nextSections
   }
 
-  nextSections[suggestion.sectionIndex] = applyPropSuggestion(section, context, suggestion)
+  const nextSection = applyPropSuggestion(section, context, suggestion)
+  if (nextSection === section) {
+    return sections
+  }
+
+  nextSections[suggestion.sectionIndex] = nextSection
   return nextSections
 }
 
@@ -222,13 +283,11 @@ export function improveDesignFromReport(input: ImproveDesignFromReportInput): Im
       registryIndex: input.registryIndex,
       threshold: input.report.threshold,
     })
-    const beforeSnapshot = JSON.stringify(nextSections)
-    nextSections = applySectionSuggestion(nextSections, contexts, suggestion, input)
-    const afterSnapshot = JSON.stringify(nextSections)
-
-    if (beforeSnapshot === afterSnapshot) {
+    const nextCandidate = applySectionSuggestion(nextSections, contexts, suggestion, input)
+    if (nextCandidate === nextSections) {
       return
     }
+    nextSections = nextCandidate
 
     const label = suggestion.detail ?? `${suggestion.action} on ${suggestion.target}`
     if (!applied.has(label)) {

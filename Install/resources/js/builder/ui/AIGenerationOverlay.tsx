@@ -1,6 +1,11 @@
+import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 
 import { useBuilderStore } from '@/builder/store/builderStore';
+import {
+    BUILDER_GENERATION_STEPS,
+    getBuilderGenerationStepStatus,
+} from '@/builder/state/builderGenerationState';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -10,6 +15,8 @@ interface AIGenerationOverlayProps {
     onCreateAnother?: (() => void) | null;
 }
 
+const FADE_OUT_DURATION_MS = 240;
+
 export function AIGenerationOverlay({
     onRetry = null,
     onCreateAnother = null,
@@ -17,25 +24,72 @@ export function AIGenerationOverlay({
     const { t, locale } = useTranslation();
     const generationStage = useBuilderStore((state) => state.generationStage);
     const generationProgress = useBuilderStore((state) => state.generationProgress);
+    const generationDiagnostics = useBuilderStore((state) => state.generationDiagnostics);
     const isGeorgian = locale.toLowerCase().startsWith('ka');
+    const shouldDisplay = generationProgress.locked || generationProgress.isFailed;
+    const [isRendered, setIsRendered] = useState(shouldDisplay);
+    const [isVisible, setIsVisible] = useState(shouldDisplay);
 
-    if (!generationProgress.locked && !generationProgress.isFailed) {
-        return null;
-    }
+    useEffect(() => {
+        if (shouldDisplay) {
+            setIsRendered(true);
+            const frameId = window.requestAnimationFrame(() => {
+                setIsVisible(true);
+            });
 
-    const statusCopy = {
+            return () => {
+                window.cancelAnimationFrame(frameId);
+            };
+        }
+
+        setIsVisible(false);
+        const timeoutId = window.setTimeout(() => {
+            setIsRendered(false);
+        }, FADE_OUT_DURATION_MS);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [shouldDisplay]);
+
+    const stageCopy = useMemo(() => ({
         assistantLabel: isGeorgian ? 'AI გენერაცია' : 'AI generation',
         canvasHint: isGeorgian
-            ? 'საიტის გენერირება პირდაპირ კანვასში მიმდინარეობს. ქვემოთ მიმდინარე ეტაპები ჩანს საბოლოო შედეგამდე.'
-            : 'Site generation is happening directly in the canvas. The current stages stay here until the site is ready.',
+            ? 'გენერაცია პირდაპირ ამ კანვასში მიმდინარეობს. ჩატი რჩება გახსნილი, ხოლო კანვასი დაიბლოკება საბოლოო შედეგამდე.'
+            : 'Generation is running directly inside this canvas. The chat stays usable while the canvas remains locked until the final result is ready.',
         completed: isGeorgian ? 'შესრულებულია' : 'Completed',
         active: isGeorgian ? 'მიმდინარეობს' : 'In progress',
         pending: isGeorgian ? 'მომლოდინე' : 'Pending',
-    };
+        failed: isGeorgian ? 'ვერ დასრულდა' : 'Failed',
+    }), [isGeorgian]);
+
+    const mappedSteps = useMemo(() => {
+        if (generationProgress.steps.length > 0) {
+            return generationProgress.steps;
+        }
+
+        return BUILDER_GENERATION_STEPS.map((step) => ({
+            key: step.key,
+            label: step.label,
+            status: getBuilderGenerationStepStatus(generationStage, step.key),
+            detail: null,
+        }));
+    }, [generationProgress.steps, generationStage]);
+
+    if (!isRendered) {
+        return null;
+    }
 
     return (
-        <div className="absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col bg-[radial-gradient(circle_at_top,_rgba(255,247,237,0.95),_rgba(251,249,244,0.92)_46%,_rgba(244,239,230,0.96)_100%)] backdrop-blur-[2px]">
-            <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center gap-6 px-6 py-10 text-left">
+        <div
+            aria-busy={generationProgress.locked}
+            aria-label="Generating your website..."
+            className={cn(
+                'pointer-events-auto absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col bg-[radial-gradient(circle_at_top,_rgba(255,247,237,0.96),_rgba(251,249,244,0.94)_46%,_rgba(244,239,230,0.98)_100%)] backdrop-blur-[2px] transition-opacity duration-200',
+                isVisible ? 'opacity-100' : 'opacity-0',
+            )}
+        >
+            <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center gap-6 px-6 py-10 text-left">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] bg-white/90 text-[#b7791f] shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
                     {generationProgress.isFailed ? (
                         <RefreshCw className="h-7 w-7" />
@@ -48,29 +102,34 @@ export function AIGenerationOverlay({
 
                 <div className="space-y-2 text-center">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8a857d]">
-                        {statusCopy.assistantLabel}
+                        {stageCopy.assistantLabel}
                     </div>
                     <h1 className="text-2xl font-semibold tracking-[-0.03em] text-[#1c1917]">
                         {generationProgress.headline ?? t('Preparing your website...')}
                     </h1>
-                    <p className="mx-auto max-w-xl text-sm leading-7 text-[#625f57]">
+                    <p className="mx-auto max-w-2xl text-sm leading-7 text-[#625f57]">
                         {generationProgress.errorMessage ?? generationProgress.detail ?? t('Preparing generation.')}
                     </p>
-                    {generationProgress.recoveryMessage ? (
-                        <p className="mx-auto max-w-xl text-xs leading-6 text-[#8a857d]">
-                            {generationProgress.recoveryMessage}
+                    {!generationProgress.isFailed ? (
+                        <p className="mx-auto max-w-2xl text-xs leading-6 text-[#8a857d]">
+                            {stageCopy.canvasHint}
                         </p>
                     ) : null}
-                    {!generationProgress.isFailed ? (
-                        <p className="mx-auto max-w-xl text-xs leading-6 text-[#8a857d]">
-                            {statusCopy.canvasHint}
-                        </p>
+                    {generationDiagnostics?.designQualityReport ? (
+                        <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-[#e7dfd4] bg-white/80 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#625f57]">
+                            <Sparkles className="h-3.5 w-3.5 text-[#b7791f]" />
+                            <span>
+                                {isGeorgian ? 'დიზაინის ხარისხი' : 'Design quality'}
+                                {' '}
+                                {generationDiagnostics.designQualityReport.overallScore}/100
+                            </span>
+                        </div>
                     ) : null}
                 </div>
 
                 {!generationProgress.isFailed ? (
                     <div className="space-y-3">
-                        {generationProgress.steps.map((step) => (
+                        {mappedSteps.map((step) => (
                             <div
                                 key={step.key}
                                 className={cn(
@@ -85,10 +144,10 @@ export function AIGenerationOverlay({
                                     <div className="mt-1 text-sm text-current/75">
                                         {step.detail ?? (
                                             step.status === 'complete'
-                                                ? statusCopy.completed
+                                                ? stageCopy.completed
                                                 : step.status === 'active'
-                                                    ? statusCopy.active
-                                                    : statusCopy.pending
+                                                    ? stageCopy.active
+                                                    : stageCopy.pending
                                         )}
                                     </div>
                                 </div>
@@ -103,10 +162,10 @@ export function AIGenerationOverlay({
                                     )}
                                     <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">
                                         {step.status === 'complete'
-                                            ? statusCopy.completed
+                                            ? stageCopy.completed
                                             : step.status === 'active'
-                                                ? statusCopy.active
-                                                : statusCopy.pending}
+                                                ? stageCopy.active
+                                                : stageCopy.pending}
                                     </span>
                                 </div>
                             </div>

@@ -17,6 +17,7 @@ import {
 import {
   appendGenerationDiagnosticsEvent,
   buildGenerationDiagnostics,
+  createEmptyStageTimings,
   createGenerationLogEntry,
   GenerationTraceError,
   isGenerationTraceError,
@@ -87,6 +88,18 @@ type TreeSignatureNode = {
   responsive: Record<string, Record<string, unknown>> | null;
   responsiveOverrides: Record<string, Record<string, unknown>> | null;
 };
+
+function getTimingNow(): number {
+  if (typeof globalThis.performance?.now === 'function') {
+    return globalThis.performance.now();
+  }
+
+  return Date.now();
+}
+
+function roundTiming(durationMs: number): number {
+  return Math.round(durationMs * 100) / 100;
+}
 
 function resolveProjectType(projectType: ProjectType | string | undefined, blueprint?: ProjectBlueprint): ProjectType {
   if (isProjectType(projectType)) {
@@ -171,6 +184,7 @@ function buildDirectStructureDiagnostics(input: {
   registryIndex: AiComponentCatalogIndex
   structure?: SiteStructureSection[]
   generationLog?: BlueprintGenerationLogEntry[]
+  stageTimingsMs?: Partial<BuildGenerationDiagnostics['stageTimingsMs']>
   rootCause?: string | null
 }): BuildGenerationDiagnostics {
   const sections = Array.isArray(input.structure) ? input.structure : []
@@ -188,6 +202,7 @@ function buildDirectStructureDiagnostics(input: {
     validationPassed: input.rootCause == null,
     emergencyFallbackUsed: false,
     fallbackUsed: false,
+    stageTimingsMs: input.stageTimingsMs,
     rootCause: input.rootCause ?? null,
     failedStep: input.rootCause ? 'validation' : null,
     events: input.generationLog ?? [],
@@ -375,7 +390,10 @@ export async function runGenerateSite(params: GenerateSiteParams): Promise<Gener
     if (hasStructure(params.structure)) {
       const registryIndex = getAllowedComponentCatalogIndex(projectType);
       const trace = buildTrace(params, projectType, 'direct-structure');
+      const stageTimingsMs = createEmptyStageTimings();
+      const treeAssemblyStart = getTimingNow();
       const tree = buildTreeFromStructure({ projectType, structure: params.structure });
+      stageTimingsMs.treeAssembly = roundTiming(getTimingNow() - treeAssemblyStart);
       const generationLog: BlueprintGenerationLogEntry[] = [
         createGenerationLogEntry('sections', 'sections selected from direct structure', params.structure, 'success'),
         createGenerationLogEntry('tree', 'tree built from direct structure', tree.map((node) => ({
@@ -383,12 +401,14 @@ export async function runGenerateSite(params: GenerateSiteParams): Promise<Gener
           componentKey: node.componentKey,
         })), 'success'),
       ];
+      const validationStart = getTimingNow();
       const validation = validateGeneratedSite({
         projectType,
         tree,
         registryIndex,
         generationMode: 'direct-structure',
       });
+      stageTimingsMs.validation = roundTiming(getTimingNow() - validationStart);
       if (!validation.ok) {
         const error = formatGeneratedSiteValidationIssues(validation.issues);
         generationLog.push(createGenerationLogEntry('validation', 'validation failed', {
@@ -404,6 +424,7 @@ export async function runGenerateSite(params: GenerateSiteParams): Promise<Gener
             registryIndex,
             structure: params.structure,
             generationLog,
+            stageTimingsMs,
             rootCause: error,
           }),
         );
@@ -417,6 +438,7 @@ export async function runGenerateSite(params: GenerateSiteParams): Promise<Gener
           registryIndex,
           structure: params.structure,
           generationLog,
+          stageTimingsMs,
         }),
         setProjectType,
         setComponentTree,

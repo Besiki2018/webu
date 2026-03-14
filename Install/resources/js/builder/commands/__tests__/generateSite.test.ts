@@ -44,6 +44,8 @@ describe('generateSite command', () => {
     ]);
     expect(result.diagnostics?.validationPassed).toBe(true);
     expect(result.diagnostics?.emergencyFallbackUsed).toBe(false);
+    expect(result.diagnostics?.stageTimingsMs.treeAssembly).toBeGreaterThanOrEqual(0);
+    expect(result.diagnostics?.stageTimingsMs.validation).toBeGreaterThanOrEqual(0);
     expect(infoSpy).toHaveBeenCalledWith(
       '[builder.generateSite] applied',
       expect.objectContaining({
@@ -77,6 +79,11 @@ describe('generateSite command', () => {
     expect(result.diagnostics?.selectedSections.length).toBeGreaterThan(0);
     expect(result.diagnostics?.validationPassed).toBe(true);
     expect(result.diagnostics?.emergencyFallbackUsed).toBe(false);
+    expect(result.diagnostics?.stageTimingsMs.layoutPlanning).toBeGreaterThanOrEqual(0);
+    expect(result.diagnostics?.stageTimingsMs.componentSelection).toBeGreaterThanOrEqual(0);
+    expect(result.diagnostics?.stageTimingsMs.contentGeneration).toBeGreaterThanOrEqual(0);
+    expect(result.diagnostics?.stageTimingsMs.treeAssembly).toBeGreaterThanOrEqual(0);
+    expect(result.diagnostics?.stageTimingsMs.validation).toBeGreaterThanOrEqual(0);
     expect(result.diagnostics?.events.some((entry) => entry.step === 'layout')).toBe(true);
     expect(result.diagnostics?.events.some((entry) => entry.step === 'component_scores')).toBe(true);
   });

@@ -10,12 +10,13 @@ import type {
   BuildDesignQualityReportInput,
   DesignQualityAnalysisContext,
   DesignQualityAnalyzerResult,
+  DesignQualityCategory,
   DesignQualityCategoryScores,
   DesignQualityReport,
   DesignQualitySectionContext,
 } from './types'
 
-const DEFAULT_THRESHOLD = 80
+export const DESIGN_QUALITY_MINIMUM_SCORE = 80
 
 function resolveSectionType(componentKey: string, layoutType: string): string {
   return layoutType === 'product-grid' ? 'product_grid' : layoutType || componentKey
@@ -63,6 +64,14 @@ function mergeIssues(...results: DesignQualityAnalyzerResult[]): string[] {
 function mergeSuggestions(...results: DesignQualityAnalyzerResult[]): DesignQualityReport['improvements'] {
   const seen = new Set<string>()
   const merged: DesignQualityReport['improvements'] = []
+  const categoryPriority: Record<DesignQualityCategory, number> = {
+    contrast: 0,
+    hierarchy: 1,
+    ctaClarity: 2,
+    spacing: 3,
+    typography: 4,
+    layoutBalance: 5,
+  }
 
   results.forEach((result) => {
     result.suggestions.forEach((suggestion) => {
@@ -75,22 +84,34 @@ function mergeSuggestions(...results: DesignQualityAnalyzerResult[]): DesignQual
     })
   })
 
-  return merged
+  return merged.sort((left, right) => {
+    const priorityDelta = categoryPriority[left.category] - categoryPriority[right.category]
+    if (priorityDelta !== 0) {
+      return priorityDelta
+    }
+
+    const sectionDelta = (left.sectionIndex ?? Number.MAX_SAFE_INTEGER) - (right.sectionIndex ?? Number.MAX_SAFE_INTEGER)
+    if (sectionDelta !== 0) {
+      return sectionDelta
+    }
+
+    return left.target.localeCompare(right.target)
+  })
 }
 
 function computeOverallScore(scores: DesignQualityCategoryScores): number {
-  return Math.round((
-    scores.spacing
-    + scores.typography
-    + scores.contrast
-    + scores.hierarchy
-    + scores.layoutBalance
-    + scores.ctaClarity
-  ) / 6)
+  return Math.round(
+    (scores.spacing * 0.17)
+    + (scores.typography * 0.17)
+    + (scores.contrast * 0.18)
+    + (scores.hierarchy * 0.18)
+    + (scores.layoutBalance * 0.14)
+    + (scores.ctaClarity * 0.16),
+  )
 }
 
 export function buildDesignQualityReport(input: BuildDesignQualityReportInput): DesignQualityReport {
-  const threshold = input.threshold ?? DEFAULT_THRESHOLD
+  const threshold = input.threshold ?? DESIGN_QUALITY_MINIMUM_SCORE
   const context: DesignQualityAnalysisContext = {
     sections: buildSectionContexts(input),
     tree: input.tree,

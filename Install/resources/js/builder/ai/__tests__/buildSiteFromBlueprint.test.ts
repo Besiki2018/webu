@@ -24,6 +24,15 @@ describe('buildSiteFromBlueprint design quality integration', () => {
         result.diagnostics.designQualityReport?.initialOverallScore ?? 0,
       )
       expect(result.diagnostics.designQualityReport?.improvementsApplied.length).toBeGreaterThan(0)
+      expect(result.diagnostics.designQualityReport?.threshold).toBe(80)
+      expect(result.generationLog.some((entry) => entry.step === 'design_improvement')).toBe(true)
+      expect(result.diagnostics.stageTimingsMs.layoutPlanning).toBeGreaterThanOrEqual(0)
+      expect(result.diagnostics.stageTimingsMs.componentSelection).toBeGreaterThanOrEqual(0)
+      expect(result.diagnostics.stageTimingsMs.contentGeneration).toBeGreaterThanOrEqual(0)
+      expect(result.diagnostics.stageTimingsMs.treeAssembly).toBeGreaterThanOrEqual(0)
+      expect(result.diagnostics.stageTimingsMs.designOptimization).toBeGreaterThanOrEqual(0)
+      expect(result.diagnostics.stageTimingsMs.validation).toBeGreaterThanOrEqual(0)
+      expect(result.diagnostics.stageTimingsMs.previewRendering).toBeNull()
 
       expect(result.sitePlan.pages[0]?.sections.some((section) => (
         typeof section.props?.advanced === 'object'

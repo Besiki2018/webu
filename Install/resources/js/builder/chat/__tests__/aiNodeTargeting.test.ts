@@ -72,4 +72,16 @@ describe('aiNodeTargeting', () => {
         expect(context).toContain('hero-1.subtitle');
         expect(context).toContain('path=subtitle');
     });
+
+    it('keeps unresolved node references in a safe fallback bucket', () => {
+        const result = resolveAiNodeTargets({
+            message: '@node(missing-node.title)\nUpdate this text',
+            builderStructureItems: structureItems,
+            currentBreakpoint: 'desktop',
+            currentInteractionState: 'normal',
+        });
+
+        expect(result.resolvedTargets).toEqual([]);
+        expect(result.unresolvedNodeIds).toEqual(['missing-node.title']);
+    });
 });

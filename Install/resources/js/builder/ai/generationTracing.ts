@@ -3,8 +3,21 @@ import type {
   BlueprintGenerationStatus,
   BlueprintGenerationStep,
   BuildGenerationDiagnostics,
+  BuildGenerationStageTimingsMs,
 } from './blueprintTypes'
 import type { DesignQualityReport } from './designQuality/types'
+
+export function createEmptyStageTimings(): BuildGenerationStageTimingsMs {
+  return {
+    layoutPlanning: 0,
+    componentSelection: 0,
+    contentGeneration: 0,
+    treeAssembly: 0,
+    designOptimization: 0,
+    validation: 0,
+    previewRendering: null,
+  }
+}
 
 export function createGenerationLogEntry(
   step: BlueprintGenerationStep,
@@ -35,6 +48,7 @@ export function buildGenerationDiagnostics(input: {
   emergencyFallbackUsed?: boolean
   fallbackUsed?: boolean
   designQualityReport?: DesignQualityReport | null
+  stageTimingsMs?: Partial<BuildGenerationStageTimingsMs>
   failedStep?: BlueprintGenerationStep | null
   rootCause?: string | null
   events?: BlueprintGenerationLogEntry[]
@@ -58,6 +72,10 @@ export function buildGenerationDiagnostics(input: {
     selectedComponentKeys: input.selectedComponentKeys ?? [],
     fallbackUsed: emergencyFallbackUsed,
     designQualityReport: input.designQualityReport ?? null,
+    stageTimingsMs: {
+      ...createEmptyStageTimings(),
+      ...(input.stageTimingsMs ?? {}),
+    },
     failedStep: input.failedStep ?? null,
     rootCause: input.rootCause ?? null,
     events: input.events ? [...input.events] : [],

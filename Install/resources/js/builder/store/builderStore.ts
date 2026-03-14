@@ -46,7 +46,7 @@ export interface BuilderStoreState {
   selectedProps: Record<string, unknown> | null;
   generationStage: BuilderGenerationState;
   generationProgress: BuilderGenerationProgress;
-  diagnostics: BuildGenerationDiagnostics | null;
+  generationDiagnostics: BuildGenerationDiagnostics | null;
 
   setProjectType: (next: ProjectType) => void;
   setComponentTree: (next: BuilderComponentInstance[] | ((prev: BuilderComponentInstance[]) => BuilderComponentInstance[])) => void;
@@ -89,8 +89,35 @@ export const initialState = {
   selectedProps: null as Record<string, unknown> | null,
   generationStage: 'idle' as BuilderGenerationState,
   generationProgress: initialGenerationProgress,
-  diagnostics: null as BuildGenerationDiagnostics | null,
+  generationDiagnostics: null as BuildGenerationDiagnostics | null,
 };
+
+function findComponentInTree(
+  tree: BuilderComponentInstance[],
+  componentId: string | null,
+): BuilderComponentInstance | null {
+  if (!componentId) {
+    return null;
+  }
+
+  const stack = [...tree];
+  while (stack.length > 0) {
+    const node = stack.shift() ?? null;
+    if (!node) {
+      continue;
+    }
+
+    if (node.id === componentId) {
+      return node;
+    }
+
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      stack.unshift(...node.children);
+    }
+  }
+
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Store
@@ -106,7 +133,15 @@ export const useBuilderStore = create<BuilderStoreState>((set) => ({
     set((state) => {
       const raw = typeof next === 'function' ? next(state.componentTree) : next;
       const tree = injectTreeMetadata(raw);
-      return { componentTree: tree };
+      const selectedNode = findComponentInTree(tree, state.selectedComponentId);
+      const hoveredNode = findComponentInTree(tree, state.hoveredComponentId);
+
+      return {
+        componentTree: tree,
+        selectedComponentId: selectedNode ? state.selectedComponentId : null,
+        hoveredComponentId: hoveredNode ? state.hoveredComponentId : null,
+        selectedProps: selectedNode?.props ?? null,
+      };
     });
   },
 
@@ -134,7 +169,7 @@ export const useBuilderStore = create<BuilderStoreState>((set) => ({
     set({
       generationStage: next.stage,
       generationProgress: next.progress,
-      diagnostics: next.diagnostics ?? null,
+      generationDiagnostics: next.diagnostics ?? null,
     });
   },
 
@@ -142,7 +177,7 @@ export const useBuilderStore = create<BuilderStoreState>((set) => ({
     set({
       generationStage: 'idle',
       generationProgress: initialGenerationProgress,
-      diagnostics: null,
+      generationDiagnostics: null,
     });
   },
 

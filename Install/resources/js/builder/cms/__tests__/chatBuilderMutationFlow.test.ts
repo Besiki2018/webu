@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+    areBuilderStructureCollectionsEqual,
     buildBuilderBridgeEventSignature,
     isStaleBuilderBridgeState,
     resolvePendingBuilderStructureMutation,
+    shouldIgnoreRevertingPendingStructureSnapshot,
 } from '@/builder/cms/chatBuilderMutationFlow';
 
 describe('chatBuilderMutationFlow', () => {
@@ -10,6 +12,7 @@ describe('chatBuilderMutationFlow', () => {
         expect(resolvePendingBuilderStructureMutation({
             requestId: 'request-1',
             mutation: 'move-section',
+            baseItems: [],
             previewItems: [],
         }, {
             requestId: 'request-2',
@@ -25,6 +28,7 @@ describe('chatBuilderMutationFlow', () => {
         expect(resolvePendingBuilderStructureMutation({
             requestId: 'request-1',
             mutation: 'move-section',
+            baseItems: [],
             previewItems: [],
         }, {
             requestId: 'request-1',
@@ -40,6 +44,7 @@ describe('chatBuilderMutationFlow', () => {
         expect(resolvePendingBuilderStructureMutation({
             requestId: 'request-1',
             mutation: 'remove-section',
+            baseItems: [],
             previewItems: null,
         }, {
             requestId: 'request-1',
@@ -88,5 +93,54 @@ describe('chatBuilderMutationFlow', () => {
             stateVersion: 1,
             revisionVersion: 1,
         })).toBe(false);
+    });
+
+    it('detects when an incoming snapshot would revert a pending optimistic mutation', () => {
+        const baseItems = [{
+            localId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            label: 'Hero',
+            previewText: 'Hero',
+            props: { title: 'Hero' },
+        }];
+        const previewItems = [{
+            localId: 'hero-2',
+            sectionKey: 'webu_general_hero_01',
+            label: 'Hero',
+            previewText: 'Hero 2',
+            props: { title: 'Hero 2' },
+        }];
+
+        expect(shouldIgnoreRevertingPendingStructureSnapshot({
+            requestId: 'request-1',
+            mutation: 'remove-section',
+            baseItems,
+            previewItems,
+            selectionSnapshot: null,
+        }, baseItems)).toBe(true);
+
+        expect(shouldIgnoreRevertingPendingStructureSnapshot({
+            requestId: 'request-1',
+            mutation: 'remove-section',
+            baseItems,
+            previewItems,
+            selectionSnapshot: null,
+        }, previewItems)).toBe(false);
+    });
+
+    it('compares structure collections by visible content instead of array identity', () => {
+        expect(areBuilderStructureCollectionsEqual([{
+            localId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            label: 'Hero',
+            previewText: 'Hello',
+            props: { title: 'Hello', cta: { label: 'Start' } },
+        }], [{
+            localId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            label: 'Hero',
+            previewText: 'Hello',
+            props: { title: 'Hello', cta: { label: 'Start' } },
+        }])).toBe(true);
     });
 });

@@ -10,6 +10,14 @@ function formatStepLabel(step: string): string {
     return step.replace(/_/g, ' ');
 }
 
+function formatTiming(value: number | null): string {
+    if (value == null) {
+        return 'n/a';
+    }
+
+    return `${value.toFixed(2)} ms`;
+}
+
 export function GenerationDiagnosticsPanel({
     diagnostics,
     className,
@@ -134,6 +142,24 @@ export function GenerationDiagnosticsPanel({
                         )}>
                             {diagnostics.rootCause ?? 'none'}
                         </div>
+                    </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Stage timings
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        {Object.entries(diagnostics.stageTimingsMs).map(([key, value]) => (
+                            <div key={key}>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    {formatStepLabel(key)}
+                                </div>
+                                <div className="mt-1 font-mono text-xs text-slate-900">
+                                    {formatTiming(value)}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Concerns;
 
 use App\Models\Project;
 use App\Models\ProjectGenerationRun;
+use App\Services\ProjectGenerationRecoveryService;
 use App\Services\ProjectWorkspace\ProjectWorkspaceService;
 
 trait BuildsProjectGenerationPayload
@@ -29,6 +30,8 @@ trait BuildsProjectGenerationPayload
         Project $project,
         ProjectWorkspaceService $projectWorkspace
     ): ?array {
+        $run = app(ProjectGenerationRecoveryService::class)->recoverStaleRun($run);
+
         if (! $run) {
             return null;
         }

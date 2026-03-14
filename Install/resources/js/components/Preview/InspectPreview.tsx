@@ -187,9 +187,13 @@ export function InspectPreview({
         const el = stageRef.current;
         if (!el) return;
         const update = () => {
-            const w = el.clientWidth || 0;
-            const h = el.clientHeight || 0;
-            setStageSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+            const measuredWidth = el.clientWidth || 0;
+            const measuredHeight = el.clientHeight || 0;
+            setStageSize((prev) => {
+                const w = measuredWidth > 0 ? measuredWidth : prev.w;
+                const h = measuredHeight > 0 ? measuredHeight : prev.h;
+                return prev.w === w && prev.h === h ? prev : { w, h };
+            });
         };
         update();
         const ro = new ResizeObserver(update);

@@ -92,6 +92,18 @@ function buildSuggestion(
   }
 }
 
+function supportsField(section: DesignQualityAnalysisContext['sections'][number], ...paths: string[]): string | null {
+  return paths.find((path) => section.schemaFieldPaths.has(path)) ?? null
+}
+
+function isVeryLight(color: RgbColor): boolean {
+  return luminance(color) >= 0.72
+}
+
+function isVeryDark(color: RgbColor): boolean {
+  return luminance(color) <= 0.18
+}
+
 export function analyzeContrast(context: DesignQualityAnalysisContext): DesignQualityAnalyzerResult {
   const issues: string[] = []
   const suggestions: DesignQualitySuggestion[] = []
@@ -107,24 +119,67 @@ export function analyzeContrast(context: DesignQualityAnalysisContext): DesignQu
     }
 
     const ratio = contrastRatio(parsedForeground, parsedBackground)
-    const requiredRatio = sectionContext.sectionType === 'cta' ? 4.5 : 4.2
-    if (ratio >= requiredRatio) {
+    const requiredRatio = sectionContext.sectionType === 'cta'
+      ? 5
+      : sectionContext.sectionType === 'hero'
+        ? 4.7
+        : 4.5
+    const textPath = supportsField(sectionContext, 'textColor', 'text_color')
+    const backgroundPath = supportsField(sectionContext, 'backgroundColor', 'background_color')
+    const lowContrast = ratio < requiredRatio
+    const faintOnLight = isVeryLight(parsedForeground) && isVeryLight(parsedBackground)
+    const muddyOnDark = isVeryDark(parsedForeground) && isVeryDark(parsedBackground)
+
+    if (!lowContrast && !faintOnLight && !muddyOnDark) {
       return
     }
 
-    issues.push(`${sectionContext.sectionType} text contrast is too low`)
-    score -= sectionContext.sectionType === 'cta' ? 12 : 8
-
-    if (sectionContext.schemaFieldPaths.has('textColor')) {
-      suggestions.push(buildSuggestion(sectionContext, 'set_text_color', 'textColor', '#0f172a', 'Strengthen text contrast against the current background.'))
+    if (faintOnLight) {
+      issues.push(`${sectionContext.sectionType} muted text is too faint`)
+      score -= 10
+    } else if (muddyOnDark) {
+      issues.push(`${sectionContext.sectionType} text disappears into a dark surface`)
+      score -= 10
+    } else {
+      issues.push(`${sectionContext.sectionType} text contrast is too low`)
+      score -= sectionContext.sectionType === 'cta' ? 12 : 8
     }
-    if (sectionContext.sectionType === 'cta' && sectionContext.schemaFieldPaths.has('backgroundColor')) {
-      suggestions.push(buildSuggestion(sectionContext, 'set_background_color', 'backgroundColor', '#1d4ed8', 'Give the CTA section a higher-contrast accent background.'))
+
+    if (textPath) {
+      suggestions.push(buildSuggestion(
+        sectionContext,
+        'set_text_color',
+        textPath,
+        isVeryDark(parsedBackground) ? '#ffffff' : '#0f172a',
+        'Strengthen text contrast against the current background.',
+      ))
+    }
+
+    if ((sectionContext.sectionType === 'cta' || sectionContext.sectionType === 'hero') && backgroundPath) {
+      suggestions.push(buildSuggestion(
+        sectionContext,
+        'set_background_color',
+        backgroundPath,
+        sectionContext.sectionType === 'cta' ? '#1d4ed8' : '#0f172a',
+        sectionContext.sectionType === 'cta'
+          ? 'Give the CTA section a higher-contrast accent background.'
+          : 'Give the hero a clearer high-contrast surface.',
+      ))
+    }
+
+    if ((lowContrast || faintOnLight || muddyOnDark) && sectionContext.variantOptions.length > 1) {
+      suggestions.push({
+        category: 'contrast',
+        target: sectionContext.nodeId,
+        sectionIndex: sectionContext.sectionIndex,
+        action: 'swap_variant',
+        detail: 'Switch to a variant with stronger visual separation.',
+      })
     }
   })
 
   return {
-    score: Math.max(45, score),
+    score: Math.max(30, score),
     issues,
     suggestions,
   }

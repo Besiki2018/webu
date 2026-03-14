@@ -1,4 +1,5 @@
 import type { PendingBuilderStructureMutation } from '@/builder/cms/chatBuilderStructureMutations';
+import type { WorkspaceBuilderStructureItem as BuilderStructureItem } from '@/builder/cms/workspaceBuilderSync';
 
 export type { PendingBuilderStructureMutation } from '@/builder/cms/chatBuilderStructureMutations';
 
@@ -27,6 +28,76 @@ export interface BuilderMutationAckInput {
 export interface BuilderMutationAckResolution {
     status: 'ignore' | 'keep-pending' | 'clear-success' | 'clear-error';
     errorMessage: string | null;
+}
+
+function arePlainValuesEqual(left: unknown, right: unknown): boolean {
+    if (Object.is(left, right)) {
+        return true;
+    }
+
+    if (Array.isArray(left) || Array.isArray(right)) {
+        if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+            return false;
+        }
+
+        return left.every((entry, index) => arePlainValuesEqual(entry, right[index]));
+    }
+
+    if (left && right && typeof left === 'object' && typeof right === 'object') {
+        const leftEntries = Object.entries(left as Record<string, unknown>);
+        const rightEntries = Object.entries(right as Record<string, unknown>);
+        if (leftEntries.length !== rightEntries.length) {
+            return false;
+        }
+
+        return leftEntries.every(([key, value]) => (
+            Object.prototype.hasOwnProperty.call(right, key)
+            && arePlainValuesEqual(value, (right as Record<string, unknown>)[key])
+        ));
+    }
+
+    return false;
+}
+
+export function areBuilderStructureCollectionsEqual(
+    left: BuilderStructureItem[],
+    right: BuilderStructureItem[],
+): boolean {
+    if (left === right) {
+        return true;
+    }
+
+    if (left.length !== right.length) {
+        return false;
+    }
+
+    return left.every((item, index) => {
+        const candidate = right[index];
+        if (!candidate) {
+            return false;
+        }
+
+        return item.localId === candidate.localId
+            && item.sectionKey === candidate.sectionKey
+            && item.label === candidate.label
+            && item.previewText === candidate.previewText
+            && arePlainValuesEqual(item.props, candidate.props);
+    });
+}
+
+export function shouldIgnoreRevertingPendingStructureSnapshot(
+    pending: PendingBuilderStructureMutation | null,
+    nextItems: BuilderStructureItem[],
+): boolean {
+    if (!pending || pending.previewItems === null) {
+        return false;
+    }
+
+    if (areBuilderStructureCollectionsEqual(nextItems, pending.previewItems)) {
+        return false;
+    }
+
+    return areBuilderStructureCollectionsEqual(nextItems, pending.baseItems);
 }
 
 export function buildBuilderBridgeEventSignature(input: BuilderBridgeEventSignatureInput): string {

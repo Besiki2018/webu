@@ -136,30 +136,3 @@ export function treeToSectionsDraft(tree: BuilderComponentInstance[]): BuilderSe
     };
   });
 }
-
-/** Default SaaS landing page structure (registry keys). Use when AI returns a high-level "saas_landing" template. */
-export const DEFAULT_SAAS_LANDING_STRUCTURE: SiteStructureSection[] = [
-  { componentKey: 'webu_header_01' },
-  { componentKey: 'webu_general_hero_01' },
-  { componentKey: 'webu_general_features_01' },
-  { componentKey: 'webu_general_cta_01' },
-  { componentKey: 'webu_footer_01' },
-];
-
-/** Default landing structure: Header, Hero, Features, CTA, Footer (no pricing/testimonials if not in registry). */
-export const DEFAULT_LANDING_STRUCTURE: SiteStructureSection[] = [
-  { componentKey: 'webu_header_01' },
-  { componentKey: 'webu_general_hero_01' },
-  { componentKey: 'webu_general_features_01' },
-  { componentKey: 'webu_general_cta_01' },
-  { componentKey: 'webu_footer_01' },
-];
-
-/** Default ecommerce structure (Phase 15): Header, Hero, Features, CTA, Footer. AI can override with industry-specific props (e.g. furniture store). */
-export const DEFAULT_ECOMMERCE_STRUCTURE: SiteStructureSection[] = [
-  { componentKey: 'webu_header_01' },
-  { componentKey: 'webu_general_hero_01' },
-  { componentKey: 'webu_general_features_01' },
-  { componentKey: 'webu_general_cta_01' },
-  { componentKey: 'webu_footer_01' },
-];

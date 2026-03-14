@@ -12,6 +12,16 @@ function hasPrimaryAction(section: DesignQualityAnalysisContext['sections'][numb
   return candidates.some((candidate) => typeof candidate === 'string' && candidate.trim() !== '')
 }
 
+function hasSupportSection(context: DesignQualityAnalysisContext): boolean {
+  return context.sections.some((section) => (
+    section.sectionType === 'testimonials'
+    || section.sectionType === 'reviews'
+    || section.sectionType === 'faq'
+    || section.sectionType === 'features'
+    || section.sectionType === 'services'
+  ))
+}
+
 export function analyzeHierarchy(context: DesignQualityAnalysisContext): DesignQualityAnalyzerResult {
   const issues: string[] = []
   const suggestions: DesignQualitySuggestion[] = []
@@ -22,6 +32,11 @@ export function analyzeHierarchy(context: DesignQualityAnalysisContext): DesignQ
   const heroSection = heroIndex >= 0 ? context.sections[heroIndex] : null
 
   if (heroSection) {
+    if (heroSection.sectionIndex > 1) {
+      issues.push('hero appears too late to anchor the page')
+      score -= 8
+    }
+
     if (!hasPrimaryAction(heroSection)) {
       issues.push('hero lacks a dominant call to action')
       suggestions.push({
@@ -31,6 +46,15 @@ export function analyzeHierarchy(context: DesignQualityAnalysisContext): DesignQ
         action: 'strengthen_cta_label',
         detail: 'Give the hero an obvious primary action.',
       })
+      if (heroSection.variantOptions.length > 1) {
+        suggestions.push({
+          category: 'hierarchy',
+          target: heroSection.nodeId,
+          sectionIndex: heroSection.sectionIndex,
+          action: 'swap_variant',
+          detail: 'Switch to a hero variant with a stronger focal point.',
+        })
+      }
       score -= 12
     }
   } else {
@@ -54,6 +78,20 @@ export function analyzeHierarchy(context: DesignQualityAnalysisContext): DesignQ
     score -= 10
   }
 
+  if (!hasSupportSection(context)) {
+    issues.push('page lacks a supporting section to build trust after the hero')
+    if (heroSection?.variantOptions.length && heroSection.variantOptions.length > 1) {
+      suggestions.push({
+        category: 'hierarchy',
+        target: heroSection.nodeId,
+        sectionIndex: heroSection.sectionIndex,
+        action: 'swap_variant',
+        detail: 'Use a richer hero variant to carry more hierarchy and supporting detail.',
+      })
+    }
+    score -= 7
+  }
+
   const testimonialIndex = context.sections.findIndex((section) => section.sectionType === 'testimonials' || section.sectionType === 'reviews')
   if (heroIndex >= 0 && testimonialIndex > 0 && testimonialIndex < heroIndex + 2) {
     issues.push('testimonial content competes with hero too early')
@@ -61,7 +99,7 @@ export function analyzeHierarchy(context: DesignQualityAnalysisContext): DesignQ
   }
 
   return {
-    score: Math.max(45, score),
+    score: Math.max(30, score),
     issues,
     suggestions,
   }

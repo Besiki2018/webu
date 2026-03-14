@@ -10,6 +10,7 @@ use App\Models\Project;
 use App\Models\ProjectGenerationRun;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Services\ProjectGenerationRecoveryService;
 use App\Services\ProjectWorkspace\ProjectWorkspaceService;
 use App\Services\SiteProvisioningService;
 use Illuminate\Support\Facades\Bus;
@@ -107,6 +108,60 @@ class GenerateWebsiteControllerTest extends TestCase
         Bus::assertDispatchedTimes(RunProjectGeneration::class, 1);
     }
 
+    public function test_stale_active_generation_is_failed_and_does_not_block_new_generation(): void
+    {
+        Bus::fake();
+
+        $provider = AiProvider::factory()->openai()->create();
+        $builder = Builder::factory()->create();
+        $plan = Plan::factory()
+            ->withProjectLimit(10)
+            ->withAiProvider($provider)
+            ->withBuilder($builder)
+            ->create();
+        $user = User::factory()->withPlan($plan)->create();
+
+        $staleProject = Project::factory()->for($user)->create([
+            'initial_prompt' => 'Old stuck project',
+        ]);
+
+        $staleRun = ProjectGenerationRun::query()->create([
+            'project_id' => $staleProject->id,
+            'user_id' => $user->id,
+            'status' => ProjectGenerationRun::STATUS_ASSEMBLING_PAGE,
+            'requested_prompt' => 'Old stuck project',
+            'progress_message' => 'Assembling the page tree and writing files.',
+            'started_at' => now()->subMinutes(ProjectGenerationRecoveryService::STALE_TIMEOUT_MINUTES + 2),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->withHeader('X-Inertia', 'true')
+            ->post(route('projects.generate-website'), [
+                'prompt' => 'Create a new interior design website',
+            ]);
+
+        $newProject = Project::query()
+            ->where('user_id', $user->id)
+            ->whereKeyNot($staleProject->id)
+            ->latest('created_at')
+            ->firstOrFail();
+
+        $response
+            ->assertStatus(409)
+            ->assertHeader('X-Inertia-Location', route('chat', ['project' => $newProject]));
+
+        $staleRun->refresh();
+        $this->assertSame(ProjectGenerationRun::STATUS_FAILED, $staleRun->status);
+        $this->assertSame(
+            'Website generation timed out before completion. Start a new generation or retry this project.',
+            $staleRun->error_message
+        );
+        $this->assertNotNull($staleRun->failed_at);
+        $this->assertSame(2, Project::query()->where('user_id', $user->id)->count());
+        $this->assertSame(2, ProjectGenerationRun::query()->where('user_id', $user->id)->count());
+        Bus::assertDispatchedTimes(RunProjectGeneration::class, 1);
+    }
+
     public function test_new_project_flow_redirects_into_the_chat_workspace_after_creation(): void
     {
         Bus::fake();
@@ -178,7 +233,39 @@ class GenerateWebsiteControllerTest extends TestCase
             ->assertJsonPath('generation.progress_message', 'Writing project files to the workspace.');
     }
 
-    public function test_generation_page_renders_progress_screen_until_generation_finishes(): void
+    public function test_generation_status_endpoint_recovers_stale_active_run_as_failed(): void
+    {
+        $provider = AiProvider::factory()->openai()->create();
+        $builder = Builder::factory()->create();
+        $plan = Plan::factory()
+            ->withProjectLimit(10)
+            ->withAiProvider($provider)
+            ->withBuilder($builder)
+            ->create();
+        $user = User::factory()->withPlan($plan)->create();
+        $project = Project::factory()->for($user)->create();
+
+        $run = ProjectGenerationRun::query()->create([
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'status' => ProjectGenerationRun::STATUS_ASSEMBLING_PAGE,
+            'requested_prompt' => 'Create a yoga studio website',
+            'progress_message' => 'Assembling the page tree and writing files.',
+            'started_at' => now()->subMinutes(ProjectGenerationRecoveryService::STALE_TIMEOUT_MINUTES + 1),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->getJson(route('project.generation.status', $project));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('generation.id', (string) $run->id)
+            ->assertJsonPath('generation.status', ProjectGenerationRun::STATUS_FAILED)
+            ->assertJsonPath('generation.is_active', false)
+            ->assertJsonPath('generation.error_message', 'Website generation timed out before completion. Start a new generation or retry this project.');
+    }
+
+    public function test_generation_route_redirects_to_chat_until_generation_finishes(): void
     {
         $provider = AiProvider::factory()->openai()->create();
         $builder = Builder::factory()->create();
@@ -192,7 +279,7 @@ class GenerateWebsiteControllerTest extends TestCase
             'initial_prompt' => 'Create a yoga studio website',
         ]);
 
-        $run = ProjectGenerationRun::query()->create([
+        ProjectGenerationRun::query()->create([
             'project_id' => $project->id,
             'user_id' => $user->id,
             'status' => ProjectGenerationRun::STATUS_BUILDING_PREVIEW,
@@ -203,15 +290,7 @@ class GenerateWebsiteControllerTest extends TestCase
 
         $response = $this->actingAs($user)->get(route('project.generation', $project));
 
-        $response->assertInertia(fn (Assert $page) => $page
-            ->component('Project/Generation')
-            ->where('project.id', (string) $project->id)
-            ->where('generation.id', (string) $run->id)
-            ->where('generation.status', ProjectGenerationRun::STATUS_BUILDING_PREVIEW)
-            ->where('generation.is_active', true)
-            ->where('generation.ready_for_builder', false)
-            ->where('builderUrl', route('chat', $project))
-        );
+        $response->assertRedirect(route('chat', ['project' => $project]));
     }
 
     public function test_chat_route_renders_workspace_generation_progress_while_build_is_unfinished(): void
@@ -314,7 +393,7 @@ class GenerateWebsiteControllerTest extends TestCase
             ->assertJsonPath('generation.workspace_preview_phase', ProjectGenerationRun::STATUS_READY);
     }
 
-    public function test_generation_page_stays_active_when_run_is_ready_but_manifest_is_not_ready(): void
+    public function test_generation_route_redirects_to_chat_when_manifest_is_not_ready(): void
     {
         $provider = AiProvider::factory()->openai()->create();
         $builder = Builder::factory()->create();
@@ -339,16 +418,10 @@ class GenerateWebsiteControllerTest extends TestCase
 
         $response = $this->actingAs($user)->get(route('project.generation', $project));
 
-        $response->assertInertia(fn (Assert $page) => $page
-            ->component('Project/Generation')
-            ->where('generation.id', (string) $run->id)
-            ->where('generation.status', ProjectGenerationRun::STATUS_READY)
-            ->where('generation.ready_for_builder', false)
-            ->where('generation.workspace_preview_ready', false)
-        );
+        $response->assertRedirect(route('chat', ['project' => $project]));
     }
 
-    public function test_generation_page_only_enters_resume_draft_mode_when_requested_explicitly(): void
+    public function test_generation_route_ignores_resume_draft_query_and_redirects_to_chat(): void
     {
         $provider = AiProvider::factory()->openai()->create();
         $builder = Builder::factory()->create();
@@ -370,28 +443,15 @@ class GenerateWebsiteControllerTest extends TestCase
             'started_at' => now(),
         ]);
 
-        File::ensureDirectoryExists(storage_path('app/private/previews'));
-        File::put(storage_path('app/private/previews/'.$project->id), 'preview');
-
         $defaultResponse = $this->actingAs($user)->get(route('project.generation', $project));
-        $defaultResponse->assertInertia(fn (Assert $page) => $page
-            ->component('Project/Generation')
-            ->where('resumeDraftAvailable', true)
-            ->where('resumeDraftMode', false)
-            ->where('resumeDraftPreviewUrl', null)
-        );
+        $defaultResponse->assertRedirect(route('chat', ['project' => $project]));
 
         $resumeResponse = $this->actingAs($user)->get(route('project.generation', [
             'project' => $project,
             'resume_draft' => 1,
         ]));
 
-        $resumeResponse->assertInertia(fn (Assert $page) => $page
-            ->component('Project/Generation')
-            ->where('resumeDraftAvailable', true)
-            ->where('resumeDraftMode', true)
-            ->where('resumeDraftPreviewUrl', "/preview/{$project->id}")
-        );
+        $resumeResponse->assertRedirect(route('chat', ['project' => $project]));
     }
 
     public function test_ready_generation_does_not_reenter_initial_blocking_state_after_workspace_edits(): void

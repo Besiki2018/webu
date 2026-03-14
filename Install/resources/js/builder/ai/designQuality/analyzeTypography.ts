@@ -51,6 +51,10 @@ function supportsField(section: DesignQualityAnalysisContext['sections'][number]
   return section.schemaFieldPaths.has(path)
 }
 
+function resolveMaxWidth(section: DesignQualityAnalysisContext['sections'][number]): number | null {
+  return asNumber(getValueAtPath(section.resolvedProps, 'max_width') ?? getValueAtPath(section.defaultProps, 'max_width'))
+}
+
 export function analyzeTypography(context: DesignQualityAnalysisContext): DesignQualityAnalyzerResult {
   const issues: string[] = []
   const suggestions: DesignQualitySuggestion[] = []
@@ -73,6 +77,15 @@ export function analyzeTypography(context: DesignQualityAnalysisContext): Design
     if (sectionContext.sectionType === 'hero') {
       if (title.split(/\s+/).filter(Boolean).length < 4) {
         issues.push('hero title too small in narrative scope')
+        if (sectionContext.variantOptions.length > 1) {
+          suggestions.push({
+            category: 'typography',
+            target: sectionContext.nodeId,
+            sectionIndex: sectionContext.sectionIndex,
+            action: 'swap_variant',
+            detail: 'Switch to a hero variant with stronger headline hierarchy.',
+          })
+        }
         score -= 6
       }
 
@@ -88,25 +101,57 @@ export function analyzeTypography(context: DesignQualityAnalysisContext): Design
           detail: 'Reduce hero line length for cleaner hierarchy.',
         })
         score -= 8
+      } else if (body.length > 170 && sectionContext.variantOptions.length > 1) {
+        issues.push('hero body text feels visually dense')
+        suggestions.push({
+          category: 'typography',
+          target: sectionContext.nodeId,
+          sectionIndex: sectionContext.sectionIndex,
+          action: 'swap_variant',
+          detail: 'Use a cleaner hero variant with tighter text measure.',
+        })
+        score -= 6
       }
     }
 
-    if (body.length > 200 && supportsField(sectionContext, 'max_width')) {
+    const maxWidth = resolveMaxWidth(sectionContext)
+    if (body.length > 160 && supportsField(sectionContext, 'max_width') && (maxWidth === null || maxWidth > 820)) {
       issues.push(`${sectionContext.sectionType} body text too dense`)
       suggestions.push({
         category: 'typography',
         target: sectionContext.nodeId,
         sectionIndex: sectionContext.sectionIndex,
         action: 'set_max_width',
-        value: 720,
+        value: sectionContext.sectionType === 'hero' ? 760 : 720,
         path: 'max_width',
         detail: 'Reduce paragraph width for readability.',
       })
       score -= 6
+    } else if (body.length > 180 && sectionContext.variantOptions.length > 1) {
+      issues.push(`${sectionContext.sectionType} copy block feels too heavy for its layout`)
+      suggestions.push({
+        category: 'typography',
+        target: sectionContext.nodeId,
+        sectionIndex: sectionContext.sectionIndex,
+        action: 'swap_variant',
+        detail: 'Use a lighter variant with cleaner text hierarchy.',
+      })
+      score -= 5
     }
 
     if (title !== '' && body !== '' && title.toLowerCase() === body.toLowerCase()) {
       issues.push(`${sectionContext.sectionType} is missing hierarchy between title and body`)
+      if (supportsField(sectionContext, 'max_width')) {
+        suggestions.push({
+          category: 'typography',
+          target: sectionContext.nodeId,
+          sectionIndex: sectionContext.sectionIndex,
+          action: 'set_max_width',
+          value: 720,
+          path: 'max_width',
+          detail: 'Tighten text measure so repeated messaging feels less flat.',
+        })
+      }
       score -= 7
     }
   })
@@ -117,7 +162,7 @@ export function analyzeTypography(context: DesignQualityAnalysisContext): Design
   }
 
   return {
-    score: Math.max(45, score),
+    score: Math.max(35, score),
     issues,
     suggestions,
   }

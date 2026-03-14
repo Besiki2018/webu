@@ -10,6 +10,7 @@ export interface PendingBuilderSelectionSnapshot {
 export interface PendingBuilderStructureMutation {
     requestId: string;
     mutation: 'add-section' | 'remove-section' | 'move-section';
+    baseItems: BuilderStructureItem[];
     previewItems: BuilderStructureItem[] | null;
     selectionSnapshot: PendingBuilderSelectionSnapshot | null;
 }

@@ -38,22 +38,22 @@ describe('builderGenerationState', () => {
     });
 
     it('returns stable phase headlines', () => {
-        expect(getBuilderGenerationHeadline('analyzing_prompt')).toBe('Analyzing your prompt...');
-        expect(getBuilderGenerationHeadline('planning_structure')).toBe('Planning the blueprint...');
+        expect(getBuilderGenerationHeadline('analyzing_prompt')).toBe('Understanding your project...');
+        expect(getBuilderGenerationHeadline('planning_structure')).toBe('Planning the layout...');
         expect(getBuilderGenerationHeadline('selecting_components')).toBe('Selecting components...');
         expect(getBuilderGenerationHeadline('generating_content')).toBe('Generating content...');
         expect(getBuilderGenerationHeadline('assembling_page')).toBe('Assembling the page...');
-        expect(getBuilderGenerationHeadline('validating_result')).toBe('Validating the result...');
-        expect(getBuilderGenerationHeadline('rendering_preview')).toBe('Rendering the preview...');
+        expect(getBuilderGenerationHeadline('validating_result')).toBe('Optimizing the design...');
+        expect(getBuilderGenerationHeadline('rendering_preview')).toBe('Finalizing the preview...');
         expect(getBuilderGenerationHeadline('completed')).toBe('Website ready');
         expect(getBuilderGenerationHeadline('failed')).toBe('Website generation failed');
     });
 
     it('returns stable default progress copy for each stage', () => {
-        expect(getBuilderGenerationDefaultProgressMessage('analyzing_prompt')).toBe('Analyzing your prompt.');
-        expect(getBuilderGenerationDefaultProgressMessage('planning_structure')).toBe('Planning the blueprint.');
+        expect(getBuilderGenerationDefaultProgressMessage('analyzing_prompt')).toBe('Understanding the project requirements.');
+        expect(getBuilderGenerationDefaultProgressMessage('planning_structure')).toBe('Planning the layout and blueprint.');
         expect(getBuilderGenerationDefaultProgressMessage('assembling_page')).toBe('Assembling the page tree and writing files.');
-        expect(getBuilderGenerationDefaultProgressMessage('validating_result')).toBe('Validating the generated output before preview.');
+        expect(getBuilderGenerationDefaultProgressMessage('validating_result')).toBe('Improving spacing, hierarchy, CTA clarity, and overall design quality.');
         expect(getBuilderGenerationDefaultProgressMessage('completed')).toBe('Website ready.');
     });
 

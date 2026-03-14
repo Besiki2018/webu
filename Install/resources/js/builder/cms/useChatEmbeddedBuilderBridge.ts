@@ -12,6 +12,7 @@ import {
     buildBuilderBridgeEventSignature,
     isStaleBuilderBridgeState,
     resolvePendingBuilderStructureMutation,
+    shouldIgnoreRevertingPendingStructureSnapshot,
     type BuilderBridgeStateCursor,
 } from '@/builder/cms/chatBuilderMutationFlow';
 import type { PendingBuilderStructureMutation } from '@/builder/cms/chatBuilderStructureMutations';
@@ -867,6 +868,16 @@ export function useChatEmbeddedBuilderBridge({
                             propsText: propsText !== '' ? propsText : stringifySectionProps(props),
                         });
                     });
+
+                    if (shouldIgnoreRevertingPendingStructureSnapshot(pendingBuilderStructureMutation, nextItems)) {
+                        logChatBridge({
+                            phase: 'ignore',
+                            target: 'chat',
+                            message: payload,
+                            reason: 'stale-structure-revert',
+                        });
+                        return;
+                    }
 
                     const snapshotSignature = JSON.stringify({
                         event: buildBuilderBridgeEventSignature({

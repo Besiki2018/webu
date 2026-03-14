@@ -80,6 +80,78 @@ function renderFieldBucket(
     );
 }
 
+function looksLikeStylePath(path: string): boolean {
+    return /(style|color|spacing|padding|margin|gap|radius|border|shadow|background|typography|font|align|width|height)/i.test(path);
+}
+
+function buildSafeActionLabels(
+    target: BuilderEditableTarget | null,
+    isProtectedStructure: boolean,
+    t: (key: string, params?: Record<string, string | number>) => string,
+): string[] {
+    if (!target?.allowedUpdates) {
+        return [];
+    }
+
+    const labels: string[] = [];
+    const elementOps = target.allowedUpdates.operationTypes;
+    const sectionOps = target.allowedUpdates.sectionOperationTypes;
+    const fieldPaths = target.allowedUpdates.fieldPaths;
+    const sectionFieldPaths = target.allowedUpdates.sectionFieldPaths;
+
+    if (fieldPaths.length > 0) {
+        labels.push(t('Targeted content edits'));
+    }
+    if ([...fieldPaths, ...sectionFieldPaths].some((path) => looksLikeStylePath(path))) {
+        labels.push(t('Style adjustments'));
+    }
+    if (target.variants?.layout || target.variants?.style) {
+        labels.push(t('Variant switching'));
+    }
+    if (elementOps.length > 0) {
+        labels.push(t('Element-safe operations'));
+    }
+    if (sectionOps.length > 0 && !isProtectedStructure) {
+        labels.push(t('Component-level settings'));
+    }
+    if (target.responsiveContext?.supportsResponsiveOverrides) {
+        labels.push(t('Responsive overrides'));
+    }
+
+    return Array.from(new Set(labels));
+}
+
+function buildVariantFields(
+    target: BuilderEditableTarget | null,
+): AIInspectorPanelField[] {
+    if (!target?.variants) {
+        return [];
+    }
+
+    const fields: AIInspectorPanelField[] = [];
+    const variantEntries = [
+        ['layout', target.variants.layout],
+        ['style', target.variants.style],
+    ] as const;
+
+    variantEntries.forEach(([label, variant]) => {
+        if (!variant) {
+            return;
+        }
+
+        fields.push({
+            path: variant.path ?? `${label}_variant`,
+            label: `${label} variant`,
+            value: [
+                variant.active ? `Active: ${variant.active}` : 'Active: —',
+                variant.options.length > 0 ? `Options: ${variant.options.join(', ')}` : 'Options: —',
+            ].join(' • '),
+        });
+    });
+
+    return fields;
+}
+
 export function AIInspectorPanel({
     primaryMention,
     primaryTarget,
@@ -120,6 +192,11 @@ export function AIInspectorPanel({
         ?? primaryMention?.componentKey
         ?? ''
     );
+    const safeActionLabels = buildSafeActionLabels(primaryTarget, isProtectedStructure, t);
+    const variantFields = buildVariantFields(primaryTarget);
+    const responsiveSummary = primaryTarget?.responsiveContext
+        ? `${primaryTarget.responsiveContext.currentBreakpoint} / ${primaryTarget.responsiveContext.currentInteractionState}`
+        : null;
 
     return (
         <div className="pointer-events-auto w-full max-w-[380px] rounded-[28px] border border-[#ded8cf] bg-[rgba(255,252,248,0.96)] p-4 text-left shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur">
@@ -225,6 +302,29 @@ export function AIInspectorPanel({
                 </p>
             ) : null}
 
+            {safeActionLabels.length > 0 ? (
+                <div className="mt-4 rounded-[22px] border border-[#e7dfd4] bg-white/88 p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a857d]">
+                        {t('Safe AI actions')}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {safeActionLabels.map((label) => (
+                            <span
+                                key={label}
+                                className="rounded-full border border-[#ddd6fe] bg-[#eef2ff] px-2.5 py-1 text-[11px] font-medium text-[#4338ca]"
+                            >
+                                {label}
+                            </span>
+                        ))}
+                    </div>
+                    {responsiveSummary ? (
+                        <div className="mt-3 text-xs text-[#6b665f]">
+                            {t('Current responsive context')}: <span className="font-medium text-[#1c1917]">{responsiveSummary}</span>
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
+
             {isProtectedStructure ? (
                 <div className="mt-4 rounded-[20px] border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
                     {t('Structural protections are active for headers and footers. AI edits are limited to safe content, style, and variant changes.')}
@@ -232,6 +332,7 @@ export function AIInspectorPanel({
             ) : null}
 
             <div className="mt-4 space-y-3">
+                {variantFields.length > 0 ? renderFieldBucket(t('Variants'), Settings2, variantFields) : null}
                 {renderFieldBucket(t('Text'), Sparkles, textFields)}
                 {renderFieldBucket(t('Styles'), Palette, styleFields)}
                 {renderFieldBucket(t('Component settings'), Settings2, settingsFields)}

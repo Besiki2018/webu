@@ -58,6 +58,24 @@ describe('AIInspectorPanel', () => {
                             options: ['hero_01', 'hero_02'],
                         },
                     },
+                    allowedUpdates: {
+                        scope: 'element',
+                        operationTypes: ['update_prop', 'update_style'],
+                        fieldPaths: ['title', 'background.color'],
+                        sectionOperationTypes: ['swap_component'],
+                        sectionFieldPaths: ['layout_variant'],
+                    },
+                    responsiveContext: {
+                        currentBreakpoint: 'desktop',
+                        currentInteractionState: 'normal',
+                        availableBreakpoints: ['desktop', 'tablet', 'mobile'],
+                        availableInteractionStates: ['normal', 'hover'],
+                        supportsVisibility: true,
+                        supportsResponsiveOverrides: true,
+                        visibleFieldPaths: ['title'],
+                        responsiveFieldPaths: ['spacing.top'],
+                        stateFieldPaths: ['button.hover.background'],
+                    },
                 }}
                 selectedMentions={[{
                     id: 'hero-1::title',
@@ -95,6 +113,11 @@ describe('AIInspectorPanel', () => {
         expect(screen.getByText('nodeId')).toBeInTheDocument();
         expect(screen.getByText('hero-1.title')).toBeInTheDocument();
         expect(screen.getAllByText('Trusted veterinary care').length).toBeGreaterThan(0);
+        expect(screen.getByText('Safe AI actions')).toBeInTheDocument();
+        expect(screen.getByText('Variant switching')).toBeInTheDocument();
+        expect(screen.getByText('Responsive overrides')).toBeInTheDocument();
+        expect(screen.getByText('Variants')).toBeInTheDocument();
+        expect(screen.getByText(/Active: hero_01/)).toBeInTheDocument();
         expect(screen.getByText('Styles')).toBeInTheDocument();
         expect(screen.getByText('Component settings')).toBeInTheDocument();
 

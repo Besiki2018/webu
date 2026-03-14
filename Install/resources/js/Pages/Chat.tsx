@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from '@/components/Chat/MessageBubble';
 import { PendingAssistantBubble } from '@/components/Chat/MessageBubble';
 import { GenerationDiagnosticsPanel } from '@/components/Chat/GenerationDiagnosticsPanel';
-import { AIGenerationOverlay } from '@/components/builder/AIGenerationOverlay';
+import { AIGenerationOverlay } from '@/builder/ui/AIGenerationOverlay';
 import { AgentProgressInline } from '@/components/Chat/AgentProgressInline';
 import type { CodeEditorHandle } from '@/components/Code/CodeEditor';
 import type { CodeFileSelectionMeta } from '@/components/Code/FileTree';
@@ -124,6 +124,7 @@ import {
     appendAiNodeTag,
     buildAiNodeTag,
     buildAiNodeId,
+    extractAiNodeIds,
     stripAiNodeTags,
 } from '@/builder/runtime/elementHover';
 import { resolveComponentRegistryKey } from '@/builder/componentRegistry';
@@ -190,6 +191,10 @@ const RESPONSE_STRINGS: Record<'en' | 'ka', {
         couldNotSafelyApply: 'მოთხოვნა უსაფრთხოდ ვერ შევასრულე.',
     },
 };
+
+function getAiMentionIdentity(mention: ElementMention): string | null {
+    return mention.aiNodeId ?? mention.targetId ?? mention.id ?? null;
+}
 
 interface Project {
     id: string;
@@ -597,7 +602,7 @@ export default function Chat({
     const [projectGeneration, setProjectGeneration] = useState<ProjectGenerationPayload | null>(project.generation ?? null);
     const canvasGenerationStage = useBuilderStore((state) => state.generationStage);
     const canvasGenerationProgress = useBuilderStore((state) => state.generationProgress);
-    const canvasGenerationDiagnostics = useBuilderStore((state) => state.diagnostics);
+    const canvasGenerationDiagnostics = useBuilderStore((state) => state.generationDiagnostics);
     const setCanvasGenerationState = useBuilderStore((state) => state.setGenerationState);
     const clearCanvasGenerationState = useBuilderStore((state) => state.clearGenerationState);
     const generationReloadRequestedRef = useRef(false);
@@ -2133,6 +2138,78 @@ export default function Chat({
         ?? selectedElementMention
         ?? null
     ), [selectedAiTargetMentions, selectedBuilderTarget, selectedElementMention]);
+    const promptTaggedAiNodeIds = useMemo(
+        () => extractAiNodeIds(prompt),
+        [prompt],
+    );
+    const promptResolvedAiTargets = useMemo(() => (
+        promptTaggedAiNodeIds.length === 0
+            ? { resolvedTargets: [], unresolvedNodeIds: [] }
+            : resolveAiNodeTargets({
+                message: prompt,
+                builderStructureItems,
+                currentBreakpoint: previewViewport,
+                currentInteractionState: previewInteractionState,
+            })
+    ), [builderStructureItems, previewInteractionState, previewViewport, prompt, promptTaggedAiNodeIds.length]);
+
+    useEffect(() => {
+        if (promptTaggedAiNodeIds.length === 0) {
+            if (selectedAiTargetMentions.length > 0) {
+                clearAiTargetMentions();
+            }
+            return;
+        }
+
+        const nextMentions = promptResolvedAiTargets.resolvedTargets.map(({ mention }) => mention);
+        const nextIds = new Set(
+            nextMentions
+                .map((mention) => getAiMentionIdentity(mention))
+                .filter((value): value is string => typeof value === 'string' && value.trim() !== ''),
+        );
+        const currentIds = selectedAiTargetMentions
+            .map((mention) => getAiMentionIdentity(mention))
+            .filter((value): value is string => typeof value === 'string' && value.trim() !== '');
+
+        if (
+            currentIds.length === nextIds.size
+            && currentIds.every((id) => nextIds.has(id))
+        ) {
+            return;
+        }
+
+        selectedAiTargetMentions.forEach((mention) => {
+            const mentionId = getAiMentionIdentity(mention);
+            if (mentionId && !nextIds.has(mentionId)) {
+                removeAiTargetMention(mentionId);
+            }
+        });
+
+        nextMentions.forEach((mention) => {
+            upsertAiTargetMention(mention);
+        });
+    }, [
+        clearAiTargetMentions,
+        promptResolvedAiTargets.resolvedTargets,
+        promptTaggedAiNodeIds.length,
+        removeAiTargetMention,
+        selectedAiTargetMentions,
+        upsertAiTargetMention,
+    ]);
+
+    const promptResolvedAiNodeIdsKey = useMemo(
+        () => promptResolvedAiTargets.resolvedTargets.map(({ aiNodeId }) => aiNodeId).join('|'),
+        [promptResolvedAiTargets.resolvedTargets],
+    );
+
+    useEffect(() => {
+        if (promptResolvedAiTargets.resolvedTargets.length === 0) {
+            return;
+        }
+
+        flashAiTargetNodes(promptResolvedAiTargets.resolvedTargets.map(({ aiNodeId }) => aiNodeId));
+    }, [flashAiTargetNodes, promptResolvedAiNodeIdsKey, promptResolvedAiTargets.resolvedTargets]);
+
     const primaryAiInspectorSection = useMemo(() => {
         const targetSectionLocalId = primaryAiInspectorMention?.sectionLocalId ?? selectedBuilderTarget?.sectionLocalId ?? null;
         if (targetSectionLocalId) {
@@ -2331,6 +2408,10 @@ export default function Chat({
 
         if (aiNodeId) {
             upsertAiTargetMention(aiTargetMention);
+            setPrompt((current) => appendAiNodeTag(current, aiNodeId));
+            flashAiTargetNodes([aiNodeId]);
+        } else {
+            toast.error(t('This element is not available for AI targeting yet.'));
         }
 
         const {
@@ -2378,7 +2459,7 @@ export default function Chat({
                 ...nextSelectionPayload,
             });
         }
-    }, [activeBuilderPageIdentity.pageId, activeBuilderPageIdentity.pageSlug, activeBuilderPageIdentity.pageTitle, builderStructureItems, clearAiTargetMentions, clearBuilderSelection, postBuilderCommand, previewInteractionState, previewViewport, selectBuilderTarget, setActiveLibraryItem, upsertAiTargetMention, viewMode]);
+    }, [activeBuilderPageIdentity.pageId, activeBuilderPageIdentity.pageSlug, activeBuilderPageIdentity.pageTitle, builderStructureItems, clearAiTargetMentions, clearBuilderSelection, flashAiTargetNodes, postBuilderCommand, previewInteractionState, previewViewport, selectBuilderTarget, setActiveLibraryItem, t, upsertAiTargetMention, viewMode]);
 
     const handleAiInspectorInsertNodeTag = useCallback((nodeId: string) => {
         setPrompt((current) => appendAiNodeTag(current, nodeId));
@@ -2528,6 +2609,7 @@ export default function Chat({
         setPendingBuilderStructureMutation({
             requestId,
             mutation: 'add-section',
+            baseItems: builderStructureItems,
             previewItems: buildOptimisticInsertedStructureItems(builderStructureItems, {
                 localId: sectionLocalId,
                 sectionKey,
@@ -2720,6 +2802,7 @@ export default function Chat({
         setPendingBuilderStructureMutation({
             requestId,
             mutation: 'move-section',
+            baseItems: builderStructureItems,
             previewItems: reorderStructureCollection(builderStructureItems, activeLocalId, targetLocalId, position),
             selectionSnapshot: createPendingBuilderSelectionSnapshot({
                 sectionLocalId: effectiveSelectedBuilderSectionLocalId,
@@ -2798,7 +2881,7 @@ export default function Chat({
     const prefersGeorgianGenerationCopy = appLocale.toLowerCase().startsWith('ka');
     const showGenerationProgressInWorkspace = canvasGenerationProgress.locked;
     const showGenerationFailureInWorkspace = canvasGenerationProgress.isFailed;
-    const shouldRenderGenerationOverlay = showGenerationProgressInWorkspace || showGenerationFailureInWorkspace;
+    const shouldSuppressCanvasPreview = showGenerationProgressInWorkspace && !canvasGenerationProgress.readyForBuilder;
     const generationFailureMessage = canvasGenerationProgress.errorMessage || projectGeneration?.error_message || t('We could not finish creating this website.');
     const generationFailureRecoveryMessage = canvasGenerationProgress.recoveryMessage;
     const showManualBuilderSidebar = viewMode === 'inspect'
@@ -3185,69 +3268,76 @@ export default function Chat({
                 </div>
             )}
             previewContent={(
-                <Suspense fallback={lazyPanelFallback}>
-                    <InspectPreview
-                        projectId={project.id}
-                        mode={viewMode as 'preview' | 'inspect' | 'design'}
-                        viewport={previewViewport}
-                        previewUrl={builderPreviewUrl}
-                        refreshTrigger={previewRefreshTrigger}
-                        isBuilding={isBuildingPreview}
-                        captureThumbnailTrigger={captureThumbnailTrigger}
-                        onElementSelect={handleElementSelect}
-                        onElementEdit={handleElementEdit}
-                        pendingEdits={pendingEdits}
-                        onSaveAllEdits={handleSaveAllEdits}
-                        onDiscardAllEdits={handleDiscardAllEdits}
-                        onRemoveEdit={handleRemoveEdit}
-                        onThemeSelect={applyThemeToPreview}
-                        isSavingTheme={isSavingTheme}
-                        currentTheme={appliedTheme}
-                        highlightSectionKey={viewMode === 'inspect' ? effectiveSelectedPreviewSectionKey : null}
-                        highlightSectionLocalId={viewMode === 'inspect' ? (agentHighlightLocalId ?? effectiveSelectedBuilderSectionLocalId) : null}
-                        liveStructureItems={viewMode === 'design' ? [] : visibleBuilderStructureItems}
-                        selectedElementMention={viewMode === 'design' ? null : (selectedAiTargetMentions[0] ?? selectedElementMention)}
-                        aiFlashNodeIds={aiFlashNodeIds}
-                        aiFlashNonce={aiFlashNonce}
-                        onAiFlashComplete={clearAiTargetFlash}
-                        pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
-                        onLibraryItemPlace={handleLibraryItemPlace}
-                        onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
-                        themeDesignerSlot={(
-                            <Suspense fallback={lazyPanelFallback}>
-                                <ThemeDesigner
-                                    currentTheme={appliedTheme}
-                                    onThemeSelect={applyThemeToPreview}
-                                    onApply={async (presetId) => {
-                                        setIsSavingTheme(true);
-                                        try {
-                                            const response = await axios.put(`/project/${project.id}/theme`, {
-                                                theme_preset: presetId,
-                                            });
-                                            if (response.data.success) {
-                                                setAppliedTheme(presetId);
-                                                if (response.data.warning) {
-                                                    toast.warning(response.data.warning);
-                                                } else {
-                                                    toast.success(t('Theme applied successfully'));
-                                                }
-                                                setPreviewRefreshTrigger(Date.now());
-                                                setCaptureThumbnailTrigger(Date.now());
-                                            }
-                                        } catch {
-                                            toast.error(t('Failed to apply theme'));
-                                        } finally {
-                                            setIsSavingTheme(false);
-                                        }
-                                    }}
-                                    isSaving={isSavingTheme}
-                                />
-                            </Suspense>
-                        )}
+                shouldSuppressCanvasPreview ? (
+                    <div
+                        className="h-full w-full bg-[linear-gradient(180deg,_#faf6ef_0%,_#f4ede3_100%)]"
+                        aria-hidden="true"
                     />
-                </Suspense>
+                ) : (
+                    <Suspense fallback={lazyPanelFallback}>
+                        <InspectPreview
+                            projectId={project.id}
+                            mode={viewMode as 'preview' | 'inspect' | 'design'}
+                            viewport={previewViewport}
+                            previewUrl={builderPreviewUrl}
+                            refreshTrigger={previewRefreshTrigger}
+                            isBuilding={isBuildingPreview}
+                            captureThumbnailTrigger={captureThumbnailTrigger}
+                            onElementSelect={handleElementSelect}
+                            onElementEdit={handleElementEdit}
+                            pendingEdits={pendingEdits}
+                            onSaveAllEdits={handleSaveAllEdits}
+                            onDiscardAllEdits={handleDiscardAllEdits}
+                            onRemoveEdit={handleRemoveEdit}
+                            onThemeSelect={applyThemeToPreview}
+                            isSavingTheme={isSavingTheme}
+                            currentTheme={appliedTheme}
+                            highlightSectionKey={viewMode === 'inspect' ? effectiveSelectedPreviewSectionKey : null}
+                            highlightSectionLocalId={viewMode === 'inspect' ? (agentHighlightLocalId ?? effectiveSelectedBuilderSectionLocalId) : null}
+                            liveStructureItems={viewMode === 'design' ? [] : visibleBuilderStructureItems}
+                            selectedElementMention={viewMode === 'design' ? null : (selectedAiTargetMentions[0] ?? selectedElementMention)}
+                            aiFlashNodeIds={aiFlashNodeIds}
+                            aiFlashNonce={aiFlashNonce}
+                            onAiFlashComplete={clearAiTargetFlash}
+                            pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
+                            onLibraryItemPlace={handleLibraryItemPlace}
+                            onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
+                            themeDesignerSlot={(
+                                <Suspense fallback={lazyPanelFallback}>
+                                    <ThemeDesigner
+                                        currentTheme={appliedTheme}
+                                        onThemeSelect={applyThemeToPreview}
+                                        onApply={async (presetId) => {
+                                            setIsSavingTheme(true);
+                                            try {
+                                                const response = await axios.put(`/project/${project.id}/theme`, {
+                                                    theme_preset: presetId,
+                                                });
+                                                if (response.data.success) {
+                                                    setAppliedTheme(presetId);
+                                                    if (response.data.warning) {
+                                                        toast.warning(response.data.warning);
+                                                    } else {
+                                                        toast.success(t('Theme applied successfully'));
+                                                    }
+                                                    setPreviewRefreshTrigger(Date.now());
+                                                    setCaptureThumbnailTrigger(Date.now());
+                                                }
+                                            } catch {
+                                                toast.error(t('Failed to apply theme'));
+                                            } finally {
+                                                setIsSavingTheme(false);
+                                            }
+                                        }}
+                                        isSaving={isSavingTheme}
+                                    />
+                                </Suspense>
+                            )}
+                        />
+                    </Suspense>
+                )
             )}
-            overlayContent={shouldRenderGenerationOverlay || showAiInspectorPanel ? (
+            overlayContent={(
                 <>
                     {showAiInspectorPanel ? (
                         <div className="pointer-events-none absolute inset-x-0 top-0 z-[18] flex justify-end px-4 py-4 md:px-6">
@@ -3267,14 +3357,12 @@ export default function Chat({
                             />
                         </div>
                     ) : null}
-                    {shouldRenderGenerationOverlay ? (
-                        <AIGenerationOverlay
-                            onRetry={showGenerationFailureInWorkspace ? () => router.reload({ only: ['project'] }) : null}
-                            onCreateAnother={showGenerationFailureInWorkspace ? () => router.visit('/create') : null}
-                        />
-                    ) : null}
+                    <AIGenerationOverlay
+                        onRetry={showGenerationFailureInWorkspace ? () => router.reload({ only: ['project'] }) : null}
+                        onCreateAnother={showGenerationFailureInWorkspace ? () => router.visit('/create') : null}
+                    />
                 </>
-            ) : null}
+            )}
         />
     );
 
@@ -3653,6 +3741,7 @@ export default function Chat({
                                                                                     setPendingBuilderStructureMutation({
                                                                                         requestId,
                                                                                         mutation: 'remove-section',
+                                                                                        baseItems: builderStructureItems,
                                                                                         previewItems: buildOptimisticRemovedStructureItems(builderStructureItems, localId),
                                                                                         selectionSnapshot: createPendingBuilderSelectionSnapshot({
                                                                                             sectionLocalId: effectiveSelectedBuilderSectionLocalId,

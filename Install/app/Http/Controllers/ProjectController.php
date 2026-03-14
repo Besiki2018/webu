@@ -10,6 +10,7 @@ use App\Models\SystemSetting;
 use App\Models\Template;
 use App\Services\AiWebsiteGeneration\GenerateWebsiteProjectService;
 use App\Services\AssetFirstDraftComposerService;
+use App\Services\ProjectGenerationRecoveryService;
 use App\Services\ReadyTemplatesService;
 use App\Services\SiteProvisioningService;
 use Illuminate\Http\RedirectResponse;
@@ -160,6 +161,8 @@ class ProjectController extends Controller
                 'prompt' => $canBuild['reason'],
             ]);
         }
+
+        app(ProjectGenerationRecoveryService::class)->recoverStaleActiveRunsForUser($user->id);
 
         $hasActiveGeneration = ProjectGenerationRun::query()
             ->where('user_id', $user->id)

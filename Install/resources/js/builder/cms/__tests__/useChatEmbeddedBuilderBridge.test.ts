@@ -179,6 +179,8 @@ describe('useChatEmbeddedBuilderBridge', () => {
         });
 
         renderHook(() => useChatEmbeddedBuilderBridge(options));
+        vi.mocked(options.setPendingBuilderStructureMutation).mockClear();
+        vi.mocked(options.setBuilderStructureItems).mockClear();
 
         window.dispatchEvent(new MessageEvent('message', {
             origin: window.location.origin,
@@ -266,6 +268,13 @@ describe('useChatEmbeddedBuilderBridge', () => {
             pendingBuilderStructureMutation: {
                 requestId: 'req-remove-1',
                 mutation: 'remove-section',
+                baseItems: [{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: { headline: 'Hello' },
+                }],
                 previewItems: null,
                 selectionSnapshot,
             },
@@ -292,6 +301,83 @@ describe('useChatEmbeddedBuilderBridge', () => {
             expect(options.setPendingBuilderStructureMutation).toHaveBeenCalledWith(null);
             expect(options.selectBuilderTarget).toHaveBeenCalledWith(selectionSnapshot.target);
             expect(toast.error).toHaveBeenCalled();
+        });
+    });
+
+    it('ignores stale structure snapshots that would revert a pending optimistic mutation', async () => {
+        const options = buildOptions({
+            isBuilderPreviewReady: true,
+            isBuilderSidebarReady: true,
+            pendingBuilderStructureMutation: {
+                requestId: 'req-remove-stale-1',
+                mutation: 'remove-section',
+                baseItems: [{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: { title: 'Hero' },
+                }, {
+                    localId: 'cta-1',
+                    sectionKey: 'webu_general_cta_01',
+                    label: 'CTA',
+                    previewText: 'Start',
+                    props: { title: 'Start' },
+                }],
+                previewItems: [{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    props: { title: 'Hero' },
+                }],
+                selectionSnapshot: null,
+            },
+            builderStructureItems: [{
+                localId: 'hero-1',
+                sectionKey: 'webu_general_hero_01',
+                label: 'Hero',
+                previewText: 'Hero',
+                props: { title: 'Hero' },
+            }, {
+                localId: 'cta-1',
+                sectionKey: 'webu_general_cta_01',
+                label: 'CTA',
+                previewText: 'Start',
+                props: { title: 'Start' },
+            }],
+        });
+
+        renderHook(() => useChatEmbeddedBuilderBridge(options));
+
+        window.dispatchEvent(new MessageEvent('message', {
+            origin: window.location.origin,
+            data: buildBuilderSyncStateMessage({
+                stateVersion: 8,
+                revisionVersion: 3,
+                structureHash: 'hash-base',
+                structureSections: [{
+                    localId: 'hero-1',
+                    sectionKey: 'webu_general_hero_01',
+                    type: 'webu_general_hero_01',
+                    label: 'Hero',
+                    previewText: 'Hero',
+                    propsText: JSON.stringify({ title: 'Hero' }),
+                    props: { title: 'Hero' },
+                }, {
+                    localId: 'cta-1',
+                    sectionKey: 'webu_general_cta_01',
+                    type: 'webu_general_cta_01',
+                    label: 'CTA',
+                    previewText: 'Start',
+                    propsText: JSON.stringify({ title: 'Start' }),
+                    props: { title: 'Start' },
+                }],
+            }, buildSidebarInput('req-stale-revert-1')),
+        }));
+
+        await waitFor(() => {
+            expect(options.setBuilderStructureItems).not.toHaveBeenCalled();
         });
     });
 
