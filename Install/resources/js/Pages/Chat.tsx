@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from '@/components/Chat/MessageBubble';
 import { PendingAssistantBubble } from '@/components/Chat/MessageBubble';
+import { GenerationDiagnosticsPanel } from '@/components/Chat/GenerationDiagnosticsPanel';
 import { AgentProgressInline } from '@/components/Chat/AgentProgressInline';
 import type { CodeEditorHandle } from '@/components/Code/CodeEditor';
 import type { CodeFileSelectionMeta } from '@/components/Code/FileTree';
@@ -109,6 +110,7 @@ import {
     resolveBuilderGenerationState,
     type BuilderGenerationState,
 } from '@/builder/state/builderGenerationState';
+import { isGeneratedSiteValidationMessage } from '@/builder/ai/validateGeneratedSite';
 import { resolveWebuV2FeatureFlags } from '@/lib/webuV2FeatureFlags';
 
 const FileTree = lazy(async () => ({ default: (await import('@/components/Code/FileTree')).FileTree }));
@@ -194,6 +196,10 @@ interface Project {
     build_status?: string;
     can_reconnect?: boolean;
     build_started_at?: string | null;
+    project_generation_version?: string | null;
+    source_generation_type?: 'new' | 'resume' | 'template';
+    preview_build_id?: string | null;
+    draft_source_id?: string | null;
     generation?: ProjectGenerationPayload | null;
     // Publishing fields
     subdomain: string | null;
@@ -213,10 +219,14 @@ interface ProjectGenerationPayload {
     status: string;
     is_active: boolean;
     ready_for_builder?: boolean;
+    project_generation_version?: string | null;
+    source_generation_type?: 'new' | 'resume' | 'template';
     workspace_manifest_exists?: boolean;
     workspace_preview_ready?: boolean;
     workspace_preview_phase?: string;
     active_generation_run_id?: string | null;
+    preview_build_id?: string | null;
+    preview_url?: string | null;
     progress_message?: string | null;
     error_message?: string | null;
     started_at?: string | null;
@@ -342,6 +352,7 @@ interface GeneratedPagePayload {
 }
 
 const DEBUG_INSPECT = typeof window !== 'undefined' && window.location.search.includes('tab=inspect') && window.location.search.includes('debug=inspect');
+const SHOW_GENERATION_DIAGNOSTICS = import.meta.env.DEV;
 function inspectLog(..._args: unknown[]) {
     if (DEBUG_INSPECT) {
         console.warn('[WebuInspect:Chat]', ..._args);
@@ -477,12 +488,14 @@ export default function Chat({
         (Array.isArray(generatedPages) && generatedPages.some((page) => Array.isArray(page.sections) && page.sections.length > 0))
         || (Array.isArray(generatedPage?.sections) && generatedPage.sections.length > 0)
     ), [generatedPage?.sections, generatedPages]);
+    const generationReadyForBuilder = projectGeneration?.ready_for_builder === true;
     const builderGenerationState = useMemo<BuilderGenerationState>(
-        () => resolveBuilderGenerationState(projectGeneration?.status),
-        [projectGeneration?.status],
+        () => resolveBuilderGenerationState(projectGeneration?.status, {
+            readyForBuilder: generationReadyForBuilder,
+        }),
+        [generationReadyForBuilder, projectGeneration?.status],
     );
     const isProjectGenerationActive = Boolean(projectGeneration?.is_active);
-    const generationReadyForBuilder = projectGeneration?.ready_for_builder === true;
     const hasValidInitialGenerationPreview = Boolean(project.cms_preview_url ?? project.preview_url);
     const hasBlockingInitialGeneration = Boolean(projectGeneration)
         && builderGenerationState !== 'failed'
@@ -568,6 +581,11 @@ export default function Chat({
         pusherConfig,
         initialHistory: project.conversation_history,
         initialPreviewUrl: project.cms_preview_url ?? project.preview_url,
+        initialBuildId: project.build_session_id ?? null,
+        initialPreviewBuildId: project.preview_build_id ?? project.generation?.preview_build_id ?? null,
+        initialProjectGenerationVersion: project.project_generation_version ?? project.generation?.project_generation_version ?? null,
+        initialSourceGenerationType: project.source_generation_type ?? project.generation?.source_generation_type ?? 'new',
+        initialDraftSourceId: project.draft_source_id ?? null,
         // Pass initial reconnection state from server
         initialSessionId: project.build_session_id,
         initialCanReconnect: project.can_reconnect ?? false,
@@ -1107,7 +1125,7 @@ export default function Chat({
         && !project.preview_url
         && !projectGeneration;
 
-    // Legacy fallback only. Brand-new AI site generation now happens before the builder mounts.
+    // Legacy fallback only. Initial project generation is server-driven and shown in the canvas.
     useEffect(() => {
         if (shouldSendInitialPromptToChat && project.initial_prompt && !initialSent.current) {
             initialSent.current = true;
@@ -2350,6 +2368,11 @@ export default function Chat({
         || (isProjectGenerationActive && isBuilderGenerationBlocking(builderGenerationState));
     const showGenerationProgressInWorkspace = shouldBlockBuilderDuringGeneration;
     const showGenerationFailureInWorkspace = builderGenerationState === 'failed';
+    const generationFailureMessage = projectGeneration?.error_message || t('We could not finish creating this website.');
+    const generationFailureIsValidation = isGeneratedSiteValidationMessage(projectGeneration?.error_message);
+    const generationFailureRecoveryMessage = generationFailureIsValidation
+        ? t('The generated site failed validation before preview, so the builder stayed locked. Retry generation or repair the prompt.')
+        : null;
     const isInspectBuilderMode = viewMode === 'inspect' && !showGenerationProgressInWorkspace && !showGenerationFailureInWorkspace;
     const shouldRenderChatWorkspace = viewMode !== 'inspect' || showGenerationProgressInWorkspace || showGenerationFailureInWorkspace;
     const generationStatusCopy = useMemo(() => ({
@@ -2376,6 +2399,7 @@ export default function Chat({
             status: getBuilderGenerationStepStatus(builderGenerationState, step.key),
         }))
     ), [builderGenerationState, t]);
+    const activeGenerationTimelineStep = generationTimelineSteps.find((step) => step.status === 'active') ?? null;
 
     const workspaceSidebarContent = (
         <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col md:w-auto">
@@ -2392,6 +2416,12 @@ export default function Chat({
                     >
                         {t('Retry')}
                     </Button>
+                </div>
+            )}
+
+            {SHOW_GENERATION_DIAGNOSTICS && progress.generationDiagnostics && (
+                <div className="mx-6 mt-4 shrink-0">
+                    <GenerationDiagnosticsPanel diagnostics={progress.generationDiagnostics} />
                 </div>
             )}
 
@@ -2540,43 +2570,15 @@ export default function Chat({
                                                             <p className="mt-1 text-sm leading-6 text-[#625f57]">
                                                                 {generationProgressDetail}
                                                             </p>
-                                                            <p className="mt-2 text-xs leading-5 text-[#8a857d]">
+                                                            {activeGenerationTimelineStep ? (
+                                                                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-950">
+                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                    <span>{activeGenerationTimelineStep.translatedLabel}</span>
+                                                                </div>
+                                                            ) : null}
+                                                            <p className="mt-3 text-xs leading-5 text-[#8a857d]">
                                                                 {generationStatusCopy.chatHint}
                                                             </p>
-
-                                                            <div className="mt-4 space-y-2">
-                                                                {generationTimelineSteps.map((step) => (
-                                                                    <div
-                                                                        key={step.key}
-                                                                        className={cn(
-                                                                            'flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5 text-sm',
-                                                                            step.status === 'complete' && 'border-emerald-200 bg-emerald-50 text-emerald-900',
-                                                                            step.status === 'active' && 'border-amber-200 bg-amber-50 text-amber-950',
-                                                                            step.status === 'pending' && 'border-[#ece7df] bg-[#faf8f5] text-[#78716c]',
-                                                                        )}
-                                                                    >
-                                                                        <div className="min-w-0">
-                                                                            <div className="truncate font-medium">{step.translatedLabel}</div>
-                                                                        </div>
-                                                                        <div className="flex shrink-0 items-center gap-2">
-                                                                            {step.status === 'active' ? (
-                                                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                                            ) : step.status === 'complete' ? (
-                                                                                <CheckCircle2 className="h-4 w-4" />
-                                                                            ) : (
-                                                                                <span className="h-2.5 w-2.5 rounded-full bg-current/45" />
-                                                                            )}
-                                                                            <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">
-                                                                                {step.status === 'complete'
-                                                                                    ? generationStatusCopy.completed
-                                                                                    : step.status === 'active'
-                                                                                        ? generationStatusCopy.active
-                                                                                        : generationStatusCopy.pending}
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2594,8 +2596,13 @@ export default function Chat({
                                                                 {t('Website generation failed')}
                                                             </h2>
                                                             <p className="mt-1 text-sm leading-6 text-[#625f57]">
-                                                                {projectGeneration?.error_message || t('We could not finish creating this website.')}
+                                                                {generationFailureMessage}
                                                             </p>
+                                                            {generationFailureRecoveryMessage ? (
+                                                                <p className="mt-2 text-xs leading-5 text-[#8a857d]">
+                                                                    {generationFailureRecoveryMessage}
+                                                                </p>
+                                                            ) : null}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2626,6 +2633,12 @@ export default function Chat({
                                                         thinkingStartTime: null,
                                                         error: null,
                                                         previewUrl: null,
+                                                        buildId: null,
+                                                        previewBuildId: null,
+                                                        projectGenerationVersion: null,
+                                                        sourceGenerationType: 'new',
+                                                        draftSourceId: null,
+                                                        generationDiagnostics: null,
                                                     }}
                                                     label={agentPhaseLabel}
                                                     showPipelineSteps={false}
@@ -2673,6 +2686,12 @@ export default function Chat({
                                             thinkingStartTime: null,
                                             error: 'Failed',
                                             previewUrl: null,
+                                            buildId: null,
+                                            previewBuildId: null,
+                                            projectGenerationVersion: null,
+                                            sourceGenerationType: 'new',
+                                            draftSourceId: null,
+                                            generationDiagnostics: null,
                                         }}
                                         currentStepLabel={t('Failed')}
                                     />
@@ -2814,9 +2833,9 @@ export default function Chat({
                 <Suspense fallback={lazyPanelFallback}>
                     {showGenerationProgressInWorkspace ? (
                         <div className="flex h-full min-h-0 flex-col p-4">
-                            <div className="workspace-surface relative flex h-full min-h-0 items-center justify-center overflow-hidden bg-[#fbf9f4]">
+                            <div className="workspace-surface relative flex h-full min-h-0 overflow-y-auto bg-[#fbf9f4]">
                                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,247,237,0.95),_rgba(251,249,244,0.92)_46%,_rgba(244,239,230,0.96)_100%)]" />
-                                <div className="relative z-10 flex w-full max-w-2xl flex-col gap-6 px-6 py-10 text-left">
+                                <div className="relative z-10 mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center gap-6 px-6 py-10 text-left">
                                     <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] bg-white/90 text-[#b7791f] shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
                                         <Sparkles className="h-7 w-7" />
                                     </div>
@@ -2893,8 +2912,13 @@ export default function Chat({
                                                 {t('Website generation failed')}
                                             </h1>
                                             <p className="mt-1 text-sm text-[#78716c]">
-                                                {projectGeneration?.error_message || t('We could not finish creating this website.')}
+                                                {generationFailureMessage}
                                             </p>
+                                            {generationFailureRecoveryMessage ? (
+                                                <p className="mt-2 text-sm text-[#8a857d]">
+                                                    {generationFailureRecoveryMessage}
+                                                </p>
+                                            ) : null}
                                         </div>
                                     </div>
 
@@ -2905,14 +2929,14 @@ export default function Chat({
                                             onClick={() => router.reload({ only: ['project'] })}
                                             className="rounded-full"
                                         >
-                                            {t('Refresh status')}
+                                            {generationFailureIsValidation ? t('Retry generation') : t('Refresh status')}
                                         </Button>
                                         <Button
                                             type="button"
                                             onClick={() => router.visit('/create')}
                                             className="rounded-full"
                                         >
-                                            {t('Create another project')}
+                                            {generationFailureIsValidation ? t('Repair prompt') : t('Create another project')}
                                         </Button>
                                     </div>
                                 </div>

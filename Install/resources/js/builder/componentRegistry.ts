@@ -175,6 +175,10 @@ export interface BuilderComponentSchema {
     bindingFields?: string[];
     projectTypes?: BuilderProjectType[];
     capabilities?: string[];
+    categoryTags?: string[];
+    styleTags?: string[];
+    sectionType?: string;
+    priorityScore?: number;
     serializable?: boolean;
     codegen?: BuilderCodegenMetadata | null;
 }
@@ -984,6 +988,163 @@ function inferSchemaCapabilities(definition: ComponentDefinition, fields: Builde
     return Array.from(capabilities);
 }
 
+const METADATA_STOP_WORDS = new Set([
+    'and',
+    'the',
+    'for',
+    'with',
+    'your',
+    'from',
+    'that',
+    'this',
+    'section',
+    'component',
+    'general',
+    'webu',
+]);
+
+const CATEGORY_TAGS_BY_SECTION_TYPE: Record<string, string[]> = {
+    header: ['navigation', 'brand', 'menu', 'trust'],
+    navigation: ['navigation', 'menu', 'brand', 'links'],
+    hero: ['intro', 'headline', 'value-prop', 'brand', 'story'],
+    features: ['features', 'benefits', 'services', 'capabilities', 'offerings'],
+    cards: ['cards', 'services', 'offerings', 'pricing', 'plans', 'team'],
+    grid: ['gallery', 'showcase', 'projects', 'portfolio', 'menu', 'catalog'],
+    productGrid: ['products', 'catalog', 'inventory', 'retail', 'shop'],
+    testimonials: ['testimonials', 'reviews', 'trust', 'social-proof', 'results'],
+    faq: ['faq', 'questions', 'support', 'trust', 'compliance'],
+    cta: ['cta', 'conversion', 'lead', 'signup', 'contact'],
+    banner: ['campaign', 'promotion', 'announcement', 'cta', 'launch'],
+    form: ['contact', 'lead', 'booking', 'appointment', 'inquiry', 'medical'],
+    newsletter: ['newsletter', 'email', 'community', 'follow-up'],
+    footer: ['footer', 'links', 'newsletter', 'contact'],
+    content: ['content', 'copy', 'editorial'],
+    media: ['media', 'visual', 'gallery'],
+    section: ['section', 'layout'],
+};
+
+const STYLE_TAGS_BY_SECTION_TYPE: Record<string, string[]> = {
+    header: ['clean', 'minimal', 'structured'],
+    navigation: ['clean', 'minimal', 'structured'],
+    hero: ['modern', 'premium', 'editorial', 'bold', 'clean'],
+    features: ['clean', 'professional', 'structured', 'modern'],
+    cards: ['premium', 'editorial', 'visual', 'clean'],
+    grid: ['minimal', 'editorial', 'gallery', 'clean'],
+    productGrid: ['retail', 'clean', 'conversion', 'structured'],
+    testimonials: ['trust', 'premium', 'clean', 'professional'],
+    faq: ['clean', 'structured', 'trust', 'professional'],
+    cta: ['conversion', 'bold', 'clean', 'modern'],
+    banner: ['bold', 'contrast', 'campaign', 'modern'],
+    form: ['clean', 'professional', 'trust', 'medical'],
+    newsletter: ['clean', 'minimal', 'community'],
+    footer: ['clean', 'editorial', 'structured'],
+    content: ['editorial', 'clean'],
+    media: ['visual', 'immersive'],
+    section: ['clean', 'structured'],
+};
+
+const PRIORITY_SCORE_BY_SECTION_TYPE: Record<string, number> = {
+    header: 100,
+    navigation: 98,
+    hero: 96,
+    productGrid: 94,
+    features: 90,
+    cards: 88,
+    grid: 86,
+    testimonials: 84,
+    faq: 82,
+    form: 86,
+    cta: 88,
+    banner: 80,
+    newsletter: 76,
+    footer: 100,
+    content: 60,
+    media: 58,
+    section: 50,
+};
+
+function tokenizeMetadata(value: string): string[] {
+    return value
+        .toLowerCase()
+        .split(/[^a-z0-9]+/g)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 1 && !METADATA_STOP_WORDS.has(token));
+}
+
+function normalizeMetadataTokens(values: Array<string | null | undefined>): string[] {
+    return Array.from(new Set(
+        values
+            .flatMap((value) => typeof value === 'string' ? tokenizeMetadata(value) : [])
+            .filter(Boolean)
+    ));
+}
+
+function inferSchemaSectionType(
+    definition: ComponentDefinition,
+    schema: BuilderComponentSchema,
+    fields: BuilderFieldDefinition[],
+): string {
+    const normalizedKey = schema.componentKey.toLowerCase();
+    const normalizedName = schema.displayName.toLowerCase();
+    const capabilities = new Set(schema.capabilities ?? []);
+
+    if (normalizedKey.includes('header') || normalizedName.includes('header')) return 'header';
+    if (normalizedKey.includes('navigation') || normalizedName.includes('navigation') || normalizedKey.includes('offcanvas')) return 'navigation';
+    if (normalizedKey.includes('footer') || normalizedName.includes('footer')) return 'footer';
+    if (normalizedKey.includes('hero') || normalizedName.includes('hero')) return 'hero';
+    if (normalizedKey.includes('product_grid') || normalizedName.includes('product grid')) return 'productGrid';
+    if (normalizedKey.includes('testimonial') || normalizedName.includes('testimonial')) return 'testimonials';
+    if (normalizedKey.includes('faq') || normalizedName.includes('faq')) return 'faq';
+    if (normalizedKey.includes('newsletter') || normalizedName.includes('newsletter')) return 'newsletter';
+    if (normalizedKey.includes('banner') || normalizedName.includes('banner')) return 'banner';
+    if (normalizedKey.includes('form') || normalizedName.includes('form') || fields.some((field) => field.path.includes('submit'))) return 'form';
+    if (normalizedKey.includes('card') || normalizedName.includes('card')) return 'cards';
+    if (normalizedKey.includes('grid') || normalizedName.includes('grid')) return normalizedKey.includes('product') ? 'productGrid' : 'grid';
+    if (normalizedKey.includes('cta') || normalizedName === 'cta' || capabilities.has('cta')) return 'cta';
+    if (normalizedKey.includes('feature') || normalizedName.includes('feature') || capabilities.has('features')) return 'features';
+    if (normalizedKey.includes('image') || normalizedKey.includes('video')) return 'media';
+    if (definition.category === 'content') return 'content';
+
+    return 'section';
+}
+
+function inferSchemaCategoryTags(
+    definition: ComponentDefinition,
+    schema: BuilderComponentSchema,
+    sectionType: string,
+): string[] {
+    return Array.from(new Set([
+        sectionType,
+        definition.category,
+        schema.category,
+        ...(schema.projectTypes ?? []),
+        ...(schema.capabilities ?? []),
+        ...(CATEGORY_TAGS_BY_SECTION_TYPE[sectionType] ?? []),
+        ...normalizeMetadataTokens([definition.name, schema.displayName, schema.componentKey]),
+    ]));
+}
+
+function inferSchemaStyleTags(
+    definition: ComponentDefinition,
+    schema: BuilderComponentSchema,
+    sectionType: string,
+): string[] {
+    return Array.from(new Set([
+        ...(STYLE_TAGS_BY_SECTION_TYPE[sectionType] ?? []),
+        ...normalizeMetadataTokens([
+            definition.metadata?.supportsAnimation ? 'animated' : '',
+            definition.metadata?.supportsBackground ? 'layered' : '',
+            definition.metadata?.supportsBorderRadius ? 'soft' : '',
+            ...(schema.variants?.layout ?? []),
+            ...(schema.variants?.style ?? []),
+        ]),
+    ]));
+}
+
+function inferSchemaPriorityScore(sectionType: string): number {
+    return PRIORITY_SCORE_BY_SECTION_TYPE[sectionType] ?? PRIORITY_SCORE_BY_SECTION_TYPE.section;
+}
+
 function normalizeSchema(definition: ComponentDefinition): BuilderComponentSchema {
     const sourceSchema = definition.schema ?? buildLegacySchema(definition);
     const mergedFields = mergeFieldDefinitions(sourceSchema.fields, buildFoundationFields(definition));
@@ -1012,6 +1173,18 @@ function normalizeSchema(definition: ComponentDefinition): BuilderComponentSchem
             .filter(Boolean)
     ));
     const variantDefinitions = sourceSchema.variantDefinitions ?? buildVariantDefinitions(sourceSchema);
+    const sectionType = sourceSchema.sectionType ?? inferSchemaSectionType(definition, sourceSchema, mergedFields);
+    const categoryTags = Array.from(new Set([
+        ...((sourceSchema as BuilderComponentSchema).categoryTags ?? []),
+        ...inferSchemaCategoryTags(definition, sourceSchema, sectionType),
+    ]));
+    const styleTags = Array.from(new Set([
+        ...((sourceSchema as BuilderComponentSchema).styleTags ?? []),
+        ...inferSchemaStyleTags(definition, sourceSchema, sectionType),
+    ]));
+    const priorityScore = typeof sourceSchema.priorityScore === 'number'
+        ? sourceSchema.priorityScore
+        : inferSchemaPriorityScore(sectionType);
     const normalizedBaseSchema: BuilderComponentSchema = {
         ...sourceSchema,
         schemaVersion: sourceSchema.schemaVersion ?? 2,
@@ -1031,6 +1204,10 @@ function normalizeSchema(definition: ComponentDefinition): BuilderComponentSchem
         bindingFields,
         projectTypes,
         capabilities,
+        categoryTags,
+        styleTags,
+        sectionType,
+        priorityScore,
         contentGroups: sourceSchema.contentGroups ?? buildGroupDefinitions(mergedFields, ['content', 'data', 'bindings', 'meta']),
         styleGroups: sourceSchema.styleGroups ?? buildGroupDefinitions(mergedFields, ['layout', 'style', 'responsive', 'states']),
         advancedGroups: sourceSchema.advancedGroups ?? buildGroupDefinitions(mergedFields, ['advanced']),
@@ -2807,6 +2984,10 @@ export function getComponentSchemaJson(registryId: string): Record<string, unkno
         chat_targets: schema.chatTargets ?? [],
         binding_fields: schema.bindingFields ?? [],
         project_types: schema.projectTypes ?? [],
+        category_tags: schema.categoryTags ?? [],
+        style_tags: schema.styleTags ?? [],
+        section_type: schema.sectionType ?? null,
+        priority_score: schema.priorityScore ?? null,
         content_groups: schema.contentGroups ?? [],
         style_groups: schema.styleGroups ?? [],
         advanced_groups: schema.advancedGroups ?? [],
@@ -2823,6 +3004,10 @@ export function getComponentSchemaJson(registryId: string): Record<string, unkno
             chat_targets: schema.chatTargets ?? [],
             binding_fields: schema.bindingFields ?? [],
             project_types: schema.projectTypes ?? [],
+            category_tags: schema.categoryTags ?? [],
+            style_tags: schema.styleTags ?? [],
+            section_type: schema.sectionType ?? null,
+            priority_score: schema.priorityScore ?? null,
             content_groups: schema.contentGroups ?? [],
             style_groups: schema.styleGroups ?? [],
             advanced_groups: schema.advancedGroups ?? [],

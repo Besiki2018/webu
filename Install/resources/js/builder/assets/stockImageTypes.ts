@@ -44,6 +44,7 @@ export interface StockImageImportRequest {
     imported_by?: 'ai' | 'user' | 'visual_builder' | null;
     section_local_id?: string | null;
     component_key?: string | null;
+    prop_path?: string | null;
     page_slug?: string | null;
     page_id?: string | null;
     query?: string | null;

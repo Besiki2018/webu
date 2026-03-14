@@ -12,6 +12,7 @@ import type { BuilderComponentInstance } from './core/types';
 import type { ProjectType } from './projectTypes';
 import { getEntry, getDefaultProps } from './componentRegistry';
 import type { BuilderSection } from './visual/treeUtils';
+import { clonePlainData, stableSerialize } from './ai/stableSerialize';
 
 /** One section in the generated site structure (from AI or template). */
 export interface SiteStructureSection {
@@ -30,6 +31,26 @@ export interface BuildTreeFromStructureInput {
   structure: SiteStructureSection[];
   /** Optional: custom id generator (default: section slug + index). */
   generateId?: (componentKey: string, index: number) => string;
+}
+
+const MAX_STRUCTURE_TREE_CACHE_ENTRIES = 100;
+const structureTreeCache = new Map<string, BuilderComponentInstance[]>();
+
+function rememberStructureTreeCache(key: string, value: BuilderComponentInstance[]): void {
+  if (structureTreeCache.has(key)) {
+    structureTreeCache.delete(key);
+  }
+
+  structureTreeCache.set(key, value);
+
+  if (structureTreeCache.size <= MAX_STRUCTURE_TREE_CACHE_ENTRIES) {
+    return;
+  }
+
+  const oldestKey = structureTreeCache.keys().next().value;
+  if (typeof oldestKey === 'string') {
+    structureTreeCache.delete(oldestKey);
+  }
 }
 
 /**
@@ -53,6 +74,18 @@ function defaultGenerateId(componentKey: string, index: number): string {
  */
 export function buildTreeFromStructure(input: BuildTreeFromStructureInput): BuilderComponentInstance[] {
   const { structure, generateId = defaultGenerateId } = input;
+  const canUseCache = generateId === defaultGenerateId;
+  const cacheKey = canUseCache
+    ? stableSerialize({
+      projectType: input.projectType,
+      structure,
+    })
+    : null;
+  const cachedTree = cacheKey ? structureTreeCache.get(cacheKey) : null;
+  if (cachedTree) {
+    return clonePlainData(cachedTree);
+  }
+
   const nodes: BuilderComponentInstance[] = [];
 
   for (let i = 0; i < structure.length; i++) {
@@ -75,7 +108,15 @@ export function buildTreeFromStructure(input: BuildTreeFromStructureInput): Buil
     });
   }
 
+  if (cacheKey) {
+    rememberStructureTreeCache(cacheKey, clonePlainData(nodes));
+  }
+
   return nodes;
+}
+
+export function __resetBuildTreeFromStructureCacheForTests(): void {
+  structureTreeCache.clear();
 }
 
 /**

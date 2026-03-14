@@ -59,6 +59,7 @@ class AssetProviderController extends Controller
             'imported_by' => ['nullable', 'string', 'max:64'],
             'section_local_id' => ['nullable', 'string', 'max:191'],
             'component_key' => ['nullable', 'string', 'max:191'],
+            'prop_path' => ['nullable', 'string', 'max:191'],
             'page_slug' => ['nullable', 'string', 'max:191'],
             'page_id' => ['nullable', 'string', 'max:191'],
             'query' => ['nullable', 'string', 'max:255'],

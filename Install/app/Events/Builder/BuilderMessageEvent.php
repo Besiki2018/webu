@@ -32,6 +32,8 @@ class BuilderMessageEvent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
+            'session_id' => $this->sessionId,
+            'build_id' => $this->sessionId,
             'content' => $this->content,
         ];
     }

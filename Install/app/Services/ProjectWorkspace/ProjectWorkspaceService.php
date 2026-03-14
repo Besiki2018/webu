@@ -61,7 +61,11 @@ class ProjectWorkspaceService
         'webu_general_footer_01' => 'Footer',
         'webu_general_hero_01' => 'HeroSection',
         'webu_general_features_01' => 'FeaturesSection',
+        'webu_general_cards_01' => 'CardsSection',
+        'webu_general_grid_01' => 'GridSection',
         'webu_general_cta_01' => 'CTASection',
+        'webu_general_testimonials_01' => 'TestimonialsSection',
+        'webu_general_banner_01' => 'BannerSection',
         'webu_general_text_01' => 'TextSection',
         'webu_general_heading_01' => 'HeadingSection',
         'webu_general_button_01' => 'ButtonSection',
@@ -379,6 +383,7 @@ class ProjectWorkspaceService
      *     preview: array{
      *         ready: bool,
      *         phase: string,
+     *         build_id: string|null,
      *         preview_url: string|null,
      *         built_at: string|null,
      *         error_message: string|null
@@ -389,11 +394,19 @@ class ProjectWorkspaceService
     {
         $exists = $this->workspaceManifestExists($project);
         $manifest = $this->readWorkspaceManifestDocument($project);
+        $generatedPages = is_array($manifest['generatedPages'] ?? null) ? $manifest['generatedPages'] : [];
         $preview = is_array($manifest['preview'] ?? null) ? $manifest['preview'] : $this->defaultWorkspaceManifestPreview();
         $phase = $this->normalizeWorkspacePreviewPhase(is_string($preview['phase'] ?? null) ? (string) $preview['phase'] : null);
-        $isLegacyReady = in_array(trim(strtolower((string) $generationStatus)), ['completed', 'complete'], true);
+        $normalizedGenerationStatus = trim(strtolower((string) $generationStatus));
+        $isGenerationReady = in_array($normalizedGenerationStatus, ['ready', 'completed', 'complete'], true);
+        $isLegacyReady = in_array($normalizedGenerationStatus, ['completed', 'complete'], true);
+        $hasGeneratedWorkspace = count($generatedPages) > 0;
+        $hasPreviewArtifact = (bool) ($preview['ready'] ?? false)
+            || (is_string($preview['previewUrl'] ?? null) && trim((string) $preview['previewUrl']) !== '');
         $readyForBuilder = $exists
-            ? ((bool) ($preview['ready'] ?? false) && $phase === ProjectGenerationRun::STATUS_READY)
+            ? ($isGenerationReady
+                ? ($hasGeneratedWorkspace || $hasPreviewArtifact)
+                : ((bool) ($preview['ready'] ?? false) && $phase === ProjectGenerationRun::STATUS_READY))
             : $isLegacyReady;
 
         return [
@@ -402,11 +415,12 @@ class ProjectWorkspaceService
             'active_generation_run_id' => is_string($manifest['activeGenerationRunId'] ?? null)
                 ? (string) $manifest['activeGenerationRunId']
                 : null,
-            'generated_page_count' => count(is_array($manifest['generatedPages'] ?? null) ? $manifest['generatedPages'] : []),
+            'generated_page_count' => count($generatedPages),
             'updated_at' => is_string($manifest['updatedAt'] ?? null) ? (string) $manifest['updatedAt'] : null,
             'preview' => [
                 'ready' => (bool) ($preview['ready'] ?? false),
                 'phase' => $phase,
+                'build_id' => is_string($preview['buildId'] ?? null) ? (string) $preview['buildId'] : null,
                 'preview_url' => is_string($preview['previewUrl'] ?? null) ? (string) $preview['previewUrl'] : null,
                 'built_at' => is_string($preview['builtAt'] ?? null) ? (string) $preview['builtAt'] : null,
                 'error_message' => is_string($preview['errorMessage'] ?? null) ? (string) $preview['errorMessage'] : null,
@@ -430,15 +444,7 @@ class ProjectWorkspaceService
         $runId = isset($context['active_generation_run_id']) && is_string($context['active_generation_run_id']) && trim((string) $context['active_generation_run_id']) !== ''
             ? trim((string) $context['active_generation_run_id'])
             : (is_string($manifest['activeGenerationRunId'] ?? null) ? (string) $manifest['activeGenerationRunId'] : null);
-        $isActivePhase = in_array($phase, [
-            ProjectGenerationRun::STATUS_QUEUED,
-            ProjectGenerationRun::STATUS_PLANNING,
-            ProjectGenerationRun::STATUS_GENERATING,
-            ProjectGenerationRun::STATUS_FINALIZING,
-            ProjectGenerationRun::STATUS_SCAFFOLDING,
-            ProjectGenerationRun::STATUS_WRITING_FILES,
-            ProjectGenerationRun::STATUS_BUILDING_PREVIEW,
-        ], true);
+        $isActivePhase = in_array($phase, ProjectGenerationRun::activeStatuses(), true);
 
         $manifest['schemaVersion'] = 1;
         $manifest['projectId'] = (string) $project->id;
@@ -448,6 +454,11 @@ class ProjectWorkspaceService
         $manifest['preview'] = is_array($manifest['preview'] ?? null) ? $manifest['preview'] : $this->defaultWorkspaceManifestPreview();
         $manifest['preview']['phase'] = $phase;
         $manifest['preview']['ready'] = $phase === ProjectGenerationRun::STATUS_READY;
+        $manifest['preview']['buildId'] = $phase === ProjectGenerationRun::STATUS_READY
+            ? ($runId !== null && $runId !== ''
+                ? $runId
+                : (is_string($manifest['preview']['buildId'] ?? null) ? (string) $manifest['preview']['buildId'] : null))
+            : null;
         $manifest['preview']['previewUrl'] = isset($context['preview_url']) && is_string($context['preview_url']) && trim((string) $context['preview_url']) !== ''
             ? trim((string) $context['preview_url'])
             : (is_string($manifest['preview']['previewUrl'] ?? null) ? (string) $manifest['preview']['previewUrl'] : null);
@@ -868,6 +879,9 @@ class ProjectWorkspaceService
                 ...(is_array($existingManifest['preview'] ?? null) ? $existingManifest['preview'] : []),
                 'ready' => $phase === ProjectGenerationRun::STATUS_READY ? $previewReady : false,
                 'phase' => $phase,
+                'buildId' => $phase === ProjectGenerationRun::STATUS_READY
+                    ? $activeGenerationRunId
+                    : null,
                 'previewUrl' => isset($context['preview_url']) && is_string($context['preview_url']) && trim((string) $context['preview_url']) !== ''
                     ? trim((string) $context['preview_url'])
                     : (is_string($existingManifest['preview']['previewUrl'] ?? null) ? (string) $existingManifest['preview']['previewUrl'] : null),
@@ -891,6 +905,12 @@ class ProjectWorkspaceService
     {
         return match (trim(strtolower((string) $phase))) {
             ProjectGenerationRun::STATUS_QUEUED => ProjectGenerationRun::STATUS_QUEUED,
+            ProjectGenerationRun::STATUS_ANALYZING_PROMPT => ProjectGenerationRun::STATUS_ANALYZING_PROMPT,
+            ProjectGenerationRun::STATUS_PLANNING_STRUCTURE => ProjectGenerationRun::STATUS_PLANNING_STRUCTURE,
+            ProjectGenerationRun::STATUS_SELECTING_COMPONENTS => ProjectGenerationRun::STATUS_SELECTING_COMPONENTS,
+            ProjectGenerationRun::STATUS_GENERATING_CONTENT => ProjectGenerationRun::STATUS_GENERATING_CONTENT,
+            ProjectGenerationRun::STATUS_ASSEMBLING_PAGE => ProjectGenerationRun::STATUS_ASSEMBLING_PAGE,
+            ProjectGenerationRun::STATUS_RENDERING_PREVIEW => ProjectGenerationRun::STATUS_RENDERING_PREVIEW,
             ProjectGenerationRun::STATUS_PLANNING => ProjectGenerationRun::STATUS_PLANNING,
             ProjectGenerationRun::STATUS_GENERATING,
             ProjectGenerationRun::STATUS_SCAFFOLDING => ProjectGenerationRun::STATUS_SCAFFOLDING,
@@ -1303,6 +1323,7 @@ class ProjectWorkspaceService
         $manifest['preview'] = is_array($manifest['preview'] ?? null) ? $manifest['preview'] : $this->defaultWorkspaceManifestPreview();
         $manifest['preview']['ready'] = false;
         $manifest['preview']['phase'] = 'building_preview';
+        $manifest['preview']['buildId'] = null;
         $manifest['preview']['builtAt'] = null;
         $manifest['preview']['errorMessage'] = null;
 
@@ -2672,6 +2693,8 @@ TSX;
     {
         return match ($type) {
             'features' => $this->templateFeaturesSection($name, $projection),
+            'cards' => $this->templateCardsSection($name, $projection),
+            'grid' => $this->templateGridSection($name, $projection),
             'testimonials' => $this->templateTestimonialsSection($name, $projection),
             'product_grid', 'featured_categories', 'category_list' => $this->templateProductGridSection($name, $type, $projection),
             'spacer' => $this->templateSpacerSection($name, $projection),
@@ -3428,6 +3451,149 @@ TSX;
         return $this->withProjectionBanner($content, $this->buildSectionProjectionMetadata($name, $projection));
     }
 
+    private function templateCardsSection(string $name, array $projection = []): string
+    {
+        $sampleProps = is_array($projection['sample_props'] ?? null) ? $projection['sample_props'] : [];
+        $items = $this->projectionArrayLiteral($sampleProps['items'] ?? null);
+        $content = <<<TSX
+type {$name}Item = {
+  title?: string;
+  description?: string;
+  image?: string;
+  imageAlt?: string;
+  link?: string;
+};
+
+type {$name}Props = {
+  sectionId?: string;
+  title?: string;
+  subtitle?: string;
+  items?: {$name}Item[];
+};
+
+export default function {$name}({
+  sectionId = 'cards-section',
+  title = {$this->toJsLiteral((string) ($this->firstExistingValue($sampleProps, ['title', 'headline']) ?? 'Featured cards'))},
+  subtitle = {$this->toJsLiteral((string) ($this->firstExistingValue($sampleProps, ['subtitle', 'description']) ?? 'Highlight reusable cards with image, copy, and a clear destination.'))},
+  items = {$items},
+}: {$name}Props) {
+  const resolvedItems = items.length > 0
+    ? items
+    : [
+        { title: 'Card one', description: 'Describe the first item.', link: '#' },
+        { title: 'Card two', description: 'Describe the second item.', link: '#' },
+        { title: 'Card three', description: 'Describe the third item.', link: '#' },
+      ];
+
+  return (
+    <section className="section section-cards" data-webu-section="{$name}" data-webu-section-local-id={sectionId}>
+      <div className="container">
+        <div className="section-copy">
+          <h2 className="section-title" data-webu-field="title">{title}</h2>
+          <p className="section-description" data-webu-field="subtitle">{subtitle}</p>
+        </div>
+        <div className="section-grid">
+          {resolvedItems.map((item, index) => (
+            <article className="feature-card" key={index}>
+              {item.image ? (
+                <img
+                  className="section-image"
+                  src={item.image}
+                  alt={item.imageAlt || item.title || 'Card image'}
+                  data-webu-field={`items.\${index}.image`}
+                />
+              ) : null}
+              <h3 className="card-title" data-webu-field={`items.\${index}.title`}>{item.title}</h3>
+              <p className="card-description" data-webu-field={`items.\${index}.description`}>{item.description}</p>
+              {item.link ? (
+                <a href={item.link} data-webu-field-url={`items.\${index}.link`}>
+                  Learn more
+                </a>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+TSX;
+
+        return $this->withProjectionBanner($content, $this->buildSectionProjectionMetadata($name, $projection));
+    }
+
+    private function templateGridSection(string $name, array $projection = []): string
+    {
+        $sampleProps = is_array($projection['sample_props'] ?? null) ? $projection['sample_props'] : [];
+        $items = $this->projectionArrayLiteral($sampleProps['items'] ?? null);
+        $content = <<<TSX
+type {$name}Item = {
+  title?: string;
+  image?: string;
+  imageAlt?: string;
+  link?: string;
+};
+
+type {$name}Props = {
+  sectionId?: string;
+  title?: string;
+  subtitle?: string;
+  items?: {$name}Item[];
+};
+
+export default function {$name}({
+  sectionId = 'grid-section',
+  title = {$this->toJsLiteral((string) ($this->firstExistingValue($sampleProps, ['title', 'headline']) ?? 'Gallery'))},
+  subtitle = {$this->toJsLiteral((string) ($this->firstExistingValue($sampleProps, ['subtitle', 'description']) ?? 'Present a clean visual grid that stays tied to CMS-managed section props.'))},
+  items = {$items},
+}: {$name}Props) {
+  const resolvedItems = items.length > 0
+    ? items
+    : [
+        { title: 'Grid item one', link: '#' },
+        { title: 'Grid item two', link: '#' },
+        { title: 'Grid item three', link: '#' },
+        { title: 'Grid item four', link: '#' },
+      ];
+
+  return (
+    <section className="section section-grid" data-webu-section="{$name}" data-webu-section-local-id={sectionId}>
+      <div className="container">
+        <div className="section-copy">
+          <h2 className="section-title" data-webu-field="title">{title}</h2>
+          <p className="section-description" data-webu-field="subtitle">{subtitle}</p>
+        </div>
+        <div className="section-grid">
+          {resolvedItems.map((item, index) => (
+            <article className="feature-card" key={index}>
+              {item.image ? (
+                <img
+                  className="section-image"
+                  src={item.image}
+                  alt={item.imageAlt || item.title || 'Grid image'}
+                  data-webu-field={`items.\${index}.image`}
+                />
+              ) : null}
+              <h3 className="card-title" data-webu-field={`items.\${index}.title`}>{item.title}</h3>
+              {item.link ? (
+                <a href={item.link} data-webu-field-url={`items.\${index}.link`}>
+                  View
+                </a>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+TSX;
+
+        return $this->withProjectionBanner($content, $this->buildSectionProjectionMetadata($name, $projection));
+    }
+
     private function templateTestimonialsSection(string $name, array $projection = []): string
     {
         $sampleProps = is_array($projection['sample_props'] ?? null) ? $projection['sample_props'] : [];
@@ -3437,6 +3603,10 @@ type {$name}Item = {
   title?: string;
   description?: string;
   meta?: string;
+  quote?: string;
+  author?: string;
+  role?: string;
+  avatar?: string;
 };
 
 type {$name}Props = {
@@ -3488,9 +3658,17 @@ export default function {$name}({
         <div className="section-grid">
           {resolvedItems.map((item, index) => (
             <article className="feature-card testimonial-card" key={index}>
-              <p className="testimonial-quote" data-webu-field={`items.\${index}.title`}>"{item.title}"</p>
-              <p className="testimonial-author" data-webu-field={`items.\${index}.description`}>{item.description}</p>
-              <p className="testimonial-role" data-webu-field={`items.\${index}.meta`}>{item.meta}</p>
+              {item.avatar ? (
+                <img
+                  className="section-image testimonial-avatar"
+                  src={item.avatar}
+                  alt={item.description || item.author || item.title || item.quote || 'Testimonial avatar'}
+                  data-webu-field={`items.\${index}.avatar`}
+                />
+              ) : null}
+              <p className="testimonial-quote" data-webu-field={`items.\${index}.quote`}>"{item.quote || item.title}"</p>
+              <p className="testimonial-author" data-webu-field={`items.\${index}.author`}>{item.author || item.description}</p>
+              <p className="testimonial-role" data-webu-field={`items.\${index}.role`}>{item.role || item.meta}</p>
             </article>
           ))}
         </div>

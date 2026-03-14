@@ -28,7 +28,8 @@ use Illuminate\Support\Str;
 
 /**
  * Ultimate AI generation engine: CMS-first, single flow.
- * When ultra_cheap_mode: templates + copy bank + presets only (no main model).
+ * Prompt-based generation now resolves the home page through the builder blueprint pipeline
+ * and only uses legacy CMS scaffolding for supplemental pages.
  */
 class GenerateWebsiteProjectService
 {
@@ -40,14 +41,16 @@ class GenerateWebsiteProjectService
         protected ThemeGenerator $themeGenerator,
         protected ContentGenerator $contentGenerator,
         protected SeoGenerator $seoGenerator,
+        protected BuilderBlueprintGenerationService $builderBlueprintGeneration,
         protected UltraCheapCopyBank $copyBank,
-        protected UltraCheapTemplateMatrix $templateMatrix,
         protected CmsRepositoryContract $repository,
         protected CmsSectionBindingService $sectionBindings,
         protected ProjectWorkspaceService $projectWorkspace,
         protected CodebaseScanner $codebaseScanner,
+        protected GeneratedSectionImagePlanner $generatedSectionImagePlanner,
         protected ImageSearchService $stockImageSearch,
-        protected ImageImportService $stockImageImport
+        protected ImageImportService $stockImageImport,
+        protected UltraCheapThemePreset $themePresetResolver
     ) {}
 
     /**
@@ -95,7 +98,7 @@ class GenerateWebsiteProjectService
 
         $tenantId = (string) ($project->tenant_id ?: $this->resolveTenantIdForUser($userId));
 
-        $this->reportProgress($progress, 'planning', 'Understanding your website brief.');
+        $this->reportProgress($progress, ProjectGenerationRun::STATUS_ANALYZING_PROMPT, 'Analyzing your prompt.');
 
         $brief = $this->resolveBrief($userPrompt, $input);
         $language = $input['language'] ?? $brief['language'];
@@ -107,6 +110,7 @@ class GenerateWebsiteProjectService
         $brief['style'] = $style;
         $brief['websiteType'] = $websiteType;
         $brief['brandName'] = $brandName;
+        $brief['sourcePrompt'] = $userPrompt;
 
         $project->forceFill([
             'tenant_id' => $tenantId,
@@ -115,28 +119,33 @@ class GenerateWebsiteProjectService
             'last_viewed_at' => now(),
         ])->save();
 
-        $category = $brief['category'] ?? 'general';
-        if ($ultraCheapMode) {
-            $brief['templateId'] = $this->templateMatrix->resolve($websiteType, $category, $style);
+        $this->reportProgress($progress, ProjectGenerationRun::STATUS_PLANNING_STRUCTURE, 'Planning the site structure.');
+        $builderGeneration = $this->generatePagesPlanFromBuilderBlueprint($userPrompt, $brief, $input);
+        $pagesPlan = $builderGeneration['pages'];
+
+        if (isset($builderGeneration['project_type']) && is_string($builderGeneration['project_type']) && trim((string) $builderGeneration['project_type']) !== '') {
+            $project->forceFill([
+                'type' => trim((string) $builderGeneration['project_type']),
+            ])->save();
         }
 
-        $this->reportProgress($progress, ProjectGenerationRun::STATUS_SCAFFOLDING, 'Generating the site structure and content.');
+        $this->reportProgress($progress, ProjectGenerationRun::STATUS_SELECTING_COMPONENTS, 'Selecting sections and components.');
 
-        $structure = $this->structureGenerator->generate($brief);
-        $pagesPlan = $structure['pages'];
-
-        if ($ultraCheapMode) {
-            $contentPatches = $this->contentPatchesFromCopyBank($brief, $pagesPlan);
-        } else {
-            $contentPatches = $this->contentGenerator->generate($brief, $pagesPlan);
-        }
+        $this->reportProgress($progress, ProjectGenerationRun::STATUS_GENERATING_CONTENT, 'Generating content for each section.');
+        $contentPatches = $this->buildContentPatchesForPagesPlan($brief, $pagesPlan, $ultraCheapMode);
 
         $theme = $this->themeGenerator->generate($brief);
+        $resolvedThemePreset = $this->resolveThemePresetId($brief, null);
+        if ($resolvedThemePreset !== null) {
+            $brief['themePreset'] = $resolvedThemePreset;
+            $theme['preset'] = $resolvedThemePreset;
+            $project->forceFill(['theme_preset' => $resolvedThemePreset])->save();
+        }
         $seoPlan = $this->seoGenerator->generate($brief, $pagesPlan, $language === 'both' ? 'ka' : $language);
 
-        $this->reportProgress($progress, ProjectGenerationRun::STATUS_WRITING_FILES, 'Writing project files to the workspace.');
+        $this->reportProgress($progress, ProjectGenerationRun::STATUS_ASSEMBLING_PAGE, 'Assembling the page tree and writing files.');
 
-        $result = DB::transaction(function () use ($project, $userId, $tenantId, $brief, $pagesPlan, $contentPatches, $theme, $seoPlan) {
+        $result = DB::transaction(function () use ($project, $userId, $tenantId, $brief, $pagesPlan, $contentPatches, $theme, $seoPlan, $builderGeneration) {
             $site = $this->prepareSiteForGeneration($project, $brief, $theme);
             $stockImagePatches = $this->resolveGeneratedSectionStockImages(
                 $project,
@@ -179,9 +188,12 @@ class GenerateWebsiteProjectService
                     $patch = is_array($contentPatches[$pageIndex][$secOrder] ?? null) ? $contentPatches[$pageIndex][$secOrder] : [];
                     $settings = array_replace_recursive($content, $patch);
                     $localId = CmsSectionLocalId::fallbackForIndex((int) $secOrder);
+                    $stockImagePatch = is_array($stockImagePatches[$pageIndex][$secOrder] ?? null)
+                        ? $stockImagePatches[$pageIndex][$secOrder]
+                        : [];
                     $settings = $this->applyGeneratedStockImagePatch(
                         $settings,
-                        $stockImagePatches[$pageIndex][$secOrder] ?? []
+                        $stockImagePatch
                     );
 
                     PageSection::create([
@@ -196,7 +208,15 @@ class GenerateWebsiteProjectService
                     $sectionPayload = $this->sectionBindings->buildSectionPayload((string) $sec['section_type'], $settings);
                     $sectionPayload['binding'] = array_replace_recursive(
                         is_array($sectionPayload['binding'] ?? null) ? $sectionPayload['binding'] : [],
-                        $this->buildGeneratedSectionAuthorityBinding($sec, $localId, $settings, $userId)
+                        $this->buildGeneratedSectionAuthorityBinding(
+                            $project,
+                            $slug,
+                            $sec,
+                            $localId,
+                            $settings,
+                            $userId,
+                            $stockImagePatch
+                        )
                     );
                     $sectionPayload['localId'] = $localId;
                     $contentJson['sections'][] = $sectionPayload;
@@ -249,6 +269,12 @@ class GenerateWebsiteProjectService
                 'project' => $project->fresh(),
                 'site' => $site->fresh(),
                 'pages' => $websitePages,
+                'builder_generation' => [
+                    'blueprint' => $builderGeneration['blueprint'] ?? [],
+                    'project_type' => $builderGeneration['project_type'] ?? null,
+                    'diagnostics' => $builderGeneration['diagnostics'] ?? null,
+                    'generation_log' => $builderGeneration['generation_log'] ?? [],
+                ],
             ];
         });
 
@@ -257,13 +283,50 @@ class GenerateWebsiteProjectService
             'active_generation_run_id' => isset($input['generationRunId']) && is_string($input['generationRunId'])
                 ? trim((string) $input['generationRunId'])
                 : null,
-            'phase' => ProjectGenerationRun::STATUS_WRITING_FILES,
+            'phase' => ProjectGenerationRun::STATUS_ASSEMBLING_PAGE,
         ]);
         $scan = $this->codebaseScanner->scan($project);
         $this->codebaseScanner->writeIndex($project, $scan);
-        $this->reportProgress($progress, ProjectGenerationRun::STATUS_BUILDING_PREVIEW, 'Building the preview and validating workspace readiness.');
+        $this->reportProgress($progress, ProjectGenerationRun::STATUS_RENDERING_PREVIEW, 'Rendering the preview and validating the workspace.');
 
         return $result;
+    }
+
+    /**
+     * @param  array{brandName: string, mustHavePages: array<int, string>, websiteType: string}  $brief
+     * @param  array{websiteType?: string|null}  $input
+     * @return array{
+     *   pages: array<int, array<string, mixed>>,
+     *   blueprint: array<string, mixed>,
+     *   project_type: string|null,
+     *   diagnostics: array<string, mixed>|null,
+     *   generation_log: array<int, array<string, mixed>>
+     * }
+     */
+    private function generatePagesPlanFromBuilderBlueprint(string $userPrompt, array $brief, array $input): array
+    {
+        $builderGeneration = $this->builderBlueprintGeneration->generate($userPrompt, [
+            'projectType' => isset($input['websiteType']) && is_string($input['websiteType']) && trim((string) $input['websiteType']) !== ''
+                ? trim((string) $input['websiteType'])
+                : null,
+            'brandName' => $brief['brandName'] ?? null,
+        ]);
+
+        $generatedPages = $this->pagesPlanFromBuilderSitePlan($builderGeneration['sitePlan'] ?? []);
+        if ($generatedPages === []) {
+            throw new \RuntimeException('Builder blueprint generation returned no CMS pages.');
+        }
+
+        $supplementalPages = $this->structureGenerator->generate($brief)['pages'] ?? [];
+        $pages = $this->mergeGeneratedPagesWithSupplementalScaffolding($generatedPages, $supplementalPages);
+
+        return [
+            'pages' => $pages,
+            'blueprint' => is_array($builderGeneration['blueprint'] ?? null) ? $builderGeneration['blueprint'] : [],
+            'project_type' => is_string($builderGeneration['projectType'] ?? null) ? (string) $builderGeneration['projectType'] : null,
+            'diagnostics' => is_array($builderGeneration['diagnostics'] ?? null) ? $builderGeneration['diagnostics'] : null,
+            'generation_log' => is_array($builderGeneration['generationLog'] ?? null) ? $builderGeneration['generationLog'] : [],
+        ];
     }
 
     /**
@@ -283,8 +346,196 @@ class GenerateWebsiteProjectService
     }
 
     /**
+     * @param  array<string, mixed>  $props
+     * @return array<int, array{key: string, label: string, type: string}>
+     */
+    private function inferCmsFieldsFromTemplateSection(string $sectionType, array $props): array
+    {
+        $binding = $this->sectionBindings->resolveBinding($sectionType);
+        $editableFields = array_values(array_filter(array_map(static function ($field): string {
+            return is_string($field) ? trim($field) : '';
+        }, is_array($binding['editable_fields'] ?? null) ? $binding['editable_fields'] : [])));
+        $propFields = array_values(array_filter(array_map(static function ($field): string {
+            return is_string($field) ? trim($field) : '';
+        }, array_keys($props))));
+        $fieldKeys = array_values(array_unique([...$editableFields, ...$propFields]));
+
+        return array_values(array_map(static function (string $key): array {
+            return [
+                'key' => $key,
+                'label' => Str::headline(str_replace(['.', '_', '-'], ' ', $key)),
+                'type' => 'text',
+            ];
+        }, $fieldKeys));
+    }
+
+    /**
+     * @param  array<string, mixed>  $sitePlan
+     * @return array<int, array{slug: string, title: string, sections: array<int, array<string, mixed>>}>
+     */
+    private function pagesPlanFromBuilderSitePlan(array $sitePlan): array
+    {
+        $pages = [];
+
+        foreach (is_array($sitePlan['pages'] ?? null) ? $sitePlan['pages'] : [] as $pageIndex => $page) {
+            if (! is_array($page)) {
+                continue;
+            }
+
+            $pageName = is_string($page['name'] ?? null) ? trim((string) $page['name']) : '';
+            $slug = $pageName !== '' ? Str::slug($pageName) : '';
+            if ($slug === '') {
+                $slug = $pageIndex === 0 ? 'home' : 'page-'.($pageIndex + 1);
+            }
+
+            $sections = [];
+            foreach (is_array($page['sections'] ?? null) ? $page['sections'] : [] as $section) {
+                if (! is_array($section)) {
+                    continue;
+                }
+
+                $sectionType = is_string($section['componentKey'] ?? null) ? trim((string) $section['componentKey']) : '';
+                if ($sectionType === '') {
+                    continue;
+                }
+
+                $props = is_array($section['props'] ?? null) ? $section['props'] : [];
+                if (! array_key_exists('variant', $props) && is_string($section['variant'] ?? null) && trim((string) $section['variant']) !== '') {
+                    $props['variant'] = trim((string) $section['variant']);
+                }
+
+                $sections[] = [
+                    'section_type' => $sectionType,
+                    'cms_fields' => $this->inferCmsFieldsFromTemplateSection($sectionType, $props),
+                    'content_json' => $props,
+                    'style_json' => [],
+                    'prefilled_content' => true,
+                ];
+            }
+
+            if ($sections === []) {
+                continue;
+            }
+
+            $pages[] = [
+                'slug' => $slug,
+                'title' => $slug === 'home' ? 'Home' : Str::headline(str_replace(['-', '_'], ' ', $slug)),
+                'sections' => $sections,
+            ];
+        }
+
+        return $pages;
+    }
+
+    /**
+     * @param  array<int, array{slug: string, title: string, sections: array<int, array<string, mixed>>}>  $generatedPages
+     * @param  array<int, array{slug: string, title: string, sections: array<int, array<string, mixed>>}>  $supplementalPages
+     * @return array<int, array{slug: string, title: string, sections: array<int, array<string, mixed>>}>
+     */
+    private function mergeGeneratedPagesWithSupplementalScaffolding(array $generatedPages, array $supplementalPages): array
+    {
+        if ($generatedPages === []) {
+            return $supplementalPages;
+        }
+
+        $generatedBySlug = [];
+        foreach ($generatedPages as $pageIndex => $page) {
+            $slug = trim((string) ($page['slug'] ?? ''));
+            if ($slug === '' && $pageIndex === 0) {
+                $slug = 'home';
+                $page['slug'] = 'home';
+                $page['title'] = 'Home';
+            }
+
+            if ($slug === '') {
+                continue;
+            }
+
+            $generatedBySlug[$slug] = $page;
+        }
+
+        if (! array_key_exists('home', $generatedBySlug)) {
+            $firstGeneratedPage = array_shift($generatedBySlug);
+            if (is_array($firstGeneratedPage)) {
+                $firstGeneratedPage['slug'] = 'home';
+                $firstGeneratedPage['title'] = 'Home';
+                $generatedBySlug = ['home' => $firstGeneratedPage, ...$generatedBySlug];
+            }
+        }
+
+        $pages = [];
+        foreach ($supplementalPages as $page) {
+            $slug = trim((string) ($page['slug'] ?? ''));
+            if ($slug !== '' && array_key_exists($slug, $generatedBySlug)) {
+                $pages[] = $generatedBySlug[$slug];
+                unset($generatedBySlug[$slug]);
+                continue;
+            }
+
+            $pages[] = $page;
+        }
+
+        foreach ($generatedBySlug as $page) {
+            $pages[] = $page;
+        }
+
+        return $pages;
+    }
+
+    /**
+     * @param  array{theme_preset?: string|null}|null  $generationBlueprint
+     */
+    private function resolveThemePresetId(array $brief, ?array $generationBlueprint): ?string
+    {
+        $templatePreset = is_array($generationBlueprint)
+            ? $this->normalizeThemePreset((string) ($generationBlueprint['theme_preset'] ?? ''))
+            : null;
+        if ($templatePreset !== null) {
+            return $templatePreset;
+        }
+
+        $category = trim((string) ($brief['category'] ?? 'general'));
+        $style = trim((string) ($brief['style'] ?? 'modern'));
+        $themePreset = $this->themePresetResolver->resolve($category !== '' ? $category : 'general', $style !== '' ? $style : 'modern');
+
+        return $this->normalizeThemePreset((string) ($themePreset['preset_id'] ?? ''));
+    }
+
+    private function normalizeThemePreset(?string $preset): ?string
+    {
+        $normalized = trim(Str::lower((string) $preset));
+        if ($normalized === '') {
+            return null;
+        }
+
+        $catalog = config('theme-presets', []);
+        if (! is_array($catalog) || ! array_key_exists($normalized, $catalog)) {
+            return null;
+        }
+
+        return $normalized;
+    }
+
+    /**
      * Build content patches from copy bank (no AI).
      */
+    private function buildContentPatchesForPagesPlan(array $brief, array $pagesPlan, bool $ultraCheapMode): array
+    {
+        $patches = $ultraCheapMode
+            ? $this->contentPatchesFromCopyBank($brief, $pagesPlan)
+            : $this->contentGenerator->generate($brief, $pagesPlan);
+
+        foreach ($pagesPlan as $pageIndex => $page) {
+            foreach (($page['sections'] ?? []) as $sectionIndex => $section) {
+                if (($section['prefilled_content'] ?? false) === true) {
+                    $patches[$pageIndex][$sectionIndex] = [];
+                }
+            }
+        }
+
+        return $patches;
+    }
+
     private function contentPatchesFromCopyBank(array $brief, array $pagesPlan): array
     {
         $category = $brief['category'] ?? 'general';
@@ -425,7 +676,15 @@ class GenerateWebsiteProjectService
      * @param  array<string, mixed>  $settings
      * @return array<string, mixed>
      */
-    private function buildGeneratedSectionAuthorityBinding(array $sectionPlan, string $localId, array $settings, int $userId): array
+    private function buildGeneratedSectionAuthorityBinding(
+        Project $project,
+        string $pageSlug,
+        array $sectionPlan,
+        string $localId,
+        array $settings,
+        int $userId,
+        array $stockImagePatch = []
+    ): array
     {
         $cmsFields = array_values(array_filter(array_map(static function ($field): string {
             if (! is_array($field)) {
@@ -435,22 +694,44 @@ class GenerateWebsiteProjectService
             return is_string($field['key'] ?? null) ? trim((string) $field['key']) : '';
         }, is_array($sectionPlan['cms_fields'] ?? null) ? $sectionPlan['cms_fields'] : [])));
         $visualFields = array_values(array_filter(array_keys(is_array($sectionPlan['style_json'] ?? null) ? $sectionPlan['style_json'] : [])));
-        $detectedMediaFields = array_values(array_filter(array_keys($settings), static function ($key): bool {
-            if (! is_string($key)) {
-                return false;
-            }
-
-            $normalized = trim(Str::lower($key));
-
-            return $normalized !== '' && (
-                preg_match('/(^|_)(image|photo|picture|thumbnail|avatar|cover|backgroundimage|background_image|logo)(_|$)/', $normalized) === 1
-                || preg_match('/^image_\d+_url$/', $normalized) === 1
-            );
-        }));
-        $cmsFields = array_values(array_unique([...$cmsFields, ...$detectedMediaFields]));
+        $detectedMediaFields = $this->collectGeneratedMediaFieldPaths($settings);
+        $generatedPatchFields = array_values(array_filter(array_keys($stockImagePatch), static fn ($key): bool => is_string($key) && trim($key) !== ''));
+        $cmsFields = array_values(array_unique([...$cmsFields, ...$detectedMediaFields, ...$generatedPatchFields]));
         $staticDefaults = array_values(array_filter(array_keys($settings), static function ($key) use ($cmsFields, $visualFields): bool {
             return ! in_array($key, $cmsFields, true) && ! in_array($key, $visualFields, true);
         }));
+        $timestamp = now()->toIso8601String();
+        $mediaFields = [];
+
+        foreach ($stockImagePatch as $path => $patch) {
+            if (! is_string($path) || trim($path) === '' || ! is_array($patch)) {
+                continue;
+            }
+
+            $assetUrl = trim((string) ($patch['asset_url'] ?? ''));
+            if ($assetUrl === '') {
+                continue;
+            }
+
+            $mediaFields[$path] = [
+                'owner' => 'cms',
+                'asset_url' => $assetUrl,
+                'media_id' => isset($patch['media_id']) ? (string) $patch['media_id'] : null,
+                'provider' => isset($patch['provider']) && is_string($patch['provider']) ? trim((string) $patch['provider']) : null,
+                'provider_image_id' => isset($patch['provider_image_id']) && is_string($patch['provider_image_id']) ? trim((string) $patch['provider_image_id']) : null,
+                'imported_by' => 'ai',
+                'component' => is_string($sectionPlan['section_type'] ?? null) ? trim((string) $sectionPlan['section_type']) : null,
+                'prop_path' => $path,
+                'qualified_prop_path' => $path,
+                'nested_section_path' => null,
+                'project_id' => (string) $project->id,
+                'section_local_id' => $localId,
+                'page_slug' => $pageSlug,
+                'source' => is_string($patch['source'] ?? null) ? trim((string) $patch['source']) : 'stock_image',
+                'updated_at' => $timestamp,
+                'query' => isset($patch['query']) && is_string($patch['query']) ? trim((string) $patch['query']) : null,
+            ];
+        }
 
         return [
             'webu_v2' => [
@@ -465,11 +746,12 @@ class GenerateWebsiteProjectService
                 'visual_fields' => $visualFields,
                 'code_owned_fields' => [],
                 'static_default_fields' => $staticDefaults,
+                'media_fields' => $mediaFields,
                 'provenance' => [
                     'created_by' => 'ai',
                     'last_editor' => 'ai',
-                    'created_at' => now()->toIso8601String(),
-                    'updated_at' => now()->toIso8601String(),
+                    'created_at' => $timestamp,
+                    'updated_at' => $timestamp,
                     'generated_default' => true,
                     'user_customized' => false,
                     'requires_manual_merge' => false,
@@ -570,7 +852,7 @@ class GenerateWebsiteProjectService
                     is_array($contentPatches[$pageIndex][$sectionIndex] ?? null) ? $contentPatches[$pageIndex][$sectionIndex] : []
                 );
 
-                $queryTargets = $this->buildGeneratedSectionImageQueries(
+                $queryTargets = $this->generatedSectionImagePlanner->buildTargets(
                     $brief,
                     is_array($pagePlan) ? $pagePlan : [],
                     is_array($sectionPlan) ? $sectionPlan : [],
@@ -589,18 +871,46 @@ class GenerateWebsiteProjectService
                         continue;
                     }
 
-                    $results = $this->stockImageSearch->search(
-                        $query,
-                        6,
-                        ['orientation' => $target['orientation'] ?? null]
-                    );
+                    try {
+                        $results = $this->stockImageSearch->search(
+                            $query,
+                            (int) ($target['provider_limit'] ?? 5),
+                            ['orientation' => $target['orientation'] ?? null]
+                        );
+                    } catch (\Throwable) {
+                        $patches[$pageIndex][$sectionIndex][$path] = [
+                            'asset_url' => (string) ($target['fallback_url'] ?? ''),
+                            'media_id' => null,
+                            'provider' => null,
+                            'provider_image_id' => null,
+                            'query' => $query,
+                            'source' => 'placeholder',
+                        ];
+                        continue;
+                    }
 
                     if ($results === []) {
+                        $patches[$pageIndex][$sectionIndex][$path] = [
+                            'asset_url' => (string) ($target['fallback_url'] ?? ''),
+                            'media_id' => null,
+                            'provider' => null,
+                            'provider_image_id' => null,
+                            'query' => $query,
+                            'source' => 'placeholder',
+                        ];
                         continue;
                     }
 
                     $best = $results[0];
                     if (! is_array($best)) {
+                        $patches[$pageIndex][$sectionIndex][$path] = [
+                            'asset_url' => (string) ($target['fallback_url'] ?? ''),
+                            'media_id' => null,
+                            'provider' => null,
+                            'provider_image_id' => null,
+                            'query' => $query,
+                            'source' => 'placeholder',
+                        ];
                         continue;
                     }
 
@@ -615,10 +925,19 @@ class GenerateWebsiteProjectService
                             'imported_by' => 'ai',
                             'section_local_id' => CmsSectionLocalId::fallbackForIndex((int) $sectionIndex),
                             'component_key' => is_string($sectionPlan['section_type'] ?? null) ? (string) $sectionPlan['section_type'] : null,
+                            'prop_path' => $path,
                             'page_slug' => is_string($pagePlan['slug'] ?? null) ? (string) $pagePlan['slug'] : null,
                             'query' => $query,
                         ]);
                     } catch (\Throwable) {
+                        $patches[$pageIndex][$sectionIndex][$path] = [
+                            'asset_url' => (string) ($target['fallback_url'] ?? ''),
+                            'media_id' => null,
+                            'provider' => null,
+                            'provider_image_id' => null,
+                            'query' => $query,
+                            'source' => 'placeholder',
+                        ];
                         continue;
                     }
 
@@ -626,7 +945,9 @@ class GenerateWebsiteProjectService
                         'asset_url' => route('public.sites.assets', ['site' => $site->id, 'path' => $media->path]),
                         'media_id' => $media->id,
                         'provider' => $best['provider'] ?? null,
+                        'provider_image_id' => $best['id'] ?? null,
                         'query' => $query,
+                        'source' => 'stock_image',
                     ];
                 }
             }
@@ -636,130 +957,42 @@ class GenerateWebsiteProjectService
     }
 
     /**
-     * @param  array<string, mixed>  $brief
-     * @param  array<string, mixed>  $pagePlan
-     * @param  array<string, mixed>  $sectionPlan
-     * @param  array<string, mixed>  $settings
-     * @return array<int, array{path: string, query: string, orientation: string}>
-     */
-    private function buildGeneratedSectionImageQueries(array $brief, array $pagePlan, array $sectionPlan, array $settings): array
-    {
-        $sectionType = Str::lower(trim((string) ($sectionPlan['section_type'] ?? '')));
-        $role = $this->inferSectionImageRole($sectionType);
-        if ($role === null) {
-            return [];
-        }
-
-        $paths = $this->resolveGeneratedSectionImagePaths($sectionType, $settings);
-        if ($paths === []) {
-            return [];
-        }
-
-        $query = $this->buildGeneratedStockImageQuery($brief, $pagePlan, $settings, $role);
-        if ($query === '') {
-            return [];
-        }
-
-        $orientation = match ($role) {
-            'hero', 'cta' => 'landscape',
-            'team', 'testimonials' => 'portrait',
-            default => 'square',
-        };
-
-        return array_map(static fn (string $path): array => [
-            'path' => $path,
-            'query' => $query,
-            'orientation' => $orientation,
-        ], $paths);
-    }
-
-    /**
      * @param  array<string, mixed>  $settings
      * @return array<int, string>
      */
-    private function resolveGeneratedSectionImagePaths(string $sectionType, array $settings): array
+    private function collectGeneratedMediaFieldPaths(array $settings, string $prefix = ''): array
     {
         $paths = [];
 
-        foreach (array_keys($settings) as $key) {
+        foreach ($settings as $key => $value) {
             if (! is_string($key)) {
                 continue;
             }
 
-            $normalizedKey = Str::lower(trim($key));
-            if ($normalizedKey === '') {
-                continue;
+            $path = $prefix === '' ? $key : $prefix.'.'.$key;
+            $normalized = trim(Str::lower($key));
+
+            if ($normalized !== '' && (
+                preg_match('/(^|_)(image|photo|picture|thumbnail|avatar|cover|backgroundimage|background_image|logo)(_|$)/', $normalized) === 1
+                || preg_match('/^image_\d+_url$/', $normalized) === 1
+            )) {
+                $paths[] = $path;
             }
 
-            if (
-                in_array($normalizedKey, ['image', 'image_url', 'backgroundimage', 'background_image', 'hero_image_url', 'cover_image', 'thumbnail', 'avatar'], true)
-                || preg_match('/^image_\d+_url$/', $normalizedKey) === 1
-            ) {
-                $paths[] = $key;
-            }
-        }
-
-        $normalizedSectionType = Str::lower(trim($sectionType));
-        if ($paths === []) {
-            if (str_contains($normalizedSectionType, 'hero')) {
-                $paths[] = 'image';
-            } elseif (str_contains($normalizedSectionType, 'banner') || str_contains($normalizedSectionType, 'cta')) {
-                $paths[] = 'backgroundImage';
+            if (is_array($value)) {
+                if (array_is_list($value)) {
+                    foreach ($value as $index => $item) {
+                        if (is_array($item)) {
+                            $paths = [...$paths, ...$this->collectGeneratedMediaFieldPaths($item, $path.'.'.$index)];
+                        }
+                    }
+                } else {
+                    $paths = [...$paths, ...$this->collectGeneratedMediaFieldPaths($value, $path)];
+                }
             }
         }
 
         return array_values(array_unique($paths));
-    }
-
-    private function inferSectionImageRole(string $sectionType): ?string
-    {
-        return match (true) {
-            str_contains($sectionType, 'hero'),
-            str_contains($sectionType, 'banner') => 'hero',
-            str_contains($sectionType, 'feature'),
-            str_contains($sectionType, 'service') => 'features',
-            str_contains($sectionType, 'gallery'),
-            str_contains($sectionType, 'portfolio') => 'gallery',
-            str_contains($sectionType, 'testimonial'),
-            str_contains($sectionType, 'review') => 'testimonials',
-            str_contains($sectionType, 'team'),
-            str_contains($sectionType, 'staff') => 'team',
-            str_contains($sectionType, 'cta'),
-            str_contains($sectionType, 'contact'),
-            str_contains($sectionType, 'form') => 'cta',
-            default => null,
-        };
-    }
-
-    /**
-     * @param  array<string, mixed>  $brief
-     * @param  array<string, mixed>  $pagePlan
-     * @param  array<string, mixed>  $settings
-     */
-    private function buildGeneratedStockImageQuery(array $brief, array $pagePlan, array $settings, string $role): string
-    {
-        $style = trim((string) ($brief['style'] ?? 'modern'));
-        $subject = trim((string) ($brief['businessType'] ?? $brief['category'] ?? $brief['websiteType'] ?? 'business'));
-        $pageTitle = trim((string) ($pagePlan['title'] ?? $pagePlan['slug'] ?? ''));
-        $headline = trim((string) ($settings['headline'] ?? $settings['title'] ?? ''));
-
-        $prefix = match ($role) {
-            'hero' => "{$style} {$subject}",
-            'features' => "{$subject} services",
-            'gallery' => "{$subject} lifestyle",
-            'team' => "{$subject} professional portrait",
-            'testimonials' => "happy {$subject} customers",
-            'cta' => "{$subject} consultation",
-            default => $subject,
-        };
-
-        $query = trim(implode(' ', array_filter([
-            $prefix,
-            $pageTitle !== '' && ! str_contains(Str::lower($prefix), Str::lower($pageTitle)) ? $pageTitle : null,
-            $headline !== '' && ! str_contains(Str::lower($prefix), Str::lower($headline)) ? $headline : null,
-        ])));
-
-        return preg_replace('/\s+/', ' ', $query) ?: '';
     }
 
     /**

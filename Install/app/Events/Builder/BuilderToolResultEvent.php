@@ -37,6 +37,8 @@ class BuilderToolResultEvent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
+            'session_id' => $this->sessionId,
+            'build_id' => $this->sessionId,
             'id' => $this->id,
             'tool' => $this->tool,
             'success' => $this->success,

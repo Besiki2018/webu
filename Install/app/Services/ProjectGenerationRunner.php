@@ -29,10 +29,10 @@ class ProjectGenerationRunner
         $project = $run->project;
         $this->registerFatalFailureFallback($run);
 
-        $this->markStarted($run, ProjectGenerationRun::STATUS_PLANNING, 'Understanding your website brief.');
+        $this->markStarted($run, ProjectGenerationRun::STATUS_ANALYZING_PROMPT, 'Analyzing your prompt.');
         $this->projectWorkspace->syncInitialGenerationState($project, [
             'active_generation_run_id' => (string) $run->id,
-            'phase' => ProjectGenerationRun::STATUS_PLANNING,
+            'phase' => ProjectGenerationRun::STATUS_ANALYZING_PROMPT,
         ]);
 
         try {
@@ -67,6 +67,9 @@ class ProjectGenerationRunner
                     'project_id' => (string) $project->id,
                     'site_id' => (string) ($result['site']->id ?? ''),
                     'website_id' => (string) ($result['website']->id ?? ''),
+                    'builder_generation' => is_array($result['builder_generation'] ?? null)
+                        ? $result['builder_generation']
+                        : null,
                 ],
             ])->save();
         } catch (\Throwable $e) {

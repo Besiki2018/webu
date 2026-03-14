@@ -86,7 +86,7 @@ class ManualProjectBuilderTest extends TestCase
             ->assertSessionHasErrors('prompt');
     }
 
-    public function test_ai_mode_redirects_create_page_requests_to_chat(): void
+    public function test_ai_mode_redirects_create_page_requests_to_chat_workspace(): void
     {
         Bus::fake();
 
@@ -114,7 +114,8 @@ class ManualProjectBuilderTest extends TestCase
             ->first();
 
         $response
-            ->assertRedirect(route('chat', [
+            ->assertStatus(409)
+            ->assertHeader('X-Inertia-Location', route('chat', [
                 'project' => $project,
             ]))
             ->assertSessionHas('create_pending_redirect_url', route('chat', [

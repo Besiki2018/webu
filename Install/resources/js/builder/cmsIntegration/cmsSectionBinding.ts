@@ -136,6 +136,9 @@ export function buildCmsSectionBinding(
     const registryKey = resolveComponentRegistryKey(input.type) ?? input.type;
     const ownership = buildCmsFieldOwnershipSnapshot(registryKey, input.props);
     const existingBindingMeta = cloneRecord(input.bindingMeta);
+    const existingSectionMeta = isRecord(existingBindingMeta[CMS_SECTION_BINDING_META_KEY])
+        ? cloneRecord(existingBindingMeta[CMS_SECTION_BINDING_META_KEY] as Record<string, unknown>)
+        : {};
     const provenance = readExistingProvenance(
         existingBindingMeta,
         options.createdBy ?? options.lastEditor ?? 'system',
@@ -177,6 +180,7 @@ export function buildCmsSectionBinding(
     });
 
     const metadataPayload = {
+        ...existingSectionMeta,
         schema_version: 1,
         cms_backed: true,
         section_id: input.sectionId ?? null,

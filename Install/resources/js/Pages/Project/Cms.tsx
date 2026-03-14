@@ -203,6 +203,10 @@ import {
 import { applyAiSitePlan } from '@/builder/ai/builderRenderAdapter';
 import { useWorkspaceBackedBuilderAdapter } from '@/builder/codegen/workspaceBackedBuilderAdapter';
 import { prepareVisualBuilderCmsEditExecution } from '@/builder/cmsIntegration/editExecutors';
+import {
+    applySectionMediaBinding,
+    resolveCmsMediaFieldOwner,
+} from '@/builder/cmsIntegration/mediaOwnershipRouting';
 import { resolveWebuV2FeatureFlags } from '@/lib/webuV2FeatureFlags';
 
 const CmsBookingPanel = lazy(async () => ({ default: (await import('@/components/Project/CmsBookingPanel')).CmsBookingPanel }));
@@ -599,6 +603,13 @@ interface MediaItem {
 interface MediaUploadResponse {
     message: string;
     media: MediaItem;
+}
+
+interface InspectorMediaOwnershipContext {
+    sectionLocalId: string | null;
+    componentKey: string | null;
+    nestedSectionPath: number[] | null;
+    persistToCmsRevision: boolean;
 }
 
 interface MediaPickerState {
@@ -7128,6 +7139,7 @@ export default function Cms({
     const loggedUnknownBuilderPreviewSectionKeysRef = useRef<Set<string>>(new Set());
     const structurePanelInitializedRef = useRef(false);
     const mediaPickerApplyRef = useRef<((assetUrl: string) => void) | null>(null);
+    const mediaPickerApplyMediaRef = useRef<((media: MediaItem) => void) | null>(null);
     const stockImagePickerApplyRef = useRef<((media: ImportedStockMedia) => void) | null>(null);
     const preferredPageEditorModeRef = useRef<PageEditorMode | null>(null);
     const initialCmsCoreLoadedForLocaleRef = useRef<string | null>(null);
@@ -24535,6 +24547,64 @@ ${showRules}
             scheduleImmediatePreview: true,
         });
     }, [applyBuilderMutationPipeline]);
+    const applyInspectorMediaFieldChange = useCallback((input: {
+        ownershipContext: InspectorMediaOwnershipContext;
+        path: string[];
+        assetUrl: string;
+        onChangePath: (path: string[], value: unknown) => void;
+        source: 'upload' | 'media_library' | 'stock_image' | 'manual' | 'remove';
+        media?: {
+            id?: number | string | null;
+            meta_json?: Record<string, unknown> | null;
+        } | null;
+    }) => {
+        const sectionLocalId = input.ownershipContext.sectionLocalId;
+        const componentKey = input.ownershipContext.componentKey?.trim() || null;
+
+        if (!input.ownershipContext.persistToCmsRevision || !sectionLocalId) {
+            input.onChangePath(input.path, input.assetUrl);
+            return;
+        }
+
+        const owner = resolveCmsMediaFieldOwner(componentKey, input.path).owner;
+        if (owner === 'code') {
+            toast.error(t('This image is code-owned and cannot be replaced from the visual builder'));
+            return;
+        }
+
+        input.onChangePath(input.path, input.assetUrl);
+
+        const currentSection = sectionsDraftRef.current.find((section) => section.localId === sectionLocalId) ?? null;
+        if (!currentSection) {
+            return;
+        }
+
+        const applied = applySectionMediaBinding(currentSection, {
+            componentKey: componentKey ?? currentSection.type,
+            propPath: input.path,
+            assetUrl: input.assetUrl,
+            media: input.media
+                ? {
+                    id: input.media.id,
+                    metaJson: isRecord(input.media.meta_json) ? input.media.meta_json : null,
+                }
+                : null,
+            importedBy: 'visual_builder',
+            projectId: project.id,
+            pageSlug: selectedPageSummary?.slug ?? null,
+            nestedSectionPath: input.ownershipContext.nestedSectionPath,
+            source: input.source,
+        });
+
+        const nextDrafts = sectionsDraftRef.current.map((section) => (
+            section.localId === sectionLocalId
+                ? applied.section
+                : section
+        ));
+
+        sectionsDraftRef.current = nextDrafts;
+        setSectionsDraft(nextDrafts);
+    }, [project.id, selectedPageSummary?.slug, setSectionsDraft, t]);
     const replaceSectionPropsText = useCallback((localId: string, nextPropsText: string) => {
         setSectionsDraft((prev) => {
             const next = prev.map((item) => (
@@ -25929,6 +25999,7 @@ ${showRules}
         setMediaPickerDescription('');
         setMediaPickerSearch('');
         mediaPickerApplyRef.current = null;
+        mediaPickerApplyMediaRef.current = null;
     }, []);
 
     const openMediaPicker = useCallback((options: {
@@ -25936,6 +26007,7 @@ ${showRules}
         mediaType: 'image' | 'video';
         currentValue: string;
         onApply?: (assetUrl: string) => void;
+        onApplyMedia?: (media: MediaItem) => void;
     }) => {
         if (!canUseMediaModule || !mediaCapabilities.enabled) {
             toast.error(t('Your current plan does not include file storage'));
@@ -25948,6 +26020,7 @@ ${showRules}
             : mediaItems.find((item) => item.asset_url === normalizedCurrentValue || `/${item.path}` === normalizedCurrentValue) ?? null;
 
         mediaPickerApplyRef.current = options.onApply ?? null;
+        mediaPickerApplyMediaRef.current = options.onApplyMedia ?? null;
         setMediaPicker({
             open: true,
             fieldLabel: options.fieldLabel,
@@ -26015,13 +26088,14 @@ ${showRules}
     };
 
     const handleApplyMediaFromPicker = () => {
-        if (!mediaPickerSelectedItem || !mediaPickerApplyRef.current) {
+        if (!mediaPickerSelectedItem || (!mediaPickerApplyRef.current && !mediaPickerApplyMediaRef.current)) {
             toast.error(t('Select media first'));
             return;
         }
 
-        mediaPickerApplyRef.current(mediaPickerSelectedItem.asset_url);
-            toast.success(t('Media applied'));
+        mediaPickerApplyRef.current?.(mediaPickerSelectedItem.asset_url);
+        mediaPickerApplyMediaRef.current?.(mediaPickerSelectedItem);
+        toast.success(t('Media applied'));
         closeMediaPicker();
     };
 
@@ -26837,6 +26911,7 @@ ${showRules}
         showTypographyControls?: boolean;
         bindingMeta: unknown;
         bindingWarnings: BindingValidationWarning[];
+        mediaOwnershipContext?: InspectorMediaOwnershipContext;
         onChangePath: (path: string[], value: unknown) => void;
         onChangeTextTypography: (fieldKey: string, updater: (current: TextTypographyStyle | null) => TextTypographyStyle | null) => void;
         onClearTextTypography: (fieldKey: string) => void;
@@ -26868,6 +26943,7 @@ ${showRules}
             ? field.definition.enum.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
             : [];
         const fieldBindingWarnings = getFieldBindingWarnings(options.bindingWarnings, pathKey);
+        const mediaOwnershipContext = options.mediaOwnershipContext;
 
         if (isImageAltField) {
             return null;
@@ -26996,11 +27072,12 @@ ${showRules}
         if (field.type === 'string' && (isImageField || isVideoField)) {
             const stockImageContext = {
                 fieldLabel: displayFieldLabel,
-                sectionType: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
-                componentKey: selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                fieldPath: field.path.join('.'),
+                sectionType: mediaOwnershipContext?.componentKey ?? selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
+                componentKey: mediaOwnershipContext?.componentKey ?? selectedSectionEffectiveType ?? selectedSectionDraft?.type ?? null,
                 pageTitle: selectedPageSummary?.title ?? pageMetaForm.title ?? project.name,
                 projectName: project.name,
-                sectionLocalId: selectedSectionDraft?.localId ?? null,
+                sectionLocalId: mediaOwnershipContext?.sectionLocalId ?? selectedSectionDraft?.localId ?? null,
                 pageSlug: selectedPageSummary?.slug ?? null,
             };
 
@@ -27013,16 +27090,32 @@ ${showRules}
                         isVideoField={isVideoField}
                         compact={compact}
                         onChange={(value) => options.onChangePath(field.path, value)}
+                        onMediaChange={({ assetUrl, source, media }) => applyInspectorMediaFieldChange({
+                            ownershipContext: mediaOwnershipContext ?? {
+                                sectionLocalId: null,
+                                componentKey: stockImageContext.componentKey,
+                                nestedSectionPath: null,
+                                persistToCmsRevision: false,
+                            },
+                            path: field.path,
+                            assetUrl,
+                            onChangePath: options.onChangePath,
+                            source,
+                            media: media ?? null,
+                        })}
                         uploadMediaFile={uploadMediaFile}
                         openMediaPicker={openMediaPicker}
-                        onOpenStockImageSearch={isVideoField ? undefined : ({ fieldLabel, currentValue, onApply }) => {
+                        onOpenStockImageSearch={isVideoField ? undefined : ({ fieldLabel, currentValue, onApply, onApplyMedia }) => {
                             openStockImagePicker({
                                 fieldLabel,
                                 currentValue,
                                 initialQuery: inferStockImageQuery(stockImageContext),
                                 orientation: inferStockImageOrientation(stockImageContext),
                                 importContext: buildStockImageImportContext(project.id, stockImageContext),
-                                onApply: (media) => onApply?.(media.asset_url),
+                                onApply: (media) => {
+                                    onApplyMedia?.(media);
+                                    onApply?.(media.asset_url);
+                                },
                             });
                         }}
                         labelClassName={CMS_BUILDER_PARAM_LABEL_CLASS}
@@ -27638,6 +27731,12 @@ ${showRules}
                             itemKeyPrefix: selectedSectionDraft.localId,
                             bindingMeta: selectedSectionDraft.bindingMeta ?? null,
                             bindingWarnings: isNested ? [] : selectedSectionBindingWarnings,
+                            mediaOwnershipContext: {
+                                sectionLocalId: selectedSectionDraft.localId,
+                                componentKey: selectedSectionEffectiveType ?? selectedSectionDraft.type,
+                                nestedSectionPath: isNested && selectedNestedSection ? selectedNestedSection.path : null,
+                                persistToCmsRevision: true,
+                            },
                             onChangePath,
                             onChangeTextTypography,
                             onClearTextTypography,
@@ -27657,7 +27756,7 @@ ${showRules}
         );
     };
 
-    const mediaPickerHasApplyAction = mediaPickerApplyRef.current !== null;
+    const mediaPickerHasApplyAction = mediaPickerApplyRef.current !== null || mediaPickerApplyMediaRef.current !== null;
     const cmsModalOverlayClassName = 'z-[220]';
     const cmsModalContentClassName = 'z-[221]';
     const isEmbeddedVisualBuilder = isVisualBuilderOpen && isEmbeddedMode;
@@ -27800,6 +27899,12 @@ ${showRules}
                 showTypographyControls: false,
                 bindingMeta: null,
                 bindingWarnings: [],
+                mediaOwnershipContext: {
+                    sectionLocalId: null,
+                    componentKey: selectedFixedSectionKey ?? null,
+                    nestedSectionPath: null,
+                    persistToCmsRevision: false,
+                },
                 onChangePath: (path, value) => selectedFixedSectionKey ? updateFixedSectionPathProp(selectedFixedSectionKey, path, value) : undefined,
                 onChangeTextTypography: (fieldKey, updater) => selectedFixedSectionKey ? updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, updater) : undefined,
                 onClearTextTypography: (fieldKey) => selectedFixedSectionKey ? updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, () => null) : undefined,
@@ -27826,6 +27931,12 @@ ${showRules}
                 showTypographyControls: false,
                 bindingMeta: null,
                 bindingWarnings: [],
+                mediaOwnershipContext: {
+                    sectionLocalId: null,
+                    componentKey: selectedFixedSectionKey ?? null,
+                    nestedSectionPath: null,
+                    persistToCmsRevision: false,
+                },
                 onChangePath: (path, value) => selectedFixedSectionKey ? updateFixedSectionPathProp(selectedFixedSectionKey, path, value) : undefined,
                 onChangeTextTypography: (fieldKey, updater) => selectedFixedSectionKey ? updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, updater) : undefined,
                 onClearTextTypography: (fieldKey) => selectedFixedSectionKey ? updateFixedSectionTextTypographyProp(selectedFixedSectionKey, fieldKey, () => null) : undefined,

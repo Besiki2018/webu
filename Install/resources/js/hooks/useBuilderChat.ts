@@ -18,7 +18,20 @@ import { useSessionReconnection, SessionStatus } from './useSessionReconnection'
 import { buildBuilderChatPrompt, type BuilderChatElementContext } from './builderChatPrompt';
 import { updateComponentProps } from '@/builder/updates';
 import { runOptimizeForProjectType, OPTIMIZE_FOR_PROJECT_TYPE_COMMAND } from '@/builder/commands/optimizeForProjectType';
-import { runGenerateSite, GENERATE_SITE_COMMAND } from '@/builder/commands/generateSite';
+import { resetBuilderEditingStore } from '@/builder/state/builderEditingStore';
+import {
+    runGenerateSite,
+    GENERATE_SITE_COMMAND,
+    type GenerateSiteMode,
+} from '@/builder/commands/generateSite';
+import type { BuildGenerationDiagnostics, BlueprintGenerationLogEntry } from '@/builder/ai/blueprintTypes';
+import {
+    appendGenerationDiagnosticsEvent,
+    buildGenerationDiagnostics,
+    createGenerationLogEntry,
+} from '@/builder/ai/generationTracing';
+import { isGeneratedSiteValidationMessage } from '@/builder/ai/validateGeneratedSite';
+import { useBuilderStore } from '@/builder/store/builderStore';
 import axios from 'axios';
 
 interface ServerHistoryEntry {
@@ -33,9 +46,14 @@ interface BuilderStatusResponse {
     status?: string;
     preview_url?: string | null;
     build_session_id?: string | null;
+    preview_build_id?: string | null;
+    project_generation_version?: string | null;
+    source_generation_type?: string | null;
     error?: string;
     recent_history?: ServerHistoryEntry[];
 }
+
+export type SourceGenerationType = 'new' | 'resume' | 'template';
 
 export interface BuildProgress {
     status: 'idle' | 'connecting' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -51,12 +69,29 @@ export interface BuildProgress {
     thinkingStartTime: number | null;
     error: string | null;
     previewUrl: string | null;
+    buildId: string | null;
+    previewBuildId: string | null;
+    projectGenerationVersion: string | null;
+    sourceGenerationType: SourceGenerationType;
+    draftSourceId: string | null;
+    generationDiagnostics: BuildGenerationDiagnostics | null;
+}
+
+interface PreviewBuildResponse {
+    preview_url?: string | null;
+    preview_build_id?: string | null;
+    build_id?: string | null;
 }
 
 export interface UseBuilderChatOptions {
     pusherConfig: BroadcastConfig;
     initialHistory?: Array<{ role: string; content: string; timestamp: string }>;
     initialPreviewUrl?: string | null;
+    initialBuildId?: string | null;
+    initialPreviewBuildId?: string | null;
+    initialProjectGenerationVersion?: string | null;
+    initialSourceGenerationType?: SourceGenerationType;
+    initialDraftSourceId?: string | null;
     // Initial reconnection state from server
     initialSessionId?: string | null;
     initialCanReconnect?: boolean;
@@ -96,6 +131,7 @@ export type ElementMentionContext = BuilderChatElementContext;
 export interface SendMessageOptions {
     builderId?: number;
     templateUrl?: string;
+    sourceGenerationType?: SourceGenerationType;
     /** Element context for element-specific modifications */
     elementContext?: ElementMentionContext;
 }
@@ -114,7 +150,122 @@ const initialProgress: BuildProgress = {
     thinkingStartTime: null,
     error: null,
     previewUrl: null,
+    buildId: null,
+    previewBuildId: null,
+    projectGenerationVersion: null,
+    sourceGenerationType: 'new',
+    draftSourceId: null,
+    generationDiagnostics: null,
 };
+
+const BUILD_SESSION_START_TIMEOUT_MS = 20_000;
+const BUILDER_HEALTH_TIMEOUT_MS = 5_000;
+const PREVIEW_BUILD_TIMEOUT_MS = 30_000;
+const PREVIEW_BUILD_RETRY_ATTEMPTS = 1;
+
+interface BuildScope {
+    buildId: string | null;
+    previewBuildId: string | null;
+    projectGenerationVersion: string | null;
+    sourceGenerationType: SourceGenerationType;
+    draftSourceId: string | null;
+}
+
+function normalizeText(value: unknown): string | null {
+    return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
+function ensureGenerationDiagnostics(
+    diagnostics: BuildGenerationDiagnostics | null,
+    prompt: string | null = null,
+): BuildGenerationDiagnostics {
+    return diagnostics ?? buildGenerationDiagnostics({ prompt });
+}
+
+function isAxiosTimeoutError(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) {
+        return false;
+    }
+
+    return error.code === 'ECONNABORTED'
+        || /timeout/i.test(error.message ?? '');
+}
+
+function isRetryableBuildError(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) {
+        return false;
+    }
+
+    if (isAxiosTimeoutError(error)) {
+        return true;
+    }
+
+    const status = error.response?.status;
+    if (typeof status !== 'number') {
+        return true;
+    }
+
+    return status === 408 || status === 429 || status >= 500;
+}
+
+function getBuildTimeoutMessage(scope: 'session' | 'preview'): string {
+    return scope === 'session'
+        ? 'Build session start timed out. Retry to request a fresh generation session.'
+        : 'Preview build timed out. Retrying from the last generated state may recover the build.';
+}
+
+function normalizeSourceGenerationType(value: unknown): SourceGenerationType {
+    return value === 'resume' || value === 'template' ? value : 'new';
+}
+
+function buildScopeSignature(projectId: string, scope: BuildScope, previewUrl: string | null): string {
+    return JSON.stringify({
+        projectId,
+        buildId: scope.buildId,
+        previewBuildId: scope.previewBuildId,
+        projectGenerationVersion: scope.projectGenerationVersion,
+        sourceGenerationType: scope.sourceGenerationType,
+        draftSourceId: scope.draftSourceId,
+        previewUrl: previewUrl ?? null,
+    });
+}
+
+function resetBuilderDraftState(): void {
+    useBuilderStore.getState().reset();
+    resetBuilderEditingStore();
+}
+
+function previewBelongsToScope(input: {
+    previewUrl: string | null;
+    previewBuildId: string | null;
+    buildId: string | null;
+    projectGenerationVersion: string | null;
+    sourceGenerationType: SourceGenerationType;
+    draftSourceId: string | null;
+}): boolean {
+    if (!input.previewUrl) {
+        return false;
+    }
+
+    if (input.sourceGenerationType === 'resume') {
+        return input.draftSourceId !== null;
+    }
+
+    if (input.sourceGenerationType === 'template') {
+        return true;
+    }
+
+    const previewBuildId = input.previewBuildId;
+    if (!previewBuildId) {
+        return false;
+    }
+
+    if (input.buildId && previewBuildId === input.buildId) {
+        return true;
+    }
+
+    return input.projectGenerationVersion !== null && previewBuildId === input.projectGenerationVersion;
+}
 
 function normalizeRealtimeHost(host: string): string {
     const cleaned = host
@@ -162,8 +313,101 @@ function shouldSuppressRealtimeTransport(config: BroadcastConfig): boolean {
     return isLoopbackRealtimeHost(window.location.hostname) && isLoopbackRealtimeHost(config.host);
 }
 
+function mergeGenerationDiagnostics(
+    existing: BuildGenerationDiagnostics | null,
+    next: BuildGenerationDiagnostics | undefined,
+): BuildGenerationDiagnostics | null {
+    if (!next) {
+        return existing;
+    }
+
+    const sessionEvents = existing?.events.filter((event) => event.step === 'session') ?? [];
+
+    return {
+        ...next,
+        events: [...sessionEvents, ...next.events],
+    };
+}
+
+function appendUniqueGenerationDiagnosticsEvent(
+    diagnostics: BuildGenerationDiagnostics | null,
+    entry: BlueprintGenerationLogEntry,
+    overrides: Partial<Pick<BuildGenerationDiagnostics, 'failedStep' | 'rootCause'>> = {},
+): BuildGenerationDiagnostics | null {
+    if (!diagnostics) {
+        return diagnostics;
+    }
+
+    const alreadyPresent = diagnostics.events.some((event) => (
+        event.step === entry.step
+        && event.status === entry.status
+        && event.message === entry.message
+    ));
+
+    if (alreadyPresent) {
+        return {
+            ...diagnostics,
+            failedStep: overrides.failedStep ?? diagnostics.failedStep,
+            rootCause: overrides.rootCause ?? diagnostics.rootCause,
+        };
+    }
+
+    return appendGenerationDiagnosticsEvent(diagnostics, entry, overrides);
+}
+
 export function useBuilderChat(projectId: string, options: UseBuilderChatOptions): UseBuilderChatReturn {
-    const { pusherConfig, initialHistory, initialPreviewUrl, onComplete, onError, onMessage, onAction, autoBuild = true, onBuildStart, onBuildComplete, onBuildError } = options;
+    const {
+        pusherConfig,
+        initialHistory,
+        initialPreviewUrl,
+        onComplete,
+        onError,
+        onMessage,
+        onAction,
+        autoBuild = true,
+        onBuildStart,
+        onBuildComplete,
+        onBuildError,
+    } = options;
+    const normalizedInitialScope = useMemo<BuildScope>(() => {
+        const sourceGenerationType = normalizeSourceGenerationType(options.initialSourceGenerationType);
+
+        return {
+            buildId: normalizeText(options.initialBuildId ?? options.initialSessionId),
+            previewBuildId: normalizeText(options.initialPreviewBuildId),
+            projectGenerationVersion: normalizeText(options.initialProjectGenerationVersion),
+            sourceGenerationType,
+            draftSourceId: sourceGenerationType === 'resume'
+                ? normalizeText(options.initialDraftSourceId)
+                : null,
+        };
+    }, [
+        options.initialBuildId,
+        options.initialDraftSourceId,
+        options.initialPreviewBuildId,
+        options.initialProjectGenerationVersion,
+        options.initialSessionId,
+        options.initialSourceGenerationType,
+    ]);
+    const normalizedInitialPreviewUrl = useMemo(() => {
+        const previewUrl = normalizeText(initialPreviewUrl);
+
+        return previewBelongsToScope({
+            previewUrl,
+            previewBuildId: normalizedInitialScope.previewBuildId,
+            buildId: normalizedInitialScope.buildId,
+            projectGenerationVersion: normalizedInitialScope.projectGenerationVersion,
+            sourceGenerationType: normalizedInitialScope.sourceGenerationType,
+            draftSourceId: normalizedInitialScope.draftSourceId,
+        }) ? previewUrl : null;
+    }, [
+        initialPreviewUrl,
+        normalizedInitialScope.buildId,
+        normalizedInitialScope.draftSourceId,
+        normalizedInitialScope.previewBuildId,
+        normalizedInitialScope.projectGenerationVersion,
+        normalizedInitialScope.sourceGenerationType,
+    ]);
     const history = useChatHistory({ projectId, initialHistory });
     const {
         messages,
@@ -173,17 +417,25 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         removeMessage: removeHistoryMessage,
     } = history;
     const historyMessagesRef = useRef(messages);
-    const [sessionId, setSessionId] = useState<string | null>(null);
+    const [sessionId, setSessionId] = useState<string | null>(normalizedInitialScope.buildId);
     const [isStarting, setIsStarting] = useState(false);
     const [startError, setStartError] = useState<string | null>(null);
     const [progress, setProgress] = useState<BuildProgress>(() => ({
         ...initialProgress,
-        previewUrl: initialPreviewUrl ?? null,
+        previewUrl: normalizedInitialPreviewUrl,
+        buildId: normalizedInitialScope.buildId,
+        previewBuildId: normalizedInitialScope.previewBuildId,
+        projectGenerationVersion: normalizedInitialScope.projectGenerationVersion,
+        sourceGenerationType: normalizedInitialScope.sourceGenerationType,
+        draftSourceId: normalizedInitialScope.draftSourceId,
     }));
     const [isBuildingPreview, setIsBuildingPreview] = useState(false);
     const pendingMessageRef = useRef<string | null>(null);
     /** Latest tool calls by id, so we can apply updateComponentProps when tool_result arrives (same pipeline as sidebar). */
     const toolCallsByIdRef = useRef<Map<string, ToolCallEvent>>(new Map());
+    const buildScopeRef = useRef<BuildScope>(normalizedInitialScope);
+    const scopeSignatureRef = useRef<string | null>(null);
+    const resetSessionReconnectionRef = useRef<() => void>(() => undefined);
     const buildTriggeredRef = useRef(false);
     const lastEventTimeRef = useRef<number>(0);
     const quickStatusInFlightRef = useRef(false);
@@ -207,6 +459,72 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             && !shouldSuppressRealtimeTransport(pusherConfig),
         [pusherConfig]
     );
+    const syncBuildScope = useCallback((nextScope: Partial<BuildScope>) => {
+        buildScopeRef.current = {
+            ...buildScopeRef.current,
+            ...nextScope,
+        };
+    }, []);
+
+    const isCurrentBuildEvent = useCallback((input: { buildId?: string | null; sessionId?: string | null }) => {
+        const currentBuildId = buildScopeRef.current.buildId;
+        const eventBuildId = normalizeText(input.buildId) ?? normalizeText(input.sessionId);
+
+        if (!currentBuildId || !eventBuildId) {
+            return true;
+        }
+
+        return currentBuildId === eventBuildId;
+    }, []);
+
+    const applyScopedPreviewUrl = useCallback((previewUrl: string | null, previewBuildId?: string | null) => {
+        const normalizedPreviewUrl = normalizeText(previewUrl);
+        const normalizedPreviewBuildId = normalizeText(previewBuildId);
+        const nextScope: BuildScope = {
+            ...buildScopeRef.current,
+            previewBuildId: normalizedPreviewBuildId,
+        };
+
+        syncBuildScope(nextScope);
+
+        if (!previewBelongsToScope({
+            previewUrl: normalizedPreviewUrl,
+            previewBuildId: nextScope.previewBuildId,
+            buildId: nextScope.buildId,
+            projectGenerationVersion: nextScope.projectGenerationVersion,
+            sourceGenerationType: nextScope.sourceGenerationType,
+            draftSourceId: nextScope.draftSourceId,
+        })) {
+            setProgress((prev) => ({
+                ...prev,
+                previewUrl: nextScope.sourceGenerationType === 'resume' ? prev.previewUrl : null,
+                previewBuildId: nextScope.previewBuildId,
+            }));
+            return null;
+        }
+
+        setProgress((prev) => ({
+            ...prev,
+            previewUrl: normalizedPreviewUrl,
+            previewBuildId: nextScope.previewBuildId,
+        }));
+
+        return normalizedPreviewUrl;
+    }, [syncBuildScope]);
+
+    const resetRealtimeTracking = useCallback(() => {
+        toolCallsByIdRef.current = new Map();
+        pendingMessageRef.current = null;
+        buildTriggeredRef.current = false;
+        lastEventTimeRef.current = 0;
+        quickStatusInFlightRef.current = false;
+        quickStatusLastCheckAtRef.current = 0;
+        quickStatusBackoffUntilRef.current = 0;
+        fallbackStatusInFlightRef.current = false;
+        fallbackStatusLastCheckAtRef.current = 0;
+        fallbackStatusBackoffUntilRef.current = 0;
+        resetSessionReconnectionRef.current();
+    }, []);
 
     useEffect(() => {
         historyMessagesRef.current = messages;
@@ -224,11 +542,55 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         };
     }, [onAction, onBuildComplete, onBuildError, onBuildStart, onComplete, onError, onMessage]);
 
+    useEffect(() => {
+        const signature = buildScopeSignature(projectId, normalizedInitialScope, normalizedInitialPreviewUrl);
+        if (scopeSignatureRef.current === signature) {
+            return;
+        }
+
+        scopeSignatureRef.current = signature;
+        buildScopeRef.current = normalizedInitialScope;
+        toolCallsByIdRef.current = new Map();
+        setSessionId(normalizedInitialScope.buildId);
+        setStartError(null);
+        setIsStarting(false);
+        setIsBuildingPreview(false);
+        setProgress({
+            ...initialProgress,
+            previewUrl: normalizedInitialPreviewUrl,
+            buildId: normalizedInitialScope.buildId,
+            previewBuildId: normalizedInitialScope.previewBuildId,
+            projectGenerationVersion: normalizedInitialScope.projectGenerationVersion,
+            sourceGenerationType: normalizedInitialScope.sourceGenerationType,
+            draftSourceId: normalizedInitialScope.draftSourceId,
+        });
+
+        if (normalizedInitialScope.sourceGenerationType === 'new') {
+            resetBuilderDraftState();
+        }
+
+        resetRealtimeTracking();
+    }, [
+        normalizedInitialPreviewUrl,
+        normalizedInitialScope,
+        projectId,
+        resetRealtimeTracking,
+    ]);
+
     const handleSessionReconnected = useCallback((sessionStatus: SessionStatus) => {
+        syncBuildScope({
+            buildId: sessionStatus.sessionId,
+        });
         setSessionId(sessionStatus.sessionId);
+        void applyScopedPreviewUrl(sessionStatus.previewUrl, sessionStatus.sessionId);
         // Set progress to running so the UI shows the correct state
-        setProgress(prev => ({ ...prev, status: 'running', statusMessage: 'Reconnected. Continuing…' }));
-    }, []);
+        setProgress(prev => ({
+            ...prev,
+            buildId: sessionStatus.sessionId,
+            status: 'running',
+            statusMessage: 'Reconnected. Continuing…',
+        }));
+    }, [applyScopedPreviewUrl, syncBuildScope]);
 
     const handleSessionReconnectFailed = useCallback((error: string) => {
         callbackRefs.current.onError?.(error);
@@ -245,9 +607,17 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             // Session no longer available - this is fine, just don't reconnect
         },
     });
+    resetSessionReconnectionRef.current = sessionReconnection.reset;
 
     // Reverb event handlers
     const handleStatus = useCallback((data: StatusEvent) => {
+        if (!isCurrentBuildEvent({
+            buildId: data.build_id,
+            sessionId: data.session_id,
+        })) {
+            return;
+        }
+
         // Show activity message when summarization/compaction starts
         if (data.status === 'compacting') {
             const activityMessage: ChatMessage = {
@@ -273,9 +643,16 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 thinkingStartTime: null,
             }),
         }));
-    }, [addHistoryMessage]);
+    }, [addHistoryMessage, isCurrentBuildEvent]);
 
     const handleThinking = useCallback((data: ThinkingEvent) => {
+        if (!isCurrentBuildEvent({
+            buildId: data.build_id,
+            sessionId: data.session_id,
+        })) {
+            return;
+        }
+
         // Only update thinking state for UI display - don't add to history
         // The final message will be added via handleComplete after it's persisted to DB
         setProgress(prev => ({
@@ -286,9 +663,16 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             thinkingStartTime: prev.thinkingStartTime ?? Date.now(),
             iterations: data.iteration,
         }));
-    }, []);
+    }, [isCurrentBuildEvent]);
 
     const handleAction = useCallback((data: ActionEvent) => {
+        if (!isCurrentBuildEvent({
+            buildId: data.build_id,
+            sessionId: data.session_id,
+        })) {
+            return;
+        }
+
         // Add action as activity message (stacks in chat like prototype)
         const activityMessage: ChatMessage = {
             id: `activity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -310,9 +694,16 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
 
         // Notify parent about action (e.g., for sound effects)
         callbackRefs.current.onAction?.();
-    }, [addHistoryMessage]);
+    }, [addHistoryMessage, isCurrentBuildEvent]);
 
     const handleToolCall = useCallback((data: ToolCallEvent) => {
+        if (!isCurrentBuildEvent({
+            buildId: data.build_id,
+            sessionId: data.session_id,
+        })) {
+            return;
+        }
+
         toolCallsByIdRef.current.set(data.id, data);
         setProgress(prev => ({
             ...prev,
@@ -321,9 +712,16 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             statusMessage: `Running ${data.tool}...`,
             thinkingContent: null,
         }));
-    }, []);
+    }, [isCurrentBuildEvent]);
 
     const handleToolResult = useCallback((data: ToolResultEvent) => {
+        if (!isCurrentBuildEvent({
+            buildId: data.build_id,
+            sessionId: data.session_id,
+        })) {
+            return;
+        }
+
         // Phase 7 — Chat editing: use same update pipeline as sidebar. When backend reports updateComponentProps success, apply it locally.
         if (data.tool === 'updateComponentProps' && data.success) {
             const toolCall = toolCallsByIdRef.current.get(data.id);
@@ -356,10 +754,59 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             const params = (toolCall?.params ?? {}) as Record<string, unknown>;
             const projectType = (params.projectType ?? params.project_type) as string | undefined;
             const structure = params.structure as Array<{ componentKey: string; variant?: string; props?: Record<string, unknown> }> | undefined;
-            runGenerateSite({
-                projectType: projectType ?? 'landing',
+            const generationMode = (params.generationMode ?? params.generation_mode) as GenerateSiteMode | undefined;
+            const result = runGenerateSite({
+                ...(projectType && { projectType }),
+                blueprint: params.blueprint as Parameters<typeof runGenerateSite>[0]['blueprint'],
                 ...(Array.isArray(structure) && structure.length > 0 && { structure }),
+                ...(generationMode && { generationMode }),
             });
+
+            if (!result.ok) {
+                const message = result.error ?? 'Generation failed';
+                const repairGuidance = isGeneratedSiteValidationMessage(message)
+                    ? ' Ask me to repair the structure and retry.'
+                    : '';
+
+                addHistoryMessage({
+                    id: `error-${Date.now()}-${data.id}`,
+                    type: 'assistant',
+                    content: `Generation error: ${message}${repairGuidance}`,
+                    timestamp: new Date(),
+                });
+
+                setProgress(prev => ({
+                    ...prev,
+                    status: 'failed',
+                    statusMessage: message,
+                    error: message,
+                    thinkingContent: null,
+                    thinkingStartTime: null,
+                    toolResults: [...prev.toolResults, data],
+                    generationDiagnostics: mergeGenerationDiagnostics(prev.generationDiagnostics, result.diagnostics),
+                }));
+
+                callbackRefs.current.onBuildError?.(message);
+                callbackRefs.current.onError?.(message);
+                return;
+            }
+
+            addHistoryMessage({
+                id: `activity-generate-site-${Date.now()}-${data.id}`,
+                type: 'activity',
+                content: `Generated site via ${result.generationMode}`,
+                timestamp: new Date(),
+                activityType: 'generation',
+            });
+
+            setProgress(prev => ({
+                ...prev,
+                toolResults: [...prev.toolResults, data],
+                statusMessage: `${data.tool} completed via ${result.generationMode}`,
+                error: null,
+                generationDiagnostics: mergeGenerationDiagnostics(prev.generationDiagnostics, result.diagnostics),
+            }));
+            return;
         }
 
         setProgress(prev => ({
@@ -367,9 +814,16 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             toolResults: [...prev.toolResults, data],
             statusMessage: data.success ? `${data.tool} completed` : `${data.tool} failed`,
         }));
-    }, []);
+    }, [addHistoryMessage, isCurrentBuildEvent]);
 
     const handleMessage = useCallback((data: PusherMessageEvent) => {
+        if (!isCurrentBuildEvent({
+            buildId: data.build_id,
+            sessionId: data.session_id,
+        })) {
+            return;
+        }
+
         // Add message to chat history immediately for real-time display
         // Use setProgress to access thinkingStartTime for duration calculation
         setProgress(prev => {
@@ -407,9 +861,16 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 thinkingStartTime: null,
             };
         });
-    }, [addHistoryMessage]);
+    }, [addHistoryMessage, isCurrentBuildEvent]);
 
     const handleError = useCallback((data: ErrorEvent) => {
+        if (!isCurrentBuildEvent({
+            buildId: data.build_id,
+            sessionId: data.session_id,
+        })) {
+            return;
+        }
+
         setProgress(prev => ({
             ...prev,
             status: 'failed',
@@ -428,9 +889,20 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         });
 
         callbackRefs.current.onError?.(data.error);
-    }, [addHistoryMessage]);
+    }, [addHistoryMessage, isCurrentBuildEvent]);
 
     const handleComplete = useCallback((data: CompleteEvent) => {
+        if (!isCurrentBuildEvent({
+            buildId: data.build_id,
+            sessionId: data.session_id,
+        })) {
+            return;
+        }
+
+        syncBuildScope({
+            buildId: normalizeText(data.build_id) ?? normalizeText(data.session_id) ?? buildScopeRef.current.buildId,
+        });
+
         setProgress(prev => {
             // Use message from progress.messages if available, otherwise fallback to data.message
             const lastMessage = prev.messages[prev.messages.length - 1] ?? data.message;
@@ -459,14 +931,15 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 tokensUsed: data.tokens_used,
                 hasFileChanges: data.files_changed ?? true,  // Default to true to trigger auto-build
                 statusMessage: data.build_message ?? data.message ?? 'Completed',
-                // previewUrl persists from previous state - not updated from event
+                buildId: normalizeText(data.build_id) ?? prev.buildId,
+                previewBuildId: prev.previewBuildId,
                 thinkingContent: null,
                 thinkingStartTime: null,
             };
         });
 
         callbackRefs.current.onComplete?.(data);
-    }, [addHistoryMessage]);
+    }, [addHistoryMessage, isCurrentBuildEvent, syncBuildScope]);
 
     const handleSummarizationComplete = useCallback((data: SummarizationCompleteEvent) => {
         // Show completion activity message with results
@@ -485,8 +958,15 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         lastEventTimeRef.current = Date.now();
     }, []);
 
-    const applyQuickStatus = useCallback((status: string) => {
+    const applyQuickStatus = useCallback((payload: BuilderStatusResponse) => {
+        const status = payload.status;
         if (status !== 'completed' && status !== 'failed' && status !== 'cancelled') {
+            return;
+        }
+
+        if (!isCurrentBuildEvent({
+            buildId: payload.build_session_id,
+        })) {
             return;
         }
 
@@ -498,7 +978,7 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             thinkingContent: null,
             thinkingStartTime: null,
         }));
-    }, []);
+    }, [isCurrentBuildEvent]);
 
     const normalizeServerStatus = useCallback((status: string | undefined, fallback: BuildProgress['status']): BuildProgress['status'] => {
         if (status === 'building' || status === 'running') {
@@ -590,9 +1070,18 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             });
             const payload = response.data ?? {};
             fallbackStatusBackoffUntilRef.current = 0;
-            const previewUrl = typeof payload.preview_url === 'string' && payload.preview_url.trim() !== ''
-                ? payload.preview_url
-                : null;
+            const previewUrl = normalizeText(payload.preview_url);
+            const previewBuildId = normalizeText(payload.preview_build_id);
+            const payloadBuildId = normalizeText(payload.build_session_id);
+            if (!isCurrentBuildEvent({ buildId: payloadBuildId })) {
+                return;
+            }
+
+            syncBuildScope({
+                previewBuildId,
+                projectGenerationVersion: normalizeText(payload.project_generation_version) ?? buildScopeRef.current.projectGenerationVersion,
+                sourceGenerationType: normalizeSourceGenerationType(payload.source_generation_type ?? buildScopeRef.current.sourceGenerationType),
+            });
             const latestAssistantMessage = Array.isArray(payload.recent_history)
                 ? [...payload.recent_history]
                     .reverse()
@@ -601,24 +1090,21 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
 
             syncHistoryFromStatus(payload.recent_history);
 
-            if (typeof payload.build_session_id === 'string' && payload.build_session_id.trim() !== '' && !sessionId) {
-                setSessionId(payload.build_session_id);
-            }
-
             let nextStatusAfterUpdate: BuildProgress['status'] | null = null;
-            let nextPreviewUrl: string | null = null;
             let shouldEmitComplete = false;
 
             setProgress((prev) => {
                 const normalizedStatus = normalizeServerStatus(payload.status, prev.status);
                 nextStatusAfterUpdate = normalizedStatus;
-                nextPreviewUrl = previewUrl ?? prev.previewUrl;
                 shouldEmitComplete = prev.status !== 'completed' && normalizedStatus === 'completed';
 
                 return {
                     ...prev,
                     status: normalizedStatus,
-                    previewUrl: nextPreviewUrl,
+                    buildId: payloadBuildId ?? prev.buildId,
+                    previewBuildId: previewBuildId ?? prev.previewBuildId,
+                    projectGenerationVersion: normalizeText(payload.project_generation_version) ?? prev.projectGenerationVersion,
+                    sourceGenerationType: normalizeSourceGenerationType(payload.source_generation_type ?? prev.sourceGenerationType),
                     hasFileChanges: normalizedStatus === 'completed' ? true : prev.hasFileChanges,
                     statusMessage: normalizedStatus === 'failed'
                         ? (typeof payload.error === 'string' && payload.error.trim() !== '' ? payload.error : prev.statusMessage)
@@ -630,8 +1116,26 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                         : prev.error,
                     thinkingContent: normalizedStatus === 'running' ? prev.thinkingContent : null,
                     thinkingStartTime: normalizedStatus === 'running' ? prev.thinkingStartTime : null,
+                    generationDiagnostics: normalizedStatus === 'failed'
+                        ? appendUniqueGenerationDiagnosticsEvent(
+                            ensureGenerationDiagnostics(prev.generationDiagnostics),
+                            createGenerationLogEntry('preview', 'preview rendering failed', {
+                                error: typeof payload.error === 'string' ? payload.error : 'Build failed',
+                            }, 'failure'),
+                            {
+                                failedStep: 'preview',
+                                rootCause: typeof payload.error === 'string' && payload.error.trim() !== ''
+                                    ? payload.error
+                                    : prev.error,
+                            },
+                        )
+                        : prev.generationDiagnostics,
                 };
             });
+
+            const scopedPreviewUrl = nextStatusAfterUpdate === 'completed'
+                ? applyScopedPreviewUrl(previewUrl, previewBuildId)
+                : null;
 
             if (shouldEmitComplete) {
                 callbackRefs.current.onComplete?.({
@@ -642,8 +1146,18 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 });
             }
 
-            if (nextStatusAfterUpdate === 'completed' && nextPreviewUrl) {
-                callbackRefs.current.onBuildComplete?.(nextPreviewUrl);
+            if (nextStatusAfterUpdate === 'completed' && scopedPreviewUrl) {
+                setProgress((prev) => ({
+                    ...prev,
+                    generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
+                        ensureGenerationDiagnostics(prev.generationDiagnostics),
+                        createGenerationLogEntry('preview', 'preview rendered', {
+                            previewUrl: scopedPreviewUrl,
+                            previewBuildId,
+                        }, 'success'),
+                    ),
+                }));
+                callbackRefs.current.onBuildComplete?.(scopedPreviewUrl);
             } else if (nextStatusAfterUpdate === 'failed') {
                 const errorMessage = typeof payload.error === 'string' && payload.error.trim() !== ''
                     ? payload.error
@@ -673,7 +1187,7 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         } finally {
             fallbackStatusInFlightRef.current = false;
         }
-    }, [normalizeServerStatus, projectId, sessionId, syncHistoryFromStatus]);
+    }, [applyScopedPreviewUrl, isCurrentBuildEvent, normalizeServerStatus, projectId, syncBuildScope, syncHistoryFromStatus]);
 
     const pollQuickStatus = useCallback(async (minIntervalMs = 0) => {
         const now = Date.now();
@@ -694,9 +1208,15 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         quickStatusLastCheckAtRef.current = now;
 
         try {
-            const response = await axios.get(`/builder/projects/${projectId}/status?quick=1`);
+            const response = await axios.get<BuilderStatusResponse>(`/builder/projects/${projectId}/status?quick=1`);
             quickStatusBackoffUntilRef.current = 0;
-            applyQuickStatus(response.data.status as string);
+            const payload = response.data ?? {};
+            syncBuildScope({
+                previewBuildId: normalizeText(payload.preview_build_id) ?? buildScopeRef.current.previewBuildId,
+                projectGenerationVersion: normalizeText(payload.project_generation_version) ?? buildScopeRef.current.projectGenerationVersion,
+                sourceGenerationType: normalizeSourceGenerationType(payload.source_generation_type ?? buildScopeRef.current.sourceGenerationType),
+            });
+            applyQuickStatus(payload);
         } catch (error) {
             if (axios.isAxiosError(error) && error.response?.status === 429) {
                 const retryAfterHeader = error.response.headers?.['retry-after'];
@@ -719,7 +1239,7 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         } finally {
             quickStatusInFlightRef.current = false;
         }
-    }, [projectId, applyQuickStatus]);
+    }, [projectId, applyQuickStatus, syncBuildScope]);
 
     // When WebSocket reconnects while in 'running' status, immediately poll
     // since events may have been missed during the disconnection
@@ -844,18 +1364,61 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         return () => clearInterval(intervalId);
     }, [hasActiveRealtime, progress.status, sessionId, pollQuickStatus]);
 
-    // Reset progress when starting new build
-    const resetProgress = useCallback(() => {
-        setProgress(prev => ({
+    // Reset progress when starting a new build so stale preview/tool/session state cannot leak forward.
+    const resetProgress = useCallback((input?: {
+        clearPreview?: boolean;
+        clearSession?: boolean;
+        resetBuilderState?: boolean;
+        sourceGenerationType?: SourceGenerationType;
+        buildId?: string | null;
+        previewBuildId?: string | null;
+        projectGenerationVersion?: string | null;
+        draftSourceId?: string | null;
+    }) => {
+        const nextSourceGenerationType = normalizeSourceGenerationType(
+            input?.sourceGenerationType ?? buildScopeRef.current.sourceGenerationType
+        );
+        const nextScope: BuildScope = {
+            buildId: normalizeText(input?.buildId) ?? null,
+            previewBuildId: normalizeText(input?.previewBuildId) ?? null,
+            projectGenerationVersion: normalizeText(input?.projectGenerationVersion) ?? buildScopeRef.current.projectGenerationVersion,
+            sourceGenerationType: nextSourceGenerationType,
+            draftSourceId: nextSourceGenerationType === 'resume'
+                ? (normalizeText(input?.draftSourceId) ?? buildScopeRef.current.draftSourceId)
+                : null,
+        };
+
+        syncBuildScope(nextScope);
+        resetRealtimeTracking();
+
+        if (input?.resetBuilderState) {
+            resetBuilderDraftState();
+        }
+
+        if (input?.clearSession) {
+            setSessionId(null);
+        } else if (nextScope.buildId !== null) {
+            setSessionId(nextScope.buildId);
+        }
+
+        setProgress({
             ...initialProgress,
-            previewUrl: prev.previewUrl,  // Preserve existing preview
-        }));
-    }, []);
+            previewUrl: input?.clearPreview ? null : progress.previewUrl,
+            buildId: nextScope.buildId,
+            previewBuildId: nextScope.previewBuildId,
+            projectGenerationVersion: nextScope.projectGenerationVersion,
+            sourceGenerationType: nextScope.sourceGenerationType,
+            draftSourceId: nextScope.draftSourceId,
+        });
+    }, [progress.previewUrl, resetRealtimeTracking, syncBuildScope]);
 
     const sendMessage = useCallback(async (content: string, sendOptions?: SendMessageOptions) => {
         if (!content.trim()) return;
 
         const finalPrompt = buildBuilderChatPrompt(content, sendOptions?.elementContext);
+        const sourceGenerationType = normalizeSourceGenerationType(
+            sendOptions?.sourceGenerationType ?? (sendOptions?.templateUrl ? 'template' : 'new')
+        );
 
         // Add user message to history
         const userMessage: ChatMessage = {
@@ -870,18 +1433,36 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         pendingMessageRef.current = finalPrompt;
 
         // Reset progress and start
-        resetProgress();
-        buildTriggeredRef.current = false; // Reset for new session
-        lastEventTimeRef.current = 0;
-        quickStatusInFlightRef.current = false;
-        quickStatusLastCheckAtRef.current = 0;
-        quickStatusBackoffUntilRef.current = 0;
-        fallbackStatusInFlightRef.current = false;
-        fallbackStatusLastCheckAtRef.current = 0;
-        fallbackStatusBackoffUntilRef.current = 0;
+        resetProgress({
+            clearPreview: true,
+            clearSession: true,
+            resetBuilderState: sourceGenerationType === 'new',
+            sourceGenerationType,
+            buildId: null,
+            previewBuildId: null,
+            draftSourceId: sourceGenerationType === 'resume'
+                ? buildScopeRef.current.draftSourceId
+                : null,
+        });
         setIsStarting(true);
         setStartError(null);
-        setProgress(prev => ({ ...prev, status: 'connecting', statusMessage: 'Starting build session...' }));
+        setProgress(prev => ({
+            ...prev,
+            status: 'connecting',
+            statusMessage: 'Starting build session...',
+            generationDiagnostics: buildGenerationDiagnostics({
+                prompt: finalPrompt,
+                events: [
+                    createGenerationLogEntry('prompt', 'prompt received', {
+                        prompt: finalPrompt,
+                    }),
+                    createGenerationLogEntry('session', 'build session requested', {
+                        projectId,
+                        sourceGenerationType,
+                    }),
+                ],
+            }),
+        }));
 
         try {
             const response = await axios.post(`/builder/projects/${projectId}/start`, {
@@ -889,13 +1470,41 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
                 builder_id: sendOptions?.builderId,
                 template_url: sendOptions?.templateUrl,
                 history: getHistoryForApi(),
+            }, {
+                timeout: BUILD_SESSION_START_TIMEOUT_MS,
             });
 
-            const { session_id } = response.data;
-            setSessionId(session_id);
-            setProgress(prev => ({ ...prev, status: 'running', statusMessage: 'Connected. Preparing response...' }));
+            const sessionIdFromResponse = normalizeText(response.data?.build_id ?? response.data?.session_id);
+            const previewBuildId = normalizeText(response.data?.preview_build_id);
+            syncBuildScope({
+                buildId: sessionIdFromResponse,
+                previewBuildId,
+                sourceGenerationType,
+                draftSourceId: sourceGenerationType === 'resume'
+                    ? buildScopeRef.current.draftSourceId
+                    : null,
+            });
+            const resolvedSessionId = sessionIdFromResponse;
+            setSessionId(resolvedSessionId);
+            setProgress(prev => ({
+                ...prev,
+                buildId: resolvedSessionId,
+                previewBuildId,
+                sourceGenerationType,
+                draftSourceId: sourceGenerationType === 'resume' ? prev.draftSourceId : null,
+                status: 'running',
+                statusMessage: 'Connected. Preparing response...',
+                generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
+                    prev.generationDiagnostics,
+                    createGenerationLogEntry('session', 'build session established', {
+                        buildId: resolvedSessionId,
+                    }, 'success'),
+                ),
+            }));
         } catch (error) {
-            const errorMessage = axios.isAxiosError(error)
+            const errorMessage = isAxiosTimeoutError(error)
+                ? getBuildTimeoutMessage('session')
+                : axios.isAxiosError(error)
                 ? error.response?.data?.error || error.message
                 : 'Failed to start build';
             const code = axios.isAxiosError(error) ? error.response?.data?.code : undefined;
@@ -907,12 +1516,27 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
             }
 
             setStartError(errorMessage);
-            setProgress(prev => ({ ...prev, status: 'failed', statusMessage: errorMessage, error: errorMessage }));
+            setProgress(prev => ({
+                ...prev,
+                status: 'failed',
+                statusMessage: errorMessage,
+                error: errorMessage,
+                generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
+                    prev.generationDiagnostics,
+                    createGenerationLogEntry('session', 'build session failed', {
+                        error: errorMessage,
+                    }, 'failure'),
+                    {
+                        failedStep: 'session',
+                        rootCause: errorMessage,
+                    },
+                ),
+            }));
             callbackRefs.current.onError?.(errorMessage);
         } finally {
             setIsStarting(false);
         }
-    }, [addHistoryMessage, getHistoryForApi, projectId, removeHistoryMessage, resetProgress]);
+    }, [addHistoryMessage, getHistoryForApi, projectId, removeHistoryMessage, resetProgress, syncBuildScope]);
 
     const cancelBuild = useCallback(async () => {
         if (!sessionId) return;
@@ -935,8 +1559,14 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
 
     const clearHistory = useCallback(() => {
         clearHistoryMessages();
-        resetProgress();
-        setSessionId(null);
+        resetProgress({
+            clearPreview: true,
+            clearSession: true,
+            resetBuilderState: true,
+            buildId: null,
+            previewBuildId: null,
+            draftSourceId: null,
+        });
         setStartError(null);
     }, [clearHistoryMessages, resetProgress]);
 
@@ -947,30 +1577,112 @@ export function useBuilderChat(projectId: string, options: UseBuilderChatOptions
         callbackRefs.current.onBuildStart?.();
 
         try {
-            const health = await axios.get(`/builder/projects/${projectId}/health`);
+            const health = await axios.get(`/builder/projects/${projectId}/health`, {
+                timeout: BUILDER_HEALTH_TIMEOUT_MS,
+            });
             if (health.data?.online !== true) {
                 const offlineMessage = typeof health.data?.message === 'string' && health.data.message.trim() !== ''
                     ? health.data.message
                     : 'Builder is offline. Start it with "composer dev" or run "bash scripts/start-local-builder.sh".';
+                setProgress((prev) => ({
+                    ...prev,
+                    generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
+                        ensureGenerationDiagnostics(prev.generationDiagnostics),
+                        createGenerationLogEntry('preview', 'preview rendering failed', {
+                            error: offlineMessage,
+                        }, 'failure'),
+                        {
+                            failedStep: 'preview',
+                            rootCause: offlineMessage,
+                        },
+                    ),
+                }));
                 callbackRefs.current.onBuildError?.(offlineMessage);
                 return;
             }
 
-            const response = await axios.post(`/builder/projects/${projectId}/${endpoint}`);
-            const previewUrl = response.data.preview_url || `/preview/${projectId}`;
+            let response: { data: PreviewBuildResponse } | null = null;
+            let currentEndpoint = endpoint;
 
-            setProgress(prev => ({ ...prev, previewUrl }));
-            callbackRefs.current.onBuildComplete?.(previewUrl);
+            for (let attempt = 0; attempt <= PREVIEW_BUILD_RETRY_ATTEMPTS; attempt++) {
+                try {
+                    response = await axios.post<PreviewBuildResponse>(`/builder/projects/${projectId}/${currentEndpoint}`, undefined, {
+                        timeout: PREVIEW_BUILD_TIMEOUT_MS,
+                    });
+                    break;
+                } catch (error) {
+                    const retryable = attempt < PREVIEW_BUILD_RETRY_ATTEMPTS && isRetryableBuildError(error);
+                    const errorMessage = isAxiosTimeoutError(error)
+                        ? getBuildTimeoutMessage('preview')
+                        : axios.isAxiosError(error)
+                            ? error.response?.data?.error || error.message
+                            : 'Failed to build preview';
+
+                    if (!retryable) {
+                        throw error;
+                    }
+
+                    currentEndpoint = 'build/retry';
+                    setProgress((prev) => ({
+                        ...prev,
+                        statusMessage: 'Retrying preview build from the last generated state...',
+                        generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
+                            ensureGenerationDiagnostics(prev.generationDiagnostics),
+                            createGenerationLogEntry('preview', 'partial generation retry scheduled', {
+                                attempt: attempt + 2,
+                                endpoint: currentEndpoint,
+                                error: errorMessage,
+                            }),
+                        ),
+                    }));
+                }
+            }
+
+            if (!response) {
+                throw new Error('Failed to build preview');
+            }
+
+            const previewUrl = response.data.preview_url || `/preview/${projectId}`;
+            const previewBuildId = normalizeText(response.data.preview_build_id ?? response.data.build_id) ?? buildScopeRef.current.buildId;
+            const appliedPreviewUrl = applyScopedPreviewUrl(previewUrl, previewBuildId);
+            setProgress((prev) => ({
+                ...prev,
+                generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
+                    ensureGenerationDiagnostics(prev.generationDiagnostics),
+                    createGenerationLogEntry('preview', 'preview rendered', {
+                        previewUrl: appliedPreviewUrl ?? previewUrl,
+                        previewBuildId,
+                    }, 'success'),
+                ),
+            }));
+            if (appliedPreviewUrl) {
+                callbackRefs.current.onBuildComplete?.(appliedPreviewUrl);
+            }
         } catch (error) {
-            const errorMessage = axios.isAxiosError(error)
+            const errorMessage = isAxiosTimeoutError(error)
+                ? getBuildTimeoutMessage('preview')
+                : axios.isAxiosError(error)
                 ? error.response?.data?.error || error.message
                 : 'Failed to build preview';
 
+            setProgress((prev) => ({
+                ...prev,
+                generationDiagnostics: appendUniqueGenerationDiagnosticsEvent(
+                    ensureGenerationDiagnostics(prev.generationDiagnostics),
+                    createGenerationLogEntry('preview', 'preview rendering failed', {
+                        error: errorMessage,
+                    }, 'failure'),
+                    {
+                        failedStep: 'preview',
+                        rootCause: errorMessage,
+                    },
+                ),
+            }));
             callbackRefs.current.onBuildError?.(errorMessage);
         } finally {
             setIsBuildingPreview(false);
         }
-    }, [projectId, isBuildingPreview]);
+    }, [applyScopedPreviewUrl, projectId, isBuildingPreview]);
 
     // Trigger a preview build (works with or without active session)
     const triggerBuild = useCallback(async () => {

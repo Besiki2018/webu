@@ -176,6 +176,12 @@ describe('MessageBubble', () => {
             thinkingStartTime: null,
             error: null,
             previewUrl: null,
+            buildId: null,
+            previewBuildId: null,
+            projectGenerationVersion: null,
+            sourceGenerationType: 'new',
+            draftSourceId: null,
+            generationDiagnostics: null,
         };
 
         render(<PendingAssistantBubble progress={progress} label="Creating the online store layout" />);

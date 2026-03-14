@@ -1,83 +1,71 @@
 /**
- * Phase 15 — AI Prompt to Site Engine.
+ * Thin adapter around the blueprint-first generation pipeline.
  *
- * Ultimate feature: user writes one prompt (e.g. "Create a modern ecommerce website for a furniture store")
- * → AI generates full site (projectType + structure + content) → apply via runGenerateSite().
- *
- * This module defines the contract and hints for the backend: parse prompt → infer project type + context
- * → fill structure with content → return generate_site tool payload.
+ * This file is intentionally not the generation truth. It simply adapts a prompt
+ * into the same generate_site payload shape by delegating to the blueprint system.
  */
 
 import type { ProjectType } from './projectTypes';
 import type { SiteStructureSection } from './aiSiteGeneration';
+import type { ProjectBlueprint, BlueprintGenerationLogEntry } from './ai/blueprintTypes';
 import {
-  DEFAULT_LANDING_STRUCTURE,
-  DEFAULT_SAAS_LANDING_STRUCTURE,
-  DEFAULT_ECOMMERCE_STRUCTURE,
-} from './aiSiteGeneration';
+  createBlueprint,
+  createEmergencyFallbackBlueprint,
+  mapBuilderProjectTypeToBlueprintProjectType,
+} from './ai/createBlueprint';
+import { buildSiteFromBlueprint } from './ai/buildSiteFromBlueprint';
 
-// ---------------------------------------------------------------------------
-// Contract: prompt in → generate_site payload out
-// ---------------------------------------------------------------------------
-
-/** Input: raw user prompt (e.g. "Create a modern ecommerce website for a furniture store"). */
 export interface PromptToSiteInput {
   userPrompt: string;
+  projectType?: ProjectType | string | null;
 }
 
-/**
- * Output: same shape as generate_site tool result.
- * Backend AI should return this so the frontend can call runGenerateSite(payload).
- */
 export interface PromptToSiteOutput {
   projectType: ProjectType;
-  /** Ordered sections with optional props (e.g. hero title, subtitle, feature copy). AI fills from prompt context. */
+  blueprint: ProjectBlueprint;
+  generationLog: BlueprintGenerationLogEntry[];
   structure: SiteStructureSection[];
 }
 
-/**
- * Hints for the AI/backend: how to map natural language to project type and structure.
- * Example: "ecommerce" + "furniture store" → projectType: ecommerce, structure with props like
- * hero title "Modern furniture for your home", features about delivery/quality/style.
- */
-export const PROMPT_TO_SITE_HINTS: Record<
-  string,
-  { projectType: ProjectType; description: string }
-> = {
-  ecommerce: {
-    projectType: 'ecommerce',
-    description: 'Online store: header with cart/nav, hero, features/benefits, CTA, footer. Fill props with industry (e.g. furniture, fashion).',
-  },
-  saas: {
-    projectType: 'saas',
-    description: 'SaaS landing: header, hero, features, pricing, CTA, footer. Fill props with product name and value props.',
-  },
-  landing: {
-    projectType: 'landing',
-    description: 'Generic landing: header, hero, features, CTA, footer. Fill props from prompt (audience, offer).',
-  },
-  business: {
-    projectType: 'business',
-    description: 'Business site: header, hero, features, CTA, footer. Fill with company/industry.',
-  },
-  portfolio: {
-    projectType: 'portfolio',
-    description: 'Portfolio: header, hero, work/projects, CTA, footer.',
-  },
-  restaurant: {
-    projectType: 'restaurant',
-    description: 'Restaurant: header, hero, menu highlights, CTA/reservations, footer.',
-  },
-};
+export function promptToSite(input: PromptToSiteInput): PromptToSiteOutput {
+  const blueprint = createBlueprint({
+    prompt: input.userPrompt,
+    projectType: input.projectType,
+  });
+  const result = buildSiteFromBlueprint({
+    prompt: input.userPrompt,
+    blueprint,
+    builderProjectTypeOverride: typeof input.projectType === 'string' ? input.projectType as ProjectType : null,
+    generationMode: 'blueprint',
+  });
 
-/** Default structure by project type (used when AI omits structure or as base to fill). */
+  return {
+    projectType: result.projectType,
+    blueprint: result.blueprint,
+    generationLog: result.generationLog,
+    structure: result.sitePlan.pages[0]?.sections.map((section) => ({
+      componentKey: section.componentKey,
+      ...(section.variant ? { variant: section.variant } : {}),
+      ...(section.props ? { props: section.props } : {}),
+    })) ?? getDefaultStructureForPrompt(result.projectType),
+  };
+}
+
+/** Emergency fallback only. Main generation must always flow through a blueprint first. */
 export function getDefaultStructureForPrompt(projectType: ProjectType): SiteStructureSection[] {
-  switch (projectType) {
-    case 'saas':
-      return [...DEFAULT_SAAS_LANDING_STRUCTURE];
-    case 'ecommerce':
-      return [...DEFAULT_ECOMMERCE_STRUCTURE];
-    default:
-      return [...DEFAULT_LANDING_STRUCTURE];
-  }
+  const fallbackBlueprint = createEmergencyFallbackBlueprint(
+    mapBuilderProjectTypeToBlueprintProjectType(projectType)
+  );
+  const result = buildSiteFromBlueprint({
+    prompt: projectType,
+    blueprint: fallbackBlueprint,
+    builderProjectTypeOverride: projectType,
+    generationMode: 'emergency-fallback',
+  });
+
+  return result.sitePlan.pages[0]?.sections.map((section) => ({
+    componentKey: section.componentKey,
+    ...(section.variant ? { variant: section.variant } : {}),
+    ...(section.props ? { props: section.props } : {}),
+  })) ?? []
 }

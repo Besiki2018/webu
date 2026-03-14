@@ -35,6 +35,8 @@ class BuilderActionEvent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
+            'session_id' => $this->sessionId,
+            'build_id' => $this->sessionId,
             'action' => $this->action,
             'target' => $this->target,
             'details' => $this->details,

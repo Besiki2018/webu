@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Cms\Contracts\CmsModuleRegistryServiceContract;
 use App\Cms\Contracts\CmsPanelMenuServiceContract;
+use App\Http\Controllers\Concerns\BuildsProjectGenerationPayload;
 use App\Models\Project;
 use App\Models\Template;
 use App\Services\CmsComponentLibraryCatalogService;
 use App\Services\DomainSettingService;
+use App\Services\ProjectWorkspace\ProjectWorkspaceService;
 use App\Services\ProjectWorkspace\WorkspaceSectionRegistryService;
 use App\Services\SiteProvisioningService;
 use App\Cms\Services\CmsSiteVisibilityService;
@@ -19,6 +21,8 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 
 class ProjectCmsController extends Controller
 {
+    use BuildsProjectGenerationPayload;
+
     public function __construct(
         protected SiteProvisioningService $siteProvisioningService,
         protected CmsModuleRegistryServiceContract $moduleRegistry,
@@ -26,7 +30,8 @@ class ProjectCmsController extends Controller
         protected DomainSettingService $domainSettingService,
         protected CmsComponentLibraryCatalogService $componentLibraryCatalogService,
         protected WorkspaceSectionRegistryService $workspaceSectionRegistry,
-        protected CmsSiteVisibilityService $siteVisibility
+        protected CmsSiteVisibilityService $siteVisibility,
+        protected ProjectWorkspaceService $projectWorkspace,
     ) {}
 
     public function show(Request $request, Project $project): Response|RedirectResponse
@@ -34,7 +39,12 @@ class ProjectCmsController extends Controller
         $this->authorize('update', $project);
 
         $project->loadMissing('latestGenerationRun');
-        if ($project->latestGenerationRun?->isActive()) {
+        $generationPayload = $this->buildGenerationPayload(
+            $project->latestGenerationRun,
+            $project,
+            $this->projectWorkspace
+        );
+        if ($this->generationRequiresCompletionGate($generationPayload)) {
             return redirect()->route('chat', [
                 'project' => $project,
             ]);

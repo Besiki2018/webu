@@ -7,6 +7,7 @@ use App\Models\ProjectGenerationRun;
 use App\Services\AiWebsiteGeneration\GenerateWebsiteProjectService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
@@ -97,6 +98,10 @@ class GenerateWebsiteController extends Controller
         ]);
         $request->session()->put(self::PENDING_REDIRECT_URL_SESSION_KEY, $url);
         $request->session()->put(self::PENDING_REDIRECT_AT_SESSION_KEY, now()->toIso8601String());
+
+        if ($request->header('X-Inertia')) {
+            return Inertia::location($url);
+        }
 
         return redirect()->to($url)->with(
             'success',

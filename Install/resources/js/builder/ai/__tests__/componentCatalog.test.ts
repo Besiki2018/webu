@@ -13,10 +13,14 @@ describe('componentCatalog', () => {
     expect(hero).toMatchObject({
       componentKey: 'webu_general_hero_01',
       layoutType: 'hero',
+      sectionType: 'hero',
     });
     expect(hero?.propsSchema.length).toBeGreaterThan(0);
     expect(hero?.defaultProps).toEqual(expect.any(Object));
     expect(hero?.variants).toBeInstanceOf(Array);
+    expect(hero?.categoryTags).toEqual(expect.arrayContaining(['hero', 'brand']));
+    expect(hero?.styleTags).toEqual(expect.arrayContaining(['modern', 'premium']));
+    expect(hero?.priorityScore).toBeGreaterThan(0);
   });
 
   it('filters the catalog by allowed project/site type', () => {

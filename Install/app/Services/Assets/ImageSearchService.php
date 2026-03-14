@@ -2,6 +2,8 @@
 
 namespace App\Services\Assets;
 
+use Illuminate\Support\Facades\Log;
+
 class ImageSearchService
 {
     /**
@@ -31,8 +33,30 @@ class ImageSearchService
 
         $providerLimit = max($limit, 6);
         $merged = [];
+        $configurationErrors = [];
+        $providerFailures = [];
+        $successfulProviders = 0;
+
         foreach ($this->providers as $provider) {
-            $merged = [...$merged, ...$provider->search($normalizedQuery, $providerLimit)];
+            try {
+                $merged = [...$merged, ...$provider->search($normalizedQuery, $providerLimit)];
+                $successfulProviders++;
+            } catch (StockImageProviderConfigurationException $exception) {
+                $configurationErrors[] = $exception;
+            } catch (\Throwable $exception) {
+                $providerFailures[] = sprintf('%s: %s', $provider->providerKey(), $exception->getMessage());
+            }
+        }
+
+        if ($providerFailures !== []) {
+            Log::warning('Stock image search provider failed.', [
+                'query' => $normalizedQuery,
+                'providers' => $providerFailures,
+            ]);
+        }
+
+        if ($merged === [] && $configurationErrors !== [] && $successfulProviders === 0) {
+            throw $configurationErrors[0];
         }
 
         $deduped = $this->dedupe($merged);

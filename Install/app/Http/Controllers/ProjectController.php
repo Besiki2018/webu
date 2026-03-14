@@ -330,6 +330,10 @@ class ProjectController extends Controller
         $request->session()->put(self::PENDING_REDIRECT_URL_SESSION_KEY, $url);
         $request->session()->put(self::PENDING_REDIRECT_AT_SESSION_KEY, now()->toIso8601String());
 
+        if ($request->header('X-Inertia')) {
+            return Inertia::location($url);
+        }
+
         return redirect()->to($url);
     }
 

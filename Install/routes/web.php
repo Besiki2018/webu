@@ -83,6 +83,7 @@ use App\Http\Controllers\PreviewController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\GenerateWebsiteController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ProjectGenerationController;
 use App\Http\Controllers\RequirementCollectionController;
 use App\Http\Controllers\TemplatePackController;
 use App\Http\Controllers\ProjectCmsController;
@@ -225,6 +226,8 @@ Route::middleware('installed')->group(function () {
     // Project chat routes
     Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/project/{project}', [ChatController::class, 'show'])->name('chat');
+        Route::get('/project/{project}/generation', [ProjectGenerationController::class, 'show'])
+            ->name('project.generation');
         Route::get('/project/{project}/generation-status', ProjectGenerationStatusController::class)
             ->name('project.generation.status');
         Route::post('/project/send', [ChatController::class, 'send'])->name('chat.send');

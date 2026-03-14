@@ -120,6 +120,55 @@ function complexityIndices(componentKey: string, complexity: LayoutComplexity): 
   }
 }
 
+function industryPreferredIndices(componentKey: string, industry: string | null | undefined): number[] {
+  const normalizedIndustry = (industry ?? '').toLowerCase()
+  if (normalizedIndustry === '') {
+    return []
+  }
+
+  if (/(vet|veterin|clinic|medical|health|dental|pet)/.test(normalizedIndustry)) {
+    return {
+      webu_general_hero_01: [0, 1, 6],
+      webu_general_features_01: [0, 1],
+      webu_general_cta_01: [0, 1],
+      webu_general_cards_01: [0],
+      webu_general_grid_01: [0],
+    }[componentKey] ?? []
+  }
+
+  if (/(finance|fintech|account|analytics|software|saas|platform)/.test(normalizedIndustry)) {
+    return {
+      webu_general_hero_01: [1, 2],
+      webu_general_features_01: [1, 2],
+      webu_general_cta_01: [0, 1],
+      webu_general_cards_01: [0],
+      webu_general_grid_01: [1],
+    }[componentKey] ?? []
+  }
+
+  if (/(creative|design|studio|portfolio|agency)/.test(normalizedIndustry)) {
+    return {
+      webu_general_hero_01: [3, 4],
+      webu_general_features_01: [2, 3],
+      webu_general_cta_01: [2],
+      webu_general_cards_01: [1],
+      webu_general_grid_01: [1],
+    }[componentKey] ?? []
+  }
+
+  if (/(restaurant|cafe|fashion|travel|hospitality)/.test(normalizedIndustry)) {
+    return {
+      webu_general_hero_01: [4, 5],
+      webu_general_features_01: [2, 3],
+      webu_general_cta_01: [2, 3],
+      webu_general_cards_01: [1],
+      webu_general_grid_01: [1],
+    }[componentKey] ?? []
+  }
+
+  return []
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -145,13 +194,18 @@ export function selectVariant(
 
   let chosen: string | null = null;
 
-  if (tone === 'modern') {
+  const industryIndices = industryPreferredIndices(componentKey, context.industry);
+  if (industryIndices.length > 0) {
+    chosen = pickFromIndices(variants, industryIndices, used);
+  }
+
+  if (!chosen && tone === 'modern') {
     const indices = MODERN_VARIANT_INDICES[componentKey];
     if (indices?.length) chosen = pickFromIndices(variants, indices, used);
-  } else if (tone === 'minimal') {
+  } else if (!chosen && tone === 'minimal') {
     const indices = MINIMAL_VARIANT_INDICES[componentKey];
     if (indices?.length) chosen = pickFromIndices(variants, indices, used);
-  } else if (tone === 'bold') {
+  } else if (!chosen && tone === 'bold') {
     const indices = BOLD_VARIANT_INDICES[componentKey];
     if (indices?.length) chosen = pickFromIndices(variants, indices, used);
   }

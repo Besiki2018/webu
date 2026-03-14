@@ -8,6 +8,7 @@ use App\Models\PageRevision;
 use App\Models\ProjectGenerationRun;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Services\AiWebsiteGeneration\BuilderBlueprintGenerationService;
 use App\Services\Assets\ImageImportService;
 use App\Services\Assets\ImageSearchService;
 use App\Services\AiWebsiteGeneration\GenerateWebsiteProjectService;
@@ -219,6 +220,88 @@ class GenerateWebsiteProjectWorkspaceInitializationTest extends TestCase
         $this->assertStringContainsString('/demo/hero/hero-', (string) data_get($heroSection, 'props.image'));
         $this->assertSame('placeholder', data_get($heroSection, 'binding.webu_v2.media_fields.image.source'));
         $this->assertSame('ai', data_get($heroSection, 'binding.webu_v2.media_fields.image.imported_by'));
+    }
+
+    public function test_prompt_generation_uses_builder_blueprint_pipeline_for_home_page_sections(): void
+    {
+        $user = User::factory()->create();
+
+        $search = Mockery::mock(ImageSearchService::class);
+        $search->shouldReceive('search')->andThrow(new \RuntimeException('skip stock search for template blueprint test'));
+        $this->app->instance(ImageSearchService::class, $search);
+
+        $import = Mockery::mock(ImageImportService::class);
+        $import->shouldReceive('import')->never();
+        $this->app->instance(ImageImportService::class, $import);
+
+        $result = app(GenerateWebsiteProjectService::class)->generate([
+            'userPrompt' => 'Create a modern fashion store website',
+            'user_id' => $user->id,
+            'ultra_cheap_mode' => true,
+        ]);
+
+        $project = $result['project']->fresh();
+        $site = $result['site']->fresh();
+
+        $this->assertNotNull($project->theme_preset);
+        $this->assertSame($project->theme_preset, data_get($site->theme_settings, 'preset'));
+        $this->assertSame('ecommerce', data_get($result, 'builder_generation.project_type'));
+        $this->assertContains('productGrid', data_get($result, 'builder_generation.diagnostics.selectedSections', []));
+
+        $homePage = Page::query()
+            ->where('site_id', $site->id)
+            ->where('slug', 'home')
+            ->firstOrFail();
+
+        $homeRevision = PageRevision::query()
+            ->where('site_id', $site->id)
+            ->where('page_id', $homePage->id)
+            ->latest('version')
+            ->firstOrFail();
+
+        $sectionTypes = array_values(array_map(
+            static fn ($section): string => (string) data_get($section, 'type', ''),
+            is_array($homeRevision->content_json['sections'] ?? null) ? $homeRevision->content_json['sections'] : []
+        ));
+
+        $this->assertContains('webu_header_01', $sectionTypes);
+        $this->assertContains('webu_ecom_product_grid_01', $sectionTypes);
+        $this->assertContains('webu_footer_01', $sectionTypes);
+        $this->assertNotContains('webu_general_cards_01', $sectionTypes);
+    }
+
+    public function test_project_generation_runner_marks_run_failed_when_builder_blueprint_generation_fails(): void
+    {
+        $user = User::factory()->create();
+
+        $bridge = Mockery::mock(BuilderBlueprintGenerationService::class);
+        $bridge->shouldReceive('generate')
+            ->once()
+            ->andThrow(new \RuntimeException('builder blueprint failed'));
+        $this->app->instance(BuilderBlueprintGenerationService::class, $bridge);
+
+        $project = app(GenerateWebsiteProjectService::class)->createProjectShell($user->id, 'Create a website for restaurant');
+        $run = ProjectGenerationRun::query()->create([
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'status' => ProjectGenerationRun::STATUS_QUEUED,
+            'requested_prompt' => 'Create a website for restaurant',
+            'requested_input' => [
+                'prompt' => 'Create a website for restaurant',
+                'ultra_cheap_mode' => true,
+            ],
+            'progress_message' => 'Preparing generation.',
+        ]);
+
+        app(ProjectGenerationRunner::class)->run($run);
+
+        $run->refresh();
+        $this->assertSame(ProjectGenerationRun::STATUS_FAILED, $run->status);
+        $this->assertSame('builder blueprint failed', $run->error_message);
+
+        $manifest = json_decode((string) File::get(storage_path('workspaces/'.$project->id.'/.webu/workspace-manifest.json')), true);
+        $this->assertSame(ProjectGenerationRun::STATUS_FAILED, data_get($manifest, 'preview.phase'));
+        $this->assertSame('builder blueprint failed', data_get($manifest, 'preview.errorMessage'));
     }
 
     public function test_project_generation_runner_keeps_workspace_manifest_ready_after_site_provisioning(): void

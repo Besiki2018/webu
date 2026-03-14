@@ -1,18 +1,16 @@
 /**
  * Part 8 — Inject Site Into Builder.
  *
- * Orchestrates: prompt → analyzer → planner → component selector → content generator → props generator → builder state.
+ * Orchestrates: prompt → blueprint → section/component assembly → content generator → props generator → builder state.
  * Caller applies the returned tree to the builder (setComponentTree / setSectionsDraft) so the canvas shows the full site.
  */
 
 import type { BuilderComponentInstance } from '../core/types';
-import {
-  normalizeProjectSiteType,
-  type BuilderProject,
-  type ProjectType,
-} from '../projectTypes';
-import { analyzePrompt } from './promptAnalyzer';
-import { planSiteFromPrompt, type AiSitePlan } from './sitePlanner';
+import type { BuilderProject, ProjectType } from '../projectTypes';
+import type { ProjectBlueprint, BlueprintGenerationLogEntry } from './blueprintTypes';
+import { createBlueprint } from './createBlueprint';
+import { buildSiteFromBlueprint } from './buildSiteFromBlueprint';
+import type { AiSitePlan } from './sitePlanner';
 import { generateContent, type ContentGeneratorProvider } from './contentGenerator';
 import {
   contentToHeroProps,
@@ -26,9 +24,11 @@ import {
   injectImageIntoProps,
   type ImageGeneratorProvider,
 } from './imageGenerator';
-import { getSectionsForProjectType } from './projectTypeIntegration';
-import { composeSectionProps } from './sectionComposer';
-import { inferAiProjectTypeFromBuilderProjectType } from './projectTypeDetector';
+import {
+  formatGeneratedSiteValidationIssues,
+  validateGeneratedSite,
+} from './validateGeneratedSite';
+import type { BuilderSection } from '../visual/treeUtils';
 
 // ---------------------------------------------------------------------------
 // Component key → content section type (for AI content generation)
@@ -61,13 +61,17 @@ export interface GenerateSiteFromPromptResult {
   /** Component tree for the builder store (setComponentTree) or treeToSectionsDraft for Cms. */
   tree: BuilderComponentInstance[];
   /** Section drafts for Cms setSectionsDraft. */
-  sectionsDraft: ReturnType<typeof treeToSectionsDraft>;
+  sectionsDraft: BuilderSection[];
   /** Detected project type; caller should setProjectType(projectType). */
   projectType: ProjectType;
   /** Normalized project metadata for governance-aware callers. */
   project: BuilderProject;
   /** Canonical registry ids the AI planner was allowed to use. */
   available_components: string[];
+  /** The normalized blueprint that drove section and component assembly. */
+  blueprint: ProjectBlueprint;
+  /** Generation log entries emitted by the blueprint pipeline. */
+  generationLog: BlueprintGenerationLogEntry[];
   /** Full AI site plan for builder-side mutation adapters. */
   sitePlan: AiSitePlan;
 }
@@ -77,7 +81,7 @@ export interface GenerateSiteFromPromptResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Full flow: prompt → analyzer → planner → component selector → (optional) content generator → props generator → builder state.
+ * Full flow: prompt → blueprint → section/component assembly → (optional) content generator → props generation → builder state.
  * Returns tree and sectionsDraft so the caller can inject into the builder and render the canvas.
  *
  * After generation: setSectionsDraft(result.sectionsDraft), setProjectType(result.projectType) (and optionally persist).
@@ -99,37 +103,21 @@ export async function generateSiteFromPrompt(
     projectType: explicitProjectType,
   } = options;
 
-  // 1. Prompt analyzer
-  const detectedAnalysis = analyzePrompt(prompt);
-  const analysis = explicitProjectType
-    ? {
-        ...detectedAnalysis,
-        projectType: explicitProjectType,
-        requiredSections: Array.from(new Set([
-          ...getSectionsForProjectType(explicitProjectType),
-          ...detectedAnalysis.requiredSections,
-        ])),
-      }
-    : detectedAnalysis;
-
-  // 2. Canonical AI planner
-  const sitePlan = planSiteFromPrompt({
+  const blueprint = createBlueprint({
     prompt,
-    projectType: explicitProjectType ? inferAiProjectTypeFromBuilderProjectType(explicitProjectType) : undefined,
+    projectType: explicitProjectType,
   });
-  const plannedSections = sitePlan.pages[0]?.sections ?? [];
-
-  // 3. Section composition — safe schema-backed defaults from the canonical registry
+  const blueprintSite = buildSiteFromBlueprint({
+    prompt,
+    blueprint,
+    brandName,
+    builderProjectTypeOverride: explicitProjectType ?? null,
+    generationMode: 'blueprint',
+  });
+  const plannedSections = blueprintSite.sitePlan.pages[0]?.sections ?? [];
   const propsByIndex: Record<number, Record<string, unknown>> = plannedSections.reduce<Record<number, Record<string, unknown>>>((accumulator, section, index) => {
     accumulator[index] = {
-      ...composeSectionProps(section.componentKey, {
-        prompt,
-        projectType: sitePlan.projectType,
-        brandName,
-        tone: analysis.tone,
-        sectionIndex: index,
-        totalSections: plannedSections.length,
-      }),
+      ...(section.props ?? {}),
       ...(section.variant ? { variant: section.variant } : {}),
     };
     return accumulator;
@@ -138,9 +126,9 @@ export async function generateSiteFromPrompt(
   // 4 & 5. Optional content generator → prop enhancer
   if (contentProvider) {
     const contentInput = {
-      projectType: analysis.projectType,
-      industry: analysis.industry,
-      tone: analysis.tone,
+      projectType: blueprintSite.projectType,
+      industry: blueprint.businessType,
+      tone: blueprint.tone,
       language,
       brandName,
     };
@@ -176,8 +164,8 @@ export async function generateSiteFromPrompt(
         const imageUrl = await generateImageFromContext(
           {
             sectionType: 'hero',
-            industry: analysis.industry,
-            tone: analysis.tone,
+            industry: blueprint.businessType,
+            tone: blueprint.tone,
           },
           imageProvider
         );
@@ -198,8 +186,8 @@ export async function generateSiteFromPrompt(
   }));
 
   const sitePlanWithProps: AiSitePlan = {
-    ...sitePlan,
-    pages: sitePlan.pages.map((page, pageIndex) => (
+    ...blueprintSite.sitePlan,
+    pages: blueprintSite.sitePlan.pages.map((page, pageIndex) => (
       pageIndex === 0
         ? {
           ...page,
@@ -211,20 +199,33 @@ export async function generateSiteFromPrompt(
 
   // 6. Builder state (component tree)
   const tree = sectionPlanToComponentTree({ sections: plannedSectionsWithProps }, { propsByIndex: {} });
+  const validation = validateGeneratedSite({
+    projectType: blueprintSite.projectType,
+    tree,
+    supportedComponentKeys: sitePlanWithProps.available_components ?? blueprintSite.available_components,
+    plannedSections: plannedSectionsWithProps.map((section, index) => ({
+      componentKey: section.componentKey,
+      props: section.props ?? {},
+      sectionId: `planned-section-${index + 1}`,
+    })),
+    generationMode: blueprintSite.usedEmergencyFallback ? 'emergency-fallback' : 'blueprint',
+    usedEmergencyFallback: blueprintSite.usedEmergencyFallback,
+  });
+  if (!validation.ok) {
+    throw new Error(formatGeneratedSiteValidationIssues(validation.issues));
+  }
 
   // 7. Section drafts for Cms
   const sectionsDraft = treeToSectionsDraft(tree);
-  const normalizedProjectType = sitePlanWithProps.project.type ?? normalizeProjectSiteType(analysis.projectType);
 
   return {
     tree,
     sectionsDraft,
-    projectType: sitePlan.builderProjectType,
-    project: {
-      projectType: sitePlan.builderProjectType,
-      type: normalizedProjectType,
-    },
+    projectType: blueprintSite.projectType,
+    project: blueprintSite.project,
     available_components: sitePlanWithProps.available_components ?? [],
+    blueprint: blueprintSite.blueprint,
+    generationLog: blueprintSite.generationLog,
     sitePlan: sitePlanWithProps,
   };
 }

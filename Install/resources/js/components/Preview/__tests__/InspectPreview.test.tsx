@@ -784,6 +784,63 @@ describe('InspectPreview', () => {
         });
     });
 
+    it('does not loop preview text mutations when the same live structure is applied twice', async () => {
+        const item = {
+            localId: 'hero-1',
+            sectionKey: 'webu_general_hero_01',
+            label: 'Hero',
+            previewText: 'Hero',
+            props: {
+                title: 'Stable hero title',
+                image: '/hero.jpg',
+                buttonText: 'Shop now',
+                buttonLink: '/shop',
+            },
+        };
+
+        const { rerender } = render(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[item]}
+            />
+        );
+
+        const iframe = screen.getByTitle(previewTitleMatcher) as HTMLIFrameElement;
+        const { iframeDoc, titleEl } = createHeroPreviewDocument();
+        attachIframeEnvironment(iframe, iframeDoc);
+
+        fireEvent.load(iframe);
+
+        await waitFor(() => {
+            expect(titleEl.textContent).toContain('Stable hero title');
+        });
+
+        const records: MutationRecord[] = [];
+        const observer = new MutationObserver((mutations) => {
+            records.push(...mutations);
+        });
+        observer.observe(iframeDoc.body, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+        });
+
+        rerender(
+            <InspectPreview
+                {...defaultProps}
+                mode="inspect"
+                liveStructureItems={[item]}
+            />
+        );
+
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+        observer.disconnect();
+
+        expect(records).toHaveLength(0);
+        expect(titleEl.textContent).toContain('Stable hero title');
+    });
+
     it('falls back to visible preview content when exact data-webu-field nodes are hidden shims', async () => {
         const { rerender } = render(
             <InspectPreview

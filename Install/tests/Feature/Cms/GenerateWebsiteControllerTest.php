@@ -29,7 +29,7 @@ class GenerateWebsiteControllerTest extends TestCase
         SystemSetting::set('installation_completed', true, 'boolean', 'system');
     }
 
-    public function test_inertia_requests_redirect_to_chat_workspace_before_generation_is_ready(): void
+    public function test_inertia_requests_redirect_to_chat_workspace_before_builder_is_ready(): void
     {
         Bus::fake();
 
@@ -52,7 +52,8 @@ class GenerateWebsiteControllerTest extends TestCase
         $expectedRedirect = route('chat', ['project' => $project]);
 
         $response
-            ->assertRedirect($expectedRedirect)
+            ->assertStatus(409)
+            ->assertHeader('X-Inertia-Location', $expectedRedirect)
             ->assertSessionHas('create_pending_redirect_url', $expectedRedirect);
 
         $generationRun = ProjectGenerationRun::query()
@@ -87,7 +88,9 @@ class GenerateWebsiteControllerTest extends TestCase
             ]);
 
         $project = Project::query()->where('user_id', $user->id)->latest('created_at')->firstOrFail();
-        $firstResponse->assertRedirect(route('chat', ['project' => $project]));
+        $firstResponse
+            ->assertStatus(409)
+            ->assertHeader('X-Inertia-Location', route('chat', ['project' => $project]));
 
         $secondResponse = $this->from('/create')
             ->actingAs($user)
@@ -102,6 +105,42 @@ class GenerateWebsiteControllerTest extends TestCase
         $this->assertSame(1, Project::query()->where('user_id', $user->id)->count());
         $this->assertSame(1, ProjectGenerationRun::query()->where('user_id', $user->id)->count());
         Bus::assertDispatchedTimes(RunProjectGeneration::class, 1);
+    }
+
+    public function test_new_project_flow_redirects_into_the_chat_workspace_after_creation(): void
+    {
+        Bus::fake();
+
+        $provider = AiProvider::factory()->openai()->create();
+        $builder = Builder::factory()->create();
+        $plan = Plan::factory()
+            ->withProjectLimit(10)
+            ->withAiProvider($provider)
+            ->withBuilder($builder)
+            ->create();
+        $user = User::factory()->withPlan($plan)->create();
+
+        $response = $this->actingAs($user)
+            ->withHeader('X-Inertia', 'true')
+            ->post(route('projects.generate-website'), [
+                'prompt' => 'Create a premium website for a vet clinic',
+            ]);
+
+        $project = Project::query()->where('user_id', $user->id)->latest('created_at')->firstOrFail();
+        $response->assertStatus(409);
+        $response->assertHeader('X-Inertia-Location', route('chat', ['project' => $project]));
+
+        $run = ProjectGenerationRun::query()
+            ->where('project_id', $project->id)
+            ->latest('created_at')
+            ->firstOrFail();
+
+        $this->assertSame(ProjectGenerationRun::STATUS_QUEUED, $run->status);
+        $this->assertSame('Create a premium website for a vet clinic', $project->initial_prompt);
+        $this->assertSame('Create a premium website for a vet clinic', $run->requested_prompt);
+        $this->assertSame('Create a premium website for a vet clinic', data_get($run->requested_input, 'prompt'));
+        $this->assertNull(data_get($run->requested_input, 'template_id'));
+        $this->assertNull($project->template_id);
     }
 
     public function test_generation_status_endpoint_returns_latest_run_payload(): void
@@ -134,10 +173,12 @@ class GenerateWebsiteControllerTest extends TestCase
             ->assertJsonPath('generation.status', ProjectGenerationRun::STATUS_WRITING_FILES)
             ->assertJsonPath('generation.is_active', true)
             ->assertJsonPath('generation.ready_for_builder', false)
+            ->assertJsonPath('generation.project_generation_version', (string) $run->id)
+            ->assertJsonPath('generation.source_generation_type', 'new')
             ->assertJsonPath('generation.progress_message', 'Writing project files to the workspace.');
     }
 
-    public function test_chat_page_blocks_preview_until_generation_finishes(): void
+    public function test_generation_page_renders_progress_screen_until_generation_finishes(): void
     {
         $provider = AiProvider::factory()->openai()->create();
         $builder = Builder::factory()->create();
@@ -160,16 +201,50 @@ class GenerateWebsiteControllerTest extends TestCase
             'started_at' => now(),
         ]);
 
+        $response = $this->actingAs($user)->get(route('project.generation', $project));
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Project/Generation')
+            ->where('project.id', (string) $project->id)
+            ->where('generation.id', (string) $run->id)
+            ->where('generation.status', ProjectGenerationRun::STATUS_BUILDING_PREVIEW)
+            ->where('generation.is_active', true)
+            ->where('generation.ready_for_builder', false)
+            ->where('builderUrl', route('chat', $project))
+        );
+    }
+
+    public function test_chat_route_renders_workspace_generation_progress_while_build_is_unfinished(): void
+    {
+        $provider = AiProvider::factory()->openai()->create();
+        $builder = Builder::factory()->create();
+        $plan = Plan::factory()
+            ->withProjectLimit(10)
+            ->withAiProvider($provider)
+            ->withBuilder($builder)
+            ->create();
+        $user = User::factory()->withPlan($plan)->create();
+        $project = Project::factory()->for($user)->create([
+            'initial_prompt' => 'Create a yoga studio website',
+        ]);
+
+        ProjectGenerationRun::query()->create([
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'status' => ProjectGenerationRun::STATUS_BUILDING_PREVIEW,
+            'requested_prompt' => 'Create a yoga studio website',
+            'progress_message' => 'Rendering the preview and validating the workspace.',
+            'started_at' => now(),
+        ]);
+
         $response = $this->actingAs($user)->get(route('chat', $project));
 
         $response->assertInertia(fn (Assert $page) => $page
             ->component('Chat')
-            ->where('project.cms_preview_url', null)
-            ->where('generatedPages', [])
-            ->where('project.generation.id', (string) $run->id)
+            ->where('project.id', (string) $project->id)
             ->where('project.generation.status', ProjectGenerationRun::STATUS_BUILDING_PREVIEW)
-            ->where('project.generation.is_active', true)
             ->where('project.generation.ready_for_builder', false)
+            ->where('project.generation.progress_message', 'Rendering the preview and validating the workspace.')
         );
     }
 
@@ -232,12 +307,14 @@ class GenerateWebsiteControllerTest extends TestCase
             ->assertJsonPath('generation.status', ProjectGenerationRun::STATUS_READY)
             ->assertJsonPath('generation.is_active', false)
             ->assertJsonPath('generation.ready_for_builder', true)
+            ->assertJsonPath('generation.project_generation_version', (string) $run->id)
+            ->assertJsonPath('generation.preview_build_id', (string) $run->id)
             ->assertJsonPath('generation.workspace_manifest_exists', true)
             ->assertJsonPath('generation.workspace_preview_ready', true)
             ->assertJsonPath('generation.workspace_preview_phase', ProjectGenerationRun::STATUS_READY);
     }
 
-    public function test_chat_page_keeps_preview_frozen_until_ready_manifest_exists(): void
+    public function test_generation_page_stays_active_when_run_is_ready_but_manifest_is_not_ready(): void
     {
         $provider = AiProvider::factory()->openai()->create();
         $builder = Builder::factory()->create();
@@ -252,8 +329,6 @@ class GenerateWebsiteControllerTest extends TestCase
         ]);
         File::deleteDirectory(storage_path('workspaces/'.$project->id));
 
-        app(SiteProvisioningService::class)->provisionForProject($project);
-
         $run = ProjectGenerationRun::query()->create([
             'project_id' => $project->id,
             'user_id' => $user->id,
@@ -262,16 +337,124 @@ class GenerateWebsiteControllerTest extends TestCase
             'completed_at' => now(),
         ]);
 
-        $response = $this->actingAs($user)->get(route('chat', $project));
+        $response = $this->actingAs($user)->get(route('project.generation', $project));
 
         $response->assertInertia(fn (Assert $page) => $page
+            ->component('Project/Generation')
+            ->where('generation.id', (string) $run->id)
+            ->where('generation.status', ProjectGenerationRun::STATUS_READY)
+            ->where('generation.ready_for_builder', false)
+            ->where('generation.workspace_preview_ready', false)
+        );
+    }
+
+    public function test_generation_page_only_enters_resume_draft_mode_when_requested_explicitly(): void
+    {
+        $provider = AiProvider::factory()->openai()->create();
+        $builder = Builder::factory()->create();
+        $plan = Plan::factory()
+            ->withProjectLimit(10)
+            ->withAiProvider($provider)
+            ->withBuilder($builder)
+            ->create();
+        $user = User::factory()->withPlan($plan)->create();
+        $project = Project::factory()->for($user)->create([
+            'initial_prompt' => 'Create a premium fitness studio website',
+        ]);
+
+        ProjectGenerationRun::query()->create([
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'status' => ProjectGenerationRun::STATUS_BUILDING_PREVIEW,
+            'requested_prompt' => 'Create a premium fitness studio website',
+            'started_at' => now(),
+        ]);
+
+        File::ensureDirectoryExists(storage_path('app/private/previews'));
+        File::put(storage_path('app/private/previews/'.$project->id), 'preview');
+
+        $defaultResponse = $this->actingAs($user)->get(route('project.generation', $project));
+        $defaultResponse->assertInertia(fn (Assert $page) => $page
+            ->component('Project/Generation')
+            ->where('resumeDraftAvailable', true)
+            ->where('resumeDraftMode', false)
+            ->where('resumeDraftPreviewUrl', null)
+        );
+
+        $resumeResponse = $this->actingAs($user)->get(route('project.generation', [
+            'project' => $project,
+            'resume_draft' => 1,
+        ]));
+
+        $resumeResponse->assertInertia(fn (Assert $page) => $page
+            ->component('Project/Generation')
+            ->where('resumeDraftAvailable', true)
+            ->where('resumeDraftMode', true)
+            ->where('resumeDraftPreviewUrl', "/preview/{$project->id}")
+        );
+    }
+
+    public function test_ready_generation_does_not_reenter_initial_blocking_state_after_workspace_edits(): void
+    {
+        $provider = AiProvider::factory()->openai()->create();
+        $builder = Builder::factory()->create();
+        $plan = Plan::factory()
+            ->withProjectLimit(10)
+            ->withAiProvider($provider)
+            ->withBuilder($builder)
+            ->create();
+        $user = User::factory()->withPlan($plan)->create();
+        $project = Project::factory()->for($user)->create([
+            'initial_prompt' => 'Create an online fashion store',
+        ]);
+
+        app(SiteProvisioningService::class)->provisionForProject($project);
+
+        $run = ProjectGenerationRun::query()->create([
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'status' => ProjectGenerationRun::STATUS_READY,
+            'requested_prompt' => 'Create an online fashion store',
+            'completed_at' => now(),
+        ]);
+
+        $workspace = app(ProjectWorkspaceService::class);
+        $workspace->syncInitialGenerationState($project, [
+            'active_generation_run_id' => (string) $run->id,
+            'phase' => ProjectGenerationRun::STATUS_READY,
+        ]);
+
+        $existingStyles = $workspace->readFile($project, 'src/styles/globals.css') ?? '';
+        $workspace->writeFile(
+            $project,
+            'src/styles/globals.css',
+            $existingStyles."\n/* visual builder change */\n",
+            [
+                'actor' => 'visual_builder',
+                'source' => 'feature_test',
+            ]
+        );
+
+        $statusResponse = $this->actingAs($user)
+            ->getJson(route('project.generation.status', $project));
+
+        $statusResponse
+            ->assertOk()
+            ->assertJsonPath('generation.status', ProjectGenerationRun::STATUS_READY)
+            ->assertJsonPath('generation.ready_for_builder', true)
+            ->assertJsonPath('generation.workspace_preview_ready', false)
+            ->assertJsonPath('generation.workspace_preview_phase', ProjectGenerationRun::STATUS_BUILDING_PREVIEW);
+
+        $chatResponse = $this->actingAs($user)->get(route('chat', $project));
+
+        $chatResponse->assertInertia(fn (Assert $page) => $page
             ->component('Chat')
-            ->where('project.cms_preview_url', null)
-            ->where('generatedPages', [])
-            ->where('project.generation.id', (string) $run->id)
             ->where('project.generation.status', ProjectGenerationRun::STATUS_READY)
-            ->where('project.generation.ready_for_builder', false)
+            ->where('project.generation.ready_for_builder', true)
             ->where('project.generation.workspace_preview_ready', false)
+            ->where('project.generation.workspace_preview_phase', ProjectGenerationRun::STATUS_BUILDING_PREVIEW)
+            ->where('project.cms_preview_url', fn ($value) => is_string($value) && $value !== '')
+            ->where('generatedPages.0.slug', 'home')
         );
     }
 

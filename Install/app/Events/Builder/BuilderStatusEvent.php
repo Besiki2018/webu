@@ -33,6 +33,8 @@ class BuilderStatusEvent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
+            'session_id' => $this->sessionId,
+            'build_id' => $this->sessionId,
             'status' => $this->status,
             'message' => $this->message,
         ];

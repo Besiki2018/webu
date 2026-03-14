@@ -21,6 +21,14 @@ describe('imageSelector', () => {
         })).toBe('portrait');
     });
 
+    it('uses component image slot metadata for logo orientation', () => {
+        expect(inferStockImageOrientation({
+            fieldLabel: 'Logo image',
+            componentKey: 'webu_header_01',
+            fieldPath: 'logo_url',
+        })).toBe('square');
+    });
+
     it('builds contextual search queries for gallery fields', () => {
         expect(inferStockImageQuery({
             fieldLabel: 'Gallery Image',
@@ -31,6 +39,7 @@ describe('imageSelector', () => {
     it('builds import context for visual builder usage', () => {
         expect(buildStockImageImportContext('project-1', {
             fieldLabel: 'Hero Image',
+            fieldPath: 'image',
             componentKey: 'webu_general_hero_01',
             sectionLocalId: 'hero-1',
             pageSlug: 'home',
@@ -39,8 +48,18 @@ describe('imageSelector', () => {
             imported_by: 'visual_builder',
             section_local_id: 'hero-1',
             component_key: 'webu_general_hero_01',
+            prop_path: 'image',
             page_slug: 'home',
             query: 'modern business',
         });
+    });
+
+    it('uses wildcard component image slots when building card image queries', () => {
+        expect(inferStockImageQuery({
+            fieldLabel: 'Cards 1 / Image',
+            fieldPath: 'items.0.image',
+            componentKey: 'webu_general_cards_01',
+            projectName: 'Veterinary Clinic',
+        })).toBe('Veterinary Clinic service photo');
     });
 });

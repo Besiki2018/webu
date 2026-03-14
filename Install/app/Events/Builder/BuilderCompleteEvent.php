@@ -41,6 +41,8 @@ class BuilderCompleteEvent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
+            'session_id' => $this->sessionId,
+            'build_id' => $this->sessionId,
             'iterations' => $this->iterations,
             'tokens_used' => $this->tokensUsed,
             'files_changed' => $this->filesChanged,

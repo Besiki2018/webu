@@ -633,7 +633,22 @@ html[data-webu-chat-inspect="true"] [role="button"] {
         }
 
         let rafId = 0;
+        let reconnectRafId = 0;
+        let isApplyingAnnotations = false;
+        let observer: MutationObserver | null = null;
+        const observeMutations = () => {
+            observer?.observe(root, {
+                childList: true,
+                subtree: true,
+                characterData: true,
+            });
+        };
         const applyAnnotations = () => {
+            if (isApplyingAnnotations) {
+                return;
+            }
+            isApplyingAnnotations = true;
+            observer?.disconnect();
             applyPreviewAnnotationEngine({
                 iframeDoc,
                 liveStructureItems,
@@ -641,25 +656,27 @@ html[data-webu-chat-inspect="true"] [role="button"] {
                 onRenderSync: reconcileLivePreviewSections,
                 onPlaceholderReconcile: reconcilePreviewPlaceholders,
             });
+            reconnectRafId = window.requestAnimationFrame(() => {
+                isApplyingAnnotations = false;
+                observeMutations();
+            });
         };
 
-        applyAnnotations();
-
-        const observer = new MutationObserver(() => {
+        observer = new MutationObserver(() => {
+            if (isApplyingAnnotations) {
+                return;
+            }
             window.cancelAnimationFrame(rafId);
             rafId = window.requestAnimationFrame(() => {
                 applyAnnotations();
             });
         });
 
-        observer.observe(root, {
-            childList: true,
-            subtree: true,
-            characterData: true,
-        });
+        applyAnnotations();
 
         return () => {
             window.cancelAnimationFrame(rafId);
+            window.cancelAnimationFrame(reconnectRafId);
             observer.disconnect();
         };
     }, [iframeReady, liveStructureItems, reconcileLivePreviewSections, reconcilePreviewPlaceholders, selectionEnabled]);

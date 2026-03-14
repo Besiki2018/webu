@@ -89,6 +89,9 @@ export function applyLivePreviewValueToNode(
     const urlLikeKey = attribute === 'data-webu-field-url' || /(url|href|link|src|image|logo)/i.test(keyLower);
     const setTextContent = (text: string) => {
         if (!(node instanceof HTMLElement)) {
+            if ((node.textContent ?? '') === text) {
+                return;
+            }
             node.textContent = text;
             return;
         }
@@ -96,6 +99,9 @@ export function applyLivePreviewValueToNode(
         const preferredTextNode = node.children.length === 1 && node.firstElementChild instanceof HTMLElement
             ? node.firstElementChild
             : node;
+        if ((preferredTextNode.textContent ?? '') === text) {
+            return;
+        }
         preferredTextNode.textContent = text;
     };
 

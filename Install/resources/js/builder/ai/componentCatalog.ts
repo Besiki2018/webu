@@ -43,9 +43,17 @@ export interface AiComponentCatalogEntry {
     category: AiComponentCategory;
     projectTypesAllowed: AiProjectType[];
     layoutType: AiComponentLayoutType;
+    sectionType: string;
+    categoryTags: string[];
+    styleTags: string[];
+    priorityScore: number;
     propsSchema: BuilderFieldDefinition[];
     defaultProps: Record<string, unknown>;
     variants: AiComponentVariantOption[];
+    responsiveEnabled: boolean;
+    supportsResponsiveOverrides: boolean;
+    supportsVisibility: boolean;
+    capabilities: string[];
 }
 
 function normalizeCategory(category: string): AiComponentCategory {
@@ -142,9 +150,17 @@ function buildCatalogEntry(componentKey: string): AiComponentCatalogEntry | null
         category,
         projectTypesAllowed: inferProjectTypesAllowed(runtimeEntry.schema, category),
         layoutType: inferLayoutType(runtimeEntry.componentKey, runtimeEntry.schema),
+        sectionType: runtimeEntry.schema.sectionType ?? inferLayoutType(runtimeEntry.componentKey, runtimeEntry.schema),
+        categoryTags: [...(runtimeEntry.schema.categoryTags ?? [])],
+        styleTags: [...(runtimeEntry.schema.styleTags ?? [])],
+        priorityScore: typeof runtimeEntry.schema.priorityScore === 'number' ? runtimeEntry.schema.priorityScore : 0,
         propsSchema: runtimeEntry.schema.fields,
         defaultProps: runtimeEntry.defaults,
         variants: extractVariantOptions(runtimeEntry.schema),
+        responsiveEnabled: runtimeEntry.schema.responsiveSupport?.enabled ?? runtimeEntry.schema.responsive !== false,
+        supportsResponsiveOverrides: runtimeEntry.schema.responsiveSupport?.supportsResponsiveOverrides ?? false,
+        supportsVisibility: runtimeEntry.schema.responsiveSupport?.supportsVisibility ?? false,
+        capabilities: [...(runtimeEntry.schema.capabilities ?? [])],
     };
 }
 

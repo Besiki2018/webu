@@ -40,16 +40,9 @@ class UltraCheapCopyBank
      */
     public function fillSectionContent(string $sectionType, array $defaultContent, array $copy, string $brandName = ''): array
     {
-        $out = $defaultContent;
         $brand = $brandName ?: 'My Brand';
-        foreach ($out as $key => $val) {
-            if (! is_string($val) || $val === '') {
-                $replacement = $this->pickForSectionKey($key, $sectionType, $copy);
-                if ($replacement !== null) {
-                    $out[$key] = str_replace(['{Brand}', '{brand}'], $brand, $replacement);
-                }
-            }
-        }
+        $out = $this->fillValue($defaultContent, $sectionType, $copy, $brand);
+
         if (isset($out['title']) && ($out['title'] === '' || $out['title'] === null)) {
             $out['title'] = str_replace('{Brand}', $brand, $this->pickOne($copy['hero_headlines'] ?? ['Welcome']));
         }
@@ -69,12 +62,54 @@ class UltraCheapCopyBank
         return $out;
     }
 
+    /**
+     * @return array<string, mixed>|array<int, mixed>|string|int|float|bool|null
+     */
+    private function fillValue(mixed $value, string $sectionType, array $copy, string $brand, string $key = '')
+    {
+        if (is_array($value)) {
+            $filled = [];
+
+            foreach ($value as $nestedKey => $nestedValue) {
+                $filled[$nestedKey] = $this->fillValue(
+                    $nestedValue,
+                    $sectionType,
+                    $copy,
+                    $brand,
+                    is_string($nestedKey) ? $nestedKey : $key
+                );
+            }
+
+            return $filled;
+        }
+
+        if (! is_string($value) || $value !== '') {
+            return $value;
+        }
+
+        $replacement = $this->pickForSectionKey($key, $sectionType, $copy);
+        if ($replacement === null) {
+            return $value;
+        }
+
+        return str_replace(['{Brand}', '{brand}'], $brand, $replacement);
+    }
+
     private function pickForSectionKey(string $key, string $sectionType, array $copy): ?string
     {
+        if ($key === 'link' || $key === 'buttonLink' || $key === 'button_url' || $key === 'buttonUrl' || $key === 'cta_url' || $key === 'ctaUrl') {
+            return str_contains($sectionType, 'ecom') ? '/shop' : '/contact';
+        }
+        if ($key === 'author' || $key === 'name' || $key === 'user_name') {
+            return $this->pickOne(['Satisfied client', 'Returning guest', 'Happy customer']);
+        }
+        if ($key === 'role') {
+            return $this->pickOne(['Client', 'Customer', 'Visitor']);
+        }
         if ($key === 'title' || $key === 'headline' || $key === 'heading') {
             return $this->pickOne($copy['hero_headlines'] ?? $copy['about_lines'] ?? null);
         }
-        if ($key === 'subtitle' || $key === 'body' || $key === 'description') {
+        if ($key === 'subtitle' || $key === 'body' || $key === 'description' || $key === 'quote' || $key === 'text') {
             return $this->pickOne($copy['about_lines'] ?? $copy['service_descriptions'] ?? null);
         }
         if (str_contains($key, 'button') || str_contains($key, 'cta')) {

@@ -13,6 +13,18 @@ class ProjectGenerationRun extends Model
 
     public const STATUS_QUEUED = 'queued';
 
+    public const STATUS_ANALYZING_PROMPT = 'analyzing_prompt';
+
+    public const STATUS_PLANNING_STRUCTURE = 'planning_structure';
+
+    public const STATUS_SELECTING_COMPONENTS = 'selecting_components';
+
+    public const STATUS_GENERATING_CONTENT = 'generating_content';
+
+    public const STATUS_ASSEMBLING_PAGE = 'assembling_page';
+
+    public const STATUS_RENDERING_PREVIEW = 'rendering_preview';
+
     public const STATUS_PLANNING = 'planning';
 
     public const STATUS_GENERATING = 'generating';
@@ -86,6 +98,12 @@ class ProjectGenerationRun extends Model
     {
         return [
             self::STATUS_QUEUED,
+            self::STATUS_ANALYZING_PROMPT,
+            self::STATUS_PLANNING_STRUCTURE,
+            self::STATUS_SELECTING_COMPONENTS,
+            self::STATUS_GENERATING_CONTENT,
+            self::STATUS_ASSEMBLING_PAGE,
+            self::STATUS_RENDERING_PREVIEW,
             self::STATUS_PLANNING,
             self::STATUS_GENERATING,
             self::STATUS_FINALIZING,

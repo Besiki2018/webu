@@ -106,12 +106,63 @@ class AssetProviderControllerTest extends TestCase
         $this->assertSame(['unsplash', 'pexels', 'freepik'], array_column($results, 'provider'));
     }
 
-    public function test_asset_search_returns_a_clear_error_when_provider_configuration_is_missing(): void
+    public function test_asset_search_falls_back_to_remaining_providers_when_one_provider_is_misconfigured(): void
     {
         config()->set('services.unsplash.access_key', null);
         config()->set('services.unsplash.secret_key', null);
         config()->set('services.pexels.key', 'test-pexels');
         config()->set('services.freepik.key', 'test-freepik');
+
+        Http::fake([
+            'https://api.pexels.com/v1/search*' => Http::response([
+                'photos' => [[
+                    'id' => 22,
+                    'alt' => 'vet clinic waiting room',
+                    'width' => 1600,
+                    'height' => 1100,
+                    'src' => [
+                        'medium' => 'https://images.pexels.com/photos/22/medium.jpeg',
+                        'large' => 'https://images.pexels.com/photos/22/large.jpeg',
+                        'original' => 'https://images.pexels.com/photos/22/original.jpeg',
+                    ],
+                    'photographer' => 'Pexels Author',
+                ]],
+            ], 200),
+            'https://api.freepik.com/v1/resources*' => Http::response([
+                'data' => [[
+                    'id' => 'fp-1',
+                    'title' => 'vet illustration',
+                    'author' => [
+                        'name' => 'Freepik Author',
+                    ],
+                    'image' => [
+                        'source' => [
+                            'url' => 'https://img.freepik.com/free-vector/vet-illustration.jpg',
+                            'width' => 1200,
+                            'height' => 1200,
+                        ],
+                    ],
+                ]],
+            ], 200),
+        ]);
+
+        $user = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($user)->postJson('/api/assets/search', [
+            'query' => 'veterinary clinic',
+            'limit' => 6,
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(['pexels', 'freepik'], array_column($response->json('results'), 'provider'));
+    }
+
+    public function test_asset_search_returns_a_clear_error_when_no_provider_is_configured(): void
+    {
+        config()->set('services.unsplash.access_key', null);
+        config()->set('services.unsplash.secret_key', null);
+        config()->set('services.pexels.key', null);
+        config()->set('services.freepik.key', null);
 
         $user = User::factory()->create(['role' => 'admin']);
 
@@ -148,6 +199,7 @@ class AssetProviderControllerTest extends TestCase
             'license' => 'Pexels License',
             'section_local_id' => 'hero-1',
             'component_key' => 'webu_general_hero_01',
+            'prop_path' => 'image',
             'page_slug' => 'home',
         ]);
 
@@ -156,7 +208,8 @@ class AssetProviderControllerTest extends TestCase
             ->assertJsonPath('media.site_id', (string) $site->id)
             ->assertJsonPath('media.meta_json.stock_provider', 'pexels')
             ->assertJsonPath('media.meta_json.stock_image_id', 'pexels-asset-1')
-            ->assertJsonPath('media.meta_json.section_local_id', 'hero-1');
+            ->assertJsonPath('media.meta_json.section_local_id', 'hero-1')
+            ->assertJsonPath('media.meta_json.prop_path', 'image');
 
         $path = (string) $response->json('media.path');
         Storage::disk('public')->assertExists($path);

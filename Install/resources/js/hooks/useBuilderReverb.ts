@@ -6,11 +6,15 @@ import type { Channel } from 'pusher-js';
 export interface StatusEvent {
     status: string;
     message: string;
+    session_id?: string | null;
+    build_id?: string | null;
 }
 
 export interface ThinkingEvent {
     content: string;
     iteration: number;
+    session_id?: string | null;
+    build_id?: string | null;
 }
 
 
@@ -19,12 +23,16 @@ export interface ActionEvent {
     target: string;
     details: string;
     category: string;
+    session_id?: string | null;
+    build_id?: string | null;
 }
 
 export interface ToolCallEvent {
     id: string;
     tool: string;
     params: Record<string, unknown>;
+    session_id?: string | null;
+    build_id?: string | null;
 }
 
 export interface ToolResultEvent {
@@ -34,14 +42,20 @@ export interface ToolResultEvent {
     output: string;
     duration_ms?: number;
     iteration?: number;
+    session_id?: string | null;
+    build_id?: string | null;
 }
 
 export interface MessageEvent {
     content: string;
+    session_id?: string | null;
+    build_id?: string | null;
 }
 
 export interface ErrorEvent {
     error: string;
+    session_id?: string | null;
+    build_id?: string | null;
 }
 
 export interface CompleteEvent {
@@ -55,6 +69,8 @@ export interface CompleteEvent {
     prompt_tokens?: number;
     completion_tokens?: number;
     model?: string;
+    session_id?: string | null;
+    build_id?: string | null;
 }
 
 export interface SummarizationCompleteEvent {

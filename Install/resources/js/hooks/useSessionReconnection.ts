@@ -24,6 +24,7 @@ export interface UseSessionReconnectionReturn {
     sessionIsActive: boolean;
     checkSessionStatus: () => Promise<SessionStatus | null>;
     reconnect: () => Promise<void>;
+    reset: () => void;
 }
 
 export function useSessionReconnection(
@@ -157,6 +158,22 @@ export function useSessionReconnection(
         };
     }, []);
 
+    const reset = useCallback(() => {
+        const timeout = reconnectTimeoutRef.current;
+        if (timeout) {
+            clearTimeout(timeout);
+            reconnectTimeoutRef.current = undefined;
+        }
+
+        hasAttemptedReconnectRef.current = false;
+        statusCheckInFlightRef.current = false;
+        statusCheckBackoffUntilRef.current = 0;
+        setReconnectAttempt(0);
+        setIsReconnecting(false);
+        setReconnectError(null);
+        setSessionIsActive(false);
+    }, []);
+
     return {
         reconnectAttempt,
         isReconnecting,
@@ -164,5 +181,6 @@ export function useSessionReconnection(
         sessionIsActive,
         checkSessionStatus,
         reconnect,
+        reset,
     };
 }

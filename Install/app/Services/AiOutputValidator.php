@@ -17,8 +17,17 @@ class AiOutputValidator
      * @var array<int, string>
      */
     protected const KNOWN_SECTION_KEYS = [
+        'webu_header_01',
+        'webu_footer_01',
+        'webu_general_hero_01',
+        'webu_general_features_01',
+        'webu_general_cards_01',
+        'webu_general_grid_01',
+        'webu_general_cta_01',
         'webu_general_heading_01',
         'webu_general_text_01',
+        'webu_general_banner_01',
+        'webu_general_form_wrapper_01',
         'webu_general_testimonials_01',
         'webu_general_newsletter_01',
         'webu_general_cta_banner_01',

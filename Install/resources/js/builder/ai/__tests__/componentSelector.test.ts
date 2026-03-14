@@ -39,6 +39,21 @@ describe('componentSelector', () => {
       expect(['hero-1', 'hero-2']).toContain(v);
     });
 
+    it('changes hero variant based on industry when tone alone is not enough', () => {
+      const medical = selectVariant('webu_general_hero_01', {
+        ...baseContext,
+        tone: 'modern',
+        industry: 'vet clinic',
+      });
+      const creative = selectVariant('webu_general_hero_01', {
+        ...baseContext,
+        tone: 'modern',
+        industry: 'creative studio',
+      });
+
+      expect(medical).not.toBe(creative);
+    });
+
     it('avoids duplicate when alreadyUsedVariantsByComponent is set', () => {
       const used = new Set<string>(['hero-3']);
       const ctx: ComponentSelectionContext = {

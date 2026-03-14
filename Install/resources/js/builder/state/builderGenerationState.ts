@@ -1,34 +1,58 @@
 export type BuilderGenerationState =
     | 'idle'
-    | 'queued'
-    | 'planning'
-    | 'scaffolding'
-    | 'writing_files'
-    | 'building_preview'
-    | 'ready'
+    | 'analyzing_prompt'
+    | 'planning_structure'
+    | 'selecting_components'
+    | 'generating_content'
+    | 'assembling_page'
+    | 'rendering_preview'
+    | 'completed'
     | 'failed';
 
 export interface BuilderGenerationStep {
-    key: Extract<BuilderGenerationState, 'planning' | 'scaffolding' | 'writing_files' | 'building_preview'>;
+    key: Extract<
+        BuilderGenerationState,
+        'analyzing_prompt'
+        | 'planning_structure'
+        | 'selecting_components'
+        | 'generating_content'
+        | 'assembling_page'
+        | 'rendering_preview'
+    >;
     label: string;
 }
 
+export interface ResolveBuilderGenerationStateOptions {
+    readyForBuilder?: boolean;
+}
+
 export const BUILDER_GENERATION_STEPS: BuilderGenerationStep[] = [
-    { key: 'planning', label: 'Planning' },
-    { key: 'scaffolding', label: 'Generating site structure' },
-    { key: 'writing_files', label: 'Writing files' },
-    { key: 'building_preview', label: 'Building preview' },
+    { key: 'analyzing_prompt', label: 'Analyzing prompt' },
+    { key: 'planning_structure', label: 'Planning structure' },
+    { key: 'selecting_components', label: 'Selecting components' },
+    { key: 'generating_content', label: 'Generating content' },
+    { key: 'assembling_page', label: 'Assembling page' },
+    { key: 'rendering_preview', label: 'Rendering preview' },
 ];
 
 export function isBuilderGenerationBlocking(state: BuilderGenerationState): boolean {
-    return state !== 'ready' && state !== 'failed';
+    return state !== 'completed' && state !== 'failed';
 }
 
 export function getBuilderGenerationStepStatus(
     state: BuilderGenerationState,
     step: BuilderGenerationStep['key'],
 ): 'pending' | 'active' | 'complete' {
-    const order: BuilderGenerationState[] = ['idle', 'queued', 'planning', 'scaffolding', 'writing_files', 'building_preview', 'ready'];
+    const order: BuilderGenerationState[] = [
+        'idle',
+        'analyzing_prompt',
+        'planning_structure',
+        'selecting_components',
+        'generating_content',
+        'assembling_page',
+        'rendering_preview',
+        'completed',
+    ];
     const currentIndex = order.indexOf(state);
     const stepIndex = order.indexOf(step);
 
@@ -36,7 +60,7 @@ export function getBuilderGenerationStepStatus(
         return 'pending';
     }
 
-    if (state === 'ready' || currentIndex > stepIndex) {
+    if (state === 'completed' || currentIndex > stepIndex) {
         return 'complete';
     }
 
@@ -49,17 +73,19 @@ export function getBuilderGenerationStepStatus(
 
 export function getBuilderGenerationHeadline(state: BuilderGenerationState): string {
     switch (state) {
-        case 'queued':
-            return 'Preparing your website...';
-        case 'planning':
-            return 'Planning your website...';
-        case 'scaffolding':
-            return 'Generating your site structure...';
-        case 'writing_files':
-            return 'Writing your project files...';
-        case 'building_preview':
-            return 'Building your preview...';
-        case 'ready':
+        case 'analyzing_prompt':
+            return 'Analyzing your prompt...';
+        case 'planning_structure':
+            return 'Planning the structure...';
+        case 'selecting_components':
+            return 'Selecting components...';
+        case 'generating_content':
+            return 'Generating content...';
+        case 'assembling_page':
+            return 'Assembling the page...';
+        case 'rendering_preview':
+            return 'Rendering the preview...';
+        case 'completed':
             return 'Website ready';
         case 'failed':
             return 'Website generation failed';
@@ -71,17 +97,19 @@ export function getBuilderGenerationHeadline(state: BuilderGenerationState): str
 
 export function getBuilderGenerationDefaultProgressMessage(state: BuilderGenerationState): string {
     switch (state) {
-        case 'queued':
-            return 'Preparing generation.';
-        case 'planning':
-            return 'Understanding your website brief.';
-        case 'scaffolding':
-            return 'Generating the site structure and content.';
-        case 'writing_files':
-            return 'Writing project files to the workspace.';
-        case 'building_preview':
-            return 'Building the preview and validating workspace readiness.';
-        case 'ready':
+        case 'analyzing_prompt':
+            return 'Analyzing your prompt.';
+        case 'planning_structure':
+            return 'Planning the site structure.';
+        case 'selecting_components':
+            return 'Selecting the best components for the blueprint.';
+        case 'generating_content':
+            return 'Generating content for every section.';
+        case 'assembling_page':
+            return 'Assembling the page tree and writing files.';
+        case 'rendering_preview':
+            return 'Rendering the preview and validating workspace readiness.';
+        case 'completed':
             return 'Website ready.';
         case 'failed':
             return 'We could not finish creating this website.';
@@ -91,27 +119,40 @@ export function getBuilderGenerationDefaultProgressMessage(state: BuilderGenerat
     }
 }
 
-export function resolveBuilderGenerationState(status?: string | null): BuilderGenerationState {
+export function resolveBuilderGenerationState(
+    status?: string | null,
+    options: ResolveBuilderGenerationStateOptions = {},
+): BuilderGenerationState {
+    if (options.readyForBuilder) {
+        return 'completed';
+    }
+
     switch ((status ?? '').trim().toLowerCase()) {
         case 'queued':
-            return 'queued';
         case 'planning':
-            return 'planning';
+        case 'analyzing_prompt':
+            return 'analyzing_prompt';
+        case 'planning_structure':
         case 'scaffolding':
         case 'generating':
         case 'generating_structure':
         case 'generating_site_structure':
-            return 'scaffolding';
+            return 'planning_structure';
+        case 'selecting_components':
+            return 'selecting_components';
+        case 'generating_content':
+            return 'generating_content';
+        case 'assembling_page':
         case 'writing_files':
-            return 'writing_files';
+            return 'assembling_page';
+        case 'rendering_preview':
         case 'building_preview':
         case 'finalizing':
         case 'installing':
-            return 'building_preview';
         case 'ready':
         case 'completed':
         case 'complete':
-            return 'ready';
+            return 'rendering_preview';
         case 'failed':
             return 'failed';
         default:

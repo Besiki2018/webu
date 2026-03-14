@@ -1,8 +1,13 @@
 import type { AiEditIntent } from '@/builder/ai/editIntentRouter';
+import { getNestedSectionAtPath } from '@/builder/cms/nestedSectionTree';
 import type { BuilderUpdateOperation } from '@/builder/state/updatePipeline';
 import type { SectionDraft } from '@/builder/state/useBuilderCanvasState';
 
-import { classifyCmsFieldOwner } from './contentAuthorityRules';
+import {
+    classifyCmsFieldOwner,
+    findComponentFieldDefinition,
+    normalizeCmsFieldPath,
+} from './contentAuthorityRules';
 import type { CmsEditRoute, RoutedCmsEdit } from './types';
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
@@ -38,6 +43,27 @@ function flattenPatchPaths(value: unknown, prefix = ''): string[] {
     });
 }
 
+function resolveOperationFieldOwner(
+    section: SectionDraft | null,
+    path: string,
+    nestedSectionPath?: number[],
+) {
+    if (!section) {
+        return 'mixed' as const;
+    }
+
+    const normalizedPath = normalizeCmsFieldPath(path);
+    const nestedSection = Array.isArray(nestedSectionPath) && nestedSectionPath.length > 0
+        ? getNestedSectionAtPath(section.props ?? {}, nestedSectionPath)
+        : null;
+    const registryKey = nestedSection?.type ?? section.type;
+    const fieldDefinition = registryKey
+        ? findComponentFieldDefinition(registryKey, normalizedPath)
+        : null;
+
+    return classifyCmsFieldOwner(normalizedPath, fieldDefinition);
+}
+
 function resolveOperationRoute(
     operation: BuilderUpdateOperation,
     sectionsByLocalId: Map<string, SectionDraft>,
@@ -59,8 +85,8 @@ function resolveOperationRoute(
         case 'set-field':
         case 'unset-field': {
             const section = sectionsByLocalId.get(operation.sectionLocalId);
-            const path = Array.isArray(operation.path) ? operation.path.join('.') : operation.path;
-            const owner = section ? classifyCmsFieldOwner(path, null) : 'mixed';
+            const path = normalizeCmsFieldPath(operation.path);
+            const owner = resolveOperationFieldOwner(section ?? null, path, operation.nestedSectionPath);
             return {
                 route: owner === 'cms'
                     ? 'content_change'
@@ -76,9 +102,9 @@ function resolveOperationRoute(
         }
         case 'merge-props': {
             const section = sectionsByLocalId.get(operation.sectionLocalId);
-            const patchPaths = flattenPatchPaths(operation.patch);
+            const patchPaths = flattenPatchPaths(operation.patch).map((path) => normalizeCmsFieldPath(path));
             const routes = patchPaths.map((path) => {
-                const owner = section ? classifyCmsFieldOwner(path, null) : 'mixed';
+                const owner = resolveOperationFieldOwner(section ?? null, path, operation.nestedSectionPath);
                 return owner === 'cms'
                     ? 'content_change'
                     : owner === 'builder_structure'
@@ -117,10 +143,22 @@ export function routeBuilderOperationsToCmsEdit(
     return {
         route,
         reasons: uniqueStrings(routed.flatMap((entry) => entry.reasons)),
-        contentFieldPaths: touchedPaths.filter((path) => classifyCmsFieldOwner(path, null) === 'cms'),
-        structureFieldPaths: touchedPaths.filter((path) => classifyCmsFieldOwner(path, null) === 'builder_structure'),
+        contentFieldPaths: touchedPaths.filter((path) => {
+            const sectionLocalId = routed.find((entry) => entry.touchedPaths.includes(path))?.sectionLocalIds[0] ?? null;
+            const section = sectionLocalId ? sectionsByLocalId.get(sectionLocalId) ?? null : null;
+
+            return resolveOperationFieldOwner(section, path) === 'cms';
+        }),
+        structureFieldPaths: touchedPaths.filter((path) => {
+            const sectionLocalId = routed.find((entry) => entry.touchedPaths.includes(path))?.sectionLocalIds[0] ?? null;
+            const section = sectionLocalId ? sectionsByLocalId.get(sectionLocalId) ?? null : null;
+
+            return resolveOperationFieldOwner(section, path) === 'builder_structure';
+        }),
         codeFieldPaths: touchedPaths.filter((path) => {
-            const owner = classifyCmsFieldOwner(path, null);
+            const sectionLocalId = routed.find((entry) => entry.touchedPaths.includes(path))?.sectionLocalIds[0] ?? null;
+            const section = sectionLocalId ? sectionsByLocalId.get(sectionLocalId) ?? null : null;
+            const owner = resolveOperationFieldOwner(section, path);
             return owner === 'code' || owner === 'mixed';
         }),
         sectionLocalIds: uniqueStrings(routed.flatMap((entry) => entry.sectionLocalIds)),

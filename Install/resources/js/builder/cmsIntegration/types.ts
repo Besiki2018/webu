@@ -3,6 +3,8 @@ export type CmsBindingSyncDirection = 'cms_to_workspace' | 'workspace_to_cms' | 
 export type CmsBindingConflictStatus = 'clean' | 'needs_workspace_sync' | 'needs_cms_sync' | 'requires_manual_merge';
 export type CmsBindingProvenanceEditor = 'ai' | 'visual_builder' | 'cms' | 'code_mode' | 'system' | 'user';
 export type CmsEditRoute = 'content_change' | 'structure_change' | 'code_change' | 'mixed_change';
+export type CmsMediaFieldOwner = 'cms' | 'builder' | 'code';
+export type CmsMediaUpdateSource = 'stock_image' | 'media_library' | 'upload' | 'manual' | 'remove';
 
 export interface CmsBindingProvenance {
     createdBy: CmsBindingProvenanceEditor;
@@ -143,4 +145,22 @@ export interface RoutedCmsEdit {
     codeFieldPaths: string[];
     sectionLocalIds: string[];
     touchedPaths: string[];
+}
+
+export interface CmsMediaBindingMetadata {
+    owner: CmsMediaFieldOwner;
+    assetUrl: string | null;
+    mediaId: string | null;
+    provider: string | null;
+    providerImageId: string | null;
+    importedBy: string | null;
+    component: string | null;
+    propPath: string;
+    qualifiedPropPath: string;
+    nestedSectionPath: number[] | null;
+    projectId: string | null;
+    sectionLocalId: string | null;
+    pageSlug: string | null;
+    source: CmsMediaUpdateSource;
+    updatedAt: string | null;
 }

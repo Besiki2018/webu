@@ -5,6 +5,19 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { ImportedStockMedia } from '@/builder/assets/stockImageTypes';
+
+interface CmsMediaControlAsset {
+    id?: number | string | null;
+    asset_url: string;
+    meta_json?: Record<string, unknown> | null;
+}
+
+interface CmsMediaValueChange {
+    assetUrl: string;
+    source: 'upload' | 'media_library' | 'stock_image' | 'manual' | 'remove';
+    media?: CmsMediaControlAsset | ImportedStockMedia | null;
+}
 
 interface CmsMediaFieldControlProps {
     t: (key: string) => string;
@@ -12,17 +25,20 @@ interface CmsMediaFieldControlProps {
     effectiveValue: string;
     isVideoField: boolean;
     onChange: (value: string) => void;
-    uploadMediaFile: (file: File) => Promise<{ asset_url: string } | null>;
+    onMediaChange?: (change: CmsMediaValueChange) => void;
+    uploadMediaFile: (file: File) => Promise<CmsMediaControlAsset | null>;
     openMediaPicker?: (options: {
         fieldLabel: string;
         mediaType: 'image' | 'video';
         currentValue: string;
         onApply?: (assetUrl: string) => void;
+        onApplyMedia?: (media: CmsMediaControlAsset) => void;
     }) => void;
     onOpenStockImageSearch?: (options: {
         fieldLabel: string;
         currentValue: string;
         onApply?: (assetUrl: string) => void;
+        onApplyMedia?: (media: ImportedStockMedia) => void;
     }) => void;
     compact?: boolean;
     pathCaption?: string;
@@ -35,6 +51,7 @@ export function CmsMediaFieldControl({
     effectiveValue,
     isVideoField,
     onChange,
+    onMediaChange,
     uploadMediaFile,
     openMediaPicker,
     onOpenStockImageSearch,
@@ -52,6 +69,15 @@ export function CmsMediaFieldControl({
         : (hasValue ? t('Replace Image') : t('Upload Image'));
     const canUseMediaLibrary = typeof openMediaPicker === 'function';
     const canUseStockSearch = !isVideoField && typeof onOpenStockImageSearch === 'function';
+
+    const applyMediaValueChange = (change: CmsMediaValueChange) => {
+        if (typeof onMediaChange === 'function') {
+            onMediaChange(change);
+            return;
+        }
+
+        onChange(change.assetUrl);
+    };
 
     const openUploadPicker = (origin: HTMLElement | null) => {
         const input = origin
@@ -75,7 +101,11 @@ export function CmsMediaFieldControl({
             return;
         }
 
-        onChange(uploaded.asset_url);
+        applyMediaValueChange({
+            assetUrl: uploaded.asset_url,
+            source: 'upload',
+            media: uploaded,
+        });
         toast.success(isVideoField ? t('Video uploaded') : t('Image uploaded'));
     };
 
@@ -101,7 +131,10 @@ export function CmsMediaFieldControl({
                 <Input
                     className={inputClassName}
                     value={effectiveValue}
-                    onChange={(event) => onChange(event.target.value)}
+                    onChange={(event) => applyMediaValueChange({
+                        assetUrl: event.target.value,
+                        source: 'manual',
+                    })}
                     placeholder="https://youtube.com/... or /storage/... video"
                 />
             ) : null}
@@ -136,7 +169,15 @@ export function CmsMediaFieldControl({
                                 fieldLabel,
                                 mediaType: isVideoField ? 'video' : 'image',
                                 currentValue: effectiveValue,
-                                onApply: (assetUrl) => onChange(assetUrl),
+                                onApply: (assetUrl) => applyMediaValueChange({
+                                    assetUrl,
+                                    source: 'media_library',
+                                }),
+                                onApplyMedia: (media) => applyMediaValueChange({
+                                    assetUrl: media.asset_url,
+                                    source: 'media_library',
+                                    media,
+                                }),
                             });
                         }}
                     >
@@ -157,11 +198,19 @@ export function CmsMediaFieldControl({
                             onOpenStockImageSearch?.({
                                 fieldLabel,
                                 currentValue: effectiveValue,
-                                onApply: (assetUrl) => onChange(assetUrl),
+                                onApply: (assetUrl) => applyMediaValueChange({
+                                    assetUrl,
+                                    source: 'stock_image',
+                                }),
+                                onApplyMedia: (media) => applyMediaValueChange({
+                                    assetUrl: media.asset_url,
+                                    source: 'stock_image',
+                                    media,
+                                }),
                             });
                         }}
                     >
-                        {t('Search Stock')}
+                        {t('Search Stock Image')}
                     </Button>
                 ) : null}
             </div>
@@ -205,7 +254,10 @@ export function CmsMediaFieldControl({
                             }}
                             onClick={(event) => {
                                 event.stopPropagation();
-                                onChange('');
+                                applyMediaValueChange({
+                                    assetUrl: '',
+                                    source: 'remove',
+                                });
                             }}
                             aria-label={t('Remove image')}
                             title={t('Remove image')}

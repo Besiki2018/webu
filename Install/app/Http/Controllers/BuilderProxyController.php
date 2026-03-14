@@ -238,6 +238,7 @@ class BuilderProxyController extends Controller
 
             return response()->json([
                 'session_id' => $result['session_id'],
+                'build_id' => $result['session_id'],
                 'builder_id' => $builder->id,
                 'builder_name' => $builder->name,
             ]);

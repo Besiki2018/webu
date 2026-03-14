@@ -56,6 +56,28 @@ function normalizeText(value: string | null | undefined): string {
     return typeof value === 'string' ? value.trim() : '';
 }
 
+export function normalizeCmsFieldPath(path: string | string[] | null | undefined): string {
+    if (Array.isArray(path)) {
+        return path
+            .map((segment) => normalizeText(String(segment)))
+            .filter((segment) => segment !== '')
+            .join('.');
+    }
+
+    return normalizeText(path)
+        .replace(/\[(\d+)\]/g, '.$1')
+        .split('.')
+        .map((segment) => normalizeText(segment))
+        .filter((segment) => segment !== '')
+        .join('.');
+}
+
+function splitPathSegments(path: string | string[] | null | undefined): string[] {
+    const normalized = normalizeCmsFieldPath(path);
+
+    return normalized === '' ? [] : normalized.split('.');
+}
+
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
     return Array.from(new Set(
         values
@@ -155,7 +177,57 @@ export function findComponentFieldDefinition(
         return null;
     }
 
-    return schema.fields.find((field) => field.path === path) ?? null;
+    const targetSegments = splitPathSegments(path);
+    const targetSegmentsWithoutIndexes = targetSegments.filter((segment) => !/^\d+$/.test(segment));
+    if (targetSegments.length === 0) {
+        return null;
+    }
+
+    const resolveFromFields = (
+        fields: BuilderFieldDefinition[],
+        prefix: string[] = [],
+    ): BuilderFieldDefinition | null => {
+        for (const field of fields) {
+            const fieldSegments = splitPathSegments(field.path);
+            const absoluteSegments = [...prefix, ...fieldSegments];
+            const absolutePath = absoluteSegments.join('.');
+
+            if (absolutePath === targetSegments.join('.') || absolutePath === targetSegmentsWithoutIndexes.join('.')) {
+                return {
+                    ...field,
+                    path: absolutePath,
+                };
+            }
+
+            if (!Array.isArray(field.itemFields) || field.itemFields.length === 0) {
+                continue;
+            }
+
+            if (targetSegmentsWithoutIndexes.length < absoluteSegments.length) {
+                continue;
+            }
+
+            const prefixMatches = absoluteSegments.every((segment, index) => targetSegmentsWithoutIndexes[index] === segment);
+            if (!prefixMatches) {
+                continue;
+            }
+
+            const remainder = targetSegmentsWithoutIndexes.slice(absoluteSegments.length);
+            const nestedSegments = remainder[0] && /^\d+$/.test(remainder[0]) ? remainder.slice(1) : remainder;
+            if (nestedSegments.length === 0) {
+                continue;
+            }
+
+            const nestedField = resolveFromFields(field.itemFields, absoluteSegments);
+            if (nestedField) {
+                return nestedField;
+            }
+        }
+
+        return null;
+    };
+
+    return resolveFromFields(schema.fields);
 }
 
 export function buildCmsFieldOwnershipSnapshot(

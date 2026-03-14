@@ -7,6 +7,9 @@ export interface VariantSelectionInput {
     prompt: string;
     projectType: AiProjectType;
     tone?: string | null;
+    industry?: string | null;
+    styleKeywords?: string[];
+    sectionType?: string | null;
     existingLayoutTypes?: string[];
     layoutComplexity?: LayoutComplexity;
 }
@@ -53,7 +56,12 @@ export function selectComponentVariant(input: VariantSelectionInput): string {
         return '';
     }
 
-    const keywordMatch = matchesVariantKeyword(entry, input.prompt);
+    const keywordMatch = matchesVariantKeyword(entry, [
+        input.prompt,
+        input.industry ?? '',
+        ...(input.styleKeywords ?? []),
+        input.sectionType ?? '',
+    ].filter(Boolean).join(' '));
     if (keywordMatch) {
         return keywordMatch;
     }
@@ -87,7 +95,7 @@ export function selectComponentVariant(input: VariantSelectionInput): string {
                                         ? 'education'
                                         : 'ecommerce',
         tone: normalizedTone,
-        industry: null,
+        industry: input.industry ?? null,
         layoutComplexity: input.layoutComplexity ?? 'medium',
     });
 
