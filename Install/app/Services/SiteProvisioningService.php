@@ -66,7 +66,7 @@ class SiteProvisioningService
     private function ensureProjectCodebase(Project $project): void
     {
         try {
-            $this->projectWorkspace->initializeProjectCodebase($project);
+            $this->projectWorkspace->ensureProjectCodebaseReady($project);
         } catch (\Throwable $e) {
             Log::warning('Project workspace codebase init failed for project {project_id}: {message}', [
                 'project_id' => $project->id,

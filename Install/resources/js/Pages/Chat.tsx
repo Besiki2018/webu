@@ -18,7 +18,7 @@ import { useTranslation } from '@/contexts/LanguageContext';
 import { PageProps, User } from '@/types';
 import type { ChatMessage } from '@/types/chat';
 import type { UserNotification } from '@/types/notifications';
-import { Code, Loader2, Globe, MousePointerClick, Palette, Sparkles, ChevronDown, History, Columns2, Cloud, BarChart3, Ellipsis, ArrowLeft, Share2, ExternalLink, CreditCard, RefreshCw, Layers, MessageSquare, GripVertical, ArrowUp, Trash2, Save, PanelLeft } from 'lucide-react';
+import { Code, Loader2, Globe, MousePointerClick, Palette, Sparkles, ChevronDown, History, Columns2, Cloud, BarChart3, Ellipsis, ArrowLeft, Share2, ExternalLink, CreditCard, RefreshCw, Layers, MessageSquare, GripVertical, ArrowUp, Trash2, Save, PanelLeft, CheckCircle2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
@@ -102,6 +102,7 @@ import { BuilderPreviewSurface } from '@/builder/workspace/BuilderPreviewSurface
 import { createWorkspaceFileClient } from '@/builder/workspace/workspaceFileClient';
 import {
     BUILDER_GENERATION_STEPS,
+    getBuilderGenerationDefaultProgressMessage,
     getBuilderGenerationHeadline,
     getBuilderGenerationStepStatus,
     isBuilderGenerationBlocking,
@@ -2344,10 +2345,37 @@ export default function Chat({
             {t('Loading panel...')}
         </div>
     );
-    const isInspectBuilderMode = viewMode === 'inspect';
-    const shouldRenderChatWorkspace = viewMode !== 'inspect';
+    const prefersGeorgianGenerationCopy = appLocale.toLowerCase().startsWith('ka');
     const shouldBlockBuilderDuringGeneration = hasBlockingInitialGeneration
         || (isProjectGenerationActive && isBuilderGenerationBlocking(builderGenerationState));
+    const showGenerationProgressInWorkspace = shouldBlockBuilderDuringGeneration;
+    const showGenerationFailureInWorkspace = builderGenerationState === 'failed';
+    const isInspectBuilderMode = viewMode === 'inspect' && !showGenerationProgressInWorkspace && !showGenerationFailureInWorkspace;
+    const shouldRenderChatWorkspace = viewMode !== 'inspect' || showGenerationProgressInWorkspace || showGenerationFailureInWorkspace;
+    const generationStatusCopy = useMemo(() => ({
+        assistantLabel: prefersGeorgianGenerationCopy ? 'AI გენერაცია' : 'AI generation',
+        chatHint: prefersGeorgianGenerationCopy
+            ? 'საიტის გენერირება კანვასში მიმდინარეობს და ჩატი მიმდინარე ეტაპებს აქვე გაჩვენებს.'
+            : 'Site generation is happening in the canvas and the chat mirrors each active step here.',
+        canvasHint: prefersGeorgianGenerationCopy
+            ? 'საიტის გენერირება პირდაპირ კანვასში მიმდინარეობს. ქვემოთ ყველა მიმდინარე ეტაპი ჩანს საბოლოო შედეგამდე.'
+            : 'Site generation is happening directly in the canvas. The current stages stay here until the site is ready.',
+        completed: prefersGeorgianGenerationCopy ? 'შესრულებულია' : 'Completed',
+        active: prefersGeorgianGenerationCopy ? 'მიმდინარეობს' : 'In progress',
+        pending: prefersGeorgianGenerationCopy ? 'მომლოდინე' : 'Pending',
+        generationInputPlaceholder: prefersGeorgianGenerationCopy ? 'საიტის გენერირება მიმდინარეობს...' : 'Site generation is in progress...',
+    }), [prefersGeorgianGenerationCopy]);
+    const generationHeadline = t(getBuilderGenerationHeadline(builderGenerationState));
+    const generationProgressDetail = (projectGeneration?.progress_message ?? '').trim() !== ''
+        ? (projectGeneration?.progress_message ?? '').trim()
+        : getBuilderGenerationDefaultProgressMessage(builderGenerationState);
+    const generationTimelineSteps = useMemo(() => (
+        BUILDER_GENERATION_STEPS.map((step) => ({
+            ...step,
+            translatedLabel: t(step.label),
+            status: getBuilderGenerationStepStatus(builderGenerationState, step.key),
+        }))
+    ), [builderGenerationState, t]);
 
     const workspaceSidebarContent = (
         <div className="workspace-sidebar workspace-sidebar--default flex w-full min-w-0 shrink-0 flex-col md:w-auto">
@@ -2487,7 +2515,7 @@ export default function Chat({
                                         <div className="workspace-thread-shell workspace-thread-shell--skeleton space-y-4">
                                             <MessageListSkeleton count={3} />
                                         </div>
-                                    ) : visibleMessages.length === 0 && !isLoading ? (
+                                    ) : visibleMessages.length === 0 && !isLoading && !showGenerationProgressInWorkspace && !showGenerationFailureInWorkspace ? (
                                         <div className="workspace-empty-state">
                                             <h2 className="workspace-empty-state-title">
                                                 {t('Webu')}
@@ -2498,6 +2526,81 @@ export default function Chat({
                                         </div>
                                     ) : (
                                         <>
+                                            {showGenerationProgressInWorkspace && (
+                                                <div className="workspace-thread-shell pt-2">
+                                                    <div className="workspace-message-row workspace-message-row--assistant px-0">
+                                                        <div className="max-w-[92%] rounded-[28px] border border-[#e4ddd2] bg-white px-5 py-4 text-left shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                                                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a857d]">
+                                                                <Sparkles className="h-3.5 w-3.5 text-[#b7791f]" />
+                                                                <span>{generationStatusCopy.assistantLabel}</span>
+                                                            </div>
+                                                            <h2 className="mt-2 text-sm font-semibold text-[#1c1917]">
+                                                                {generationHeadline}
+                                                            </h2>
+                                                            <p className="mt-1 text-sm leading-6 text-[#625f57]">
+                                                                {generationProgressDetail}
+                                                            </p>
+                                                            <p className="mt-2 text-xs leading-5 text-[#8a857d]">
+                                                                {generationStatusCopy.chatHint}
+                                                            </p>
+
+                                                            <div className="mt-4 space-y-2">
+                                                                {generationTimelineSteps.map((step) => (
+                                                                    <div
+                                                                        key={step.key}
+                                                                        className={cn(
+                                                                            'flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5 text-sm',
+                                                                            step.status === 'complete' && 'border-emerald-200 bg-emerald-50 text-emerald-900',
+                                                                            step.status === 'active' && 'border-amber-200 bg-amber-50 text-amber-950',
+                                                                            step.status === 'pending' && 'border-[#ece7df] bg-[#faf8f5] text-[#78716c]',
+                                                                        )}
+                                                                    >
+                                                                        <div className="min-w-0">
+                                                                            <div className="truncate font-medium">{step.translatedLabel}</div>
+                                                                        </div>
+                                                                        <div className="flex shrink-0 items-center gap-2">
+                                                                            {step.status === 'active' ? (
+                                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                            ) : step.status === 'complete' ? (
+                                                                                <CheckCircle2 className="h-4 w-4" />
+                                                                            ) : (
+                                                                                <span className="h-2.5 w-2.5 rounded-full bg-current/45" />
+                                                                            )}
+                                                                            <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">
+                                                                                {step.status === 'complete'
+                                                                                    ? generationStatusCopy.completed
+                                                                                    : step.status === 'active'
+                                                                                        ? generationStatusCopy.active
+                                                                                        : generationStatusCopy.pending}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {showGenerationFailureInWorkspace && (
+                                                <div className="workspace-thread-shell pt-2">
+                                                    <div className="workspace-message-row workspace-message-row--assistant px-0">
+                                                        <div className="max-w-[92%] rounded-[28px] border border-red-200 bg-white px-5 py-4 text-left shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                                                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-500">
+                                                                <Sparkles className="h-3.5 w-3.5" />
+                                                                <span>{generationStatusCopy.assistantLabel}</span>
+                                                            </div>
+                                                            <h2 className="mt-2 text-sm font-semibold text-[#1c1917]">
+                                                                {t('Website generation failed')}
+                                                            </h2>
+                                                            <p className="mt-1 text-sm leading-6 text-[#625f57]">
+                                                                {projectGeneration?.error_message || t('We could not finish creating this website.')}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {visibleMessages.map((msg) => (
                                                 <MessageBubble
                                                     key={msg.id}
@@ -2582,7 +2685,7 @@ export default function Chat({
                                     value={prompt}
                                     onChange={setPrompt}
                                     onSubmit={handleSubmit}
-                                    disabled={isLoading}
+                                    disabled={isLoading || showGenerationProgressInWorkspace}
                                     selectedElement={selectedElementMention}
                                     onClearElement={() => {
                                         clearBuilderSelection();
@@ -2594,7 +2697,7 @@ export default function Chat({
                                             type: 'builder:clear-selected-section',
                                         });
                                     }}
-                                    placeholder={t('Write to Webu')}
+                                    placeholder={showGenerationProgressInWorkspace ? generationStatusCopy.generationInputPlaceholder : t('Write to Webu')}
                                     isLoading={isLoading}
                                     onCancel={cancelBuild}
                                     variant="workspace"
@@ -2709,159 +2812,174 @@ export default function Chat({
             )}
             previewContent={(
                 <Suspense fallback={lazyPanelFallback}>
-                    <InspectPreview
-                        projectId={project.id}
-                        mode={viewMode as 'preview' | 'inspect' | 'design'}
-                        viewport={previewViewport}
-                        previewUrl={builderPreviewUrl}
-                        refreshTrigger={previewRefreshTrigger}
-                        isBuilding={isBuildingPreview}
-                        captureThumbnailTrigger={captureThumbnailTrigger}
-                        onElementSelect={handleElementSelect}
-                        onElementEdit={handleElementEdit}
-                        pendingEdits={pendingEdits}
-                        onSaveAllEdits={handleSaveAllEdits}
-                        onDiscardAllEdits={handleDiscardAllEdits}
-                        onRemoveEdit={handleRemoveEdit}
-                        onThemeSelect={applyThemeToPreview}
-                        isSavingTheme={isSavingTheme}
-                        currentTheme={appliedTheme}
-                        highlightSectionKey={viewMode === 'inspect' ? effectiveSelectedPreviewSectionKey : null}
-                        highlightSectionLocalId={viewMode === 'inspect' ? (agentHighlightLocalId ?? effectiveSelectedBuilderSectionLocalId) : null}
-                        liveStructureItems={viewMode === 'design' ? [] : visibleBuilderStructureItems}
-                        selectedElementMention={viewMode === 'design' ? null : selectedElementMention}
-                        pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
-                        onLibraryItemPlace={handleLibraryItemPlace}
-                        onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
-                        themeDesignerSlot={(
-                            <Suspense fallback={lazyPanelFallback}>
-                                <ThemeDesigner
-                                    currentTheme={appliedTheme}
-                                    onThemeSelect={applyThemeToPreview}
-                                    onApply={async (presetId) => {
-                                        setIsSavingTheme(true);
-                                        try {
-                                            const response = await axios.put(`/project/${project.id}/theme`, {
-                                                theme_preset: presetId,
-                                            });
-                                            if (response.data.success) {
-                                                setAppliedTheme(presetId);
-                                                if (response.data.warning) {
-                                                    toast.warning(response.data.warning);
-                                                } else {
-                                                    toast.success(t('Theme applied successfully'));
+                    {showGenerationProgressInWorkspace ? (
+                        <div className="flex h-full min-h-0 flex-col p-4">
+                            <div className="workspace-surface relative flex h-full min-h-0 items-center justify-center overflow-hidden bg-[#fbf9f4]">
+                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,247,237,0.95),_rgba(251,249,244,0.92)_46%,_rgba(244,239,230,0.96)_100%)]" />
+                                <div className="relative z-10 flex w-full max-w-2xl flex-col gap-6 px-6 py-10 text-left">
+                                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] bg-white/90 text-[#b7791f] shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+                                        <Sparkles className="h-7 w-7" />
+                                    </div>
+
+                                    <div className="space-y-2 text-center">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8a857d]">
+                                            {generationStatusCopy.assistantLabel}
+                                        </div>
+                                        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-[#1c1917]">
+                                            {generationHeadline}
+                                        </h1>
+                                        <p className="mx-auto max-w-xl text-sm leading-7 text-[#625f57]">
+                                            {generationProgressDetail}
+                                        </p>
+                                        <p className="mx-auto max-w-xl text-xs leading-6 text-[#8a857d]">
+                                            {generationStatusCopy.canvasHint}
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {generationTimelineSteps.map((step) => (
+                                            <div
+                                                key={step.key}
+                                                className={cn(
+                                                    'flex items-center justify-between gap-4 rounded-[22px] border px-5 py-4 backdrop-blur',
+                                                    step.status === 'complete' && 'border-emerald-200 bg-white/88 text-emerald-900',
+                                                    step.status === 'active' && 'border-amber-200 bg-amber-50/92 text-amber-950 shadow-[0_16px_32px_rgba(245,158,11,0.10)]',
+                                                    step.status === 'pending' && 'border-[#e7dfd4] bg-white/72 text-[#78716c]',
+                                                )}
+                                            >
+                                                <div className="min-w-0">
+                                                    <div className="text-base font-semibold">{step.translatedLabel}</div>
+                                                    <div className="mt-1 text-sm text-current/75">
+                                                        {step.status === 'active' ? generationProgressDetail : (
+                                                            step.status === 'complete'
+                                                                ? generationStatusCopy.completed
+                                                                : generationStatusCopy.pending
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex shrink-0 items-center gap-2">
+                                                    {step.status === 'active' ? (
+                                                        <Loader2 className="h-5 w-5 animate-spin" />
+                                                    ) : step.status === 'complete' ? (
+                                                        <CheckCircle2 className="h-5 w-5" />
+                                                    ) : (
+                                                        <span className="h-3 w-3 rounded-full bg-current/45" />
+                                                    )}
+                                                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                                        {step.status === 'complete'
+                                                            ? generationStatusCopy.completed
+                                                            : step.status === 'active'
+                                                                ? generationStatusCopy.active
+                                                                : generationStatusCopy.pending}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : showGenerationFailureInWorkspace ? (
+                        <div className="flex h-full min-h-0 flex-col p-4">
+                            <div className="workspace-surface flex h-full min-h-0 items-center justify-center bg-[#fff8f8] px-6">
+                                <div className="w-full max-w-xl rounded-[30px] border border-red-200 bg-white p-8 shadow-[0_24px_80px_rgba(28,25,23,0.08)]">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-700">
+                                            <Sparkles className="h-5 w-5" />
+                                        </div>
+                                        <div>
+                                            <h1 className="text-xl font-semibold text-[#1c1917]">
+                                                {t('Website generation failed')}
+                                            </h1>
+                                            <p className="mt-1 text-sm text-[#78716c]">
+                                                {projectGeneration?.error_message || t('We could not finish creating this website.')}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-6 flex gap-3">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => router.reload({ only: ['project'] })}
+                                            className="rounded-full"
+                                        >
+                                            {t('Refresh status')}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={() => router.visit('/create')}
+                                            className="rounded-full"
+                                        >
+                                            {t('Create another project')}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <InspectPreview
+                            projectId={project.id}
+                            mode={viewMode as 'preview' | 'inspect' | 'design'}
+                            viewport={previewViewport}
+                            previewUrl={builderPreviewUrl}
+                            refreshTrigger={previewRefreshTrigger}
+                            isBuilding={isBuildingPreview}
+                            captureThumbnailTrigger={captureThumbnailTrigger}
+                            onElementSelect={handleElementSelect}
+                            onElementEdit={handleElementEdit}
+                            pendingEdits={pendingEdits}
+                            onSaveAllEdits={handleSaveAllEdits}
+                            onDiscardAllEdits={handleDiscardAllEdits}
+                            onRemoveEdit={handleRemoveEdit}
+                            onThemeSelect={applyThemeToPreview}
+                            isSavingTheme={isSavingTheme}
+                            currentTheme={appliedTheme}
+                            highlightSectionKey={viewMode === 'inspect' ? effectiveSelectedPreviewSectionKey : null}
+                            highlightSectionLocalId={viewMode === 'inspect' ? (agentHighlightLocalId ?? effectiveSelectedBuilderSectionLocalId) : null}
+                            liveStructureItems={viewMode === 'design' ? [] : visibleBuilderStructureItems}
+                            selectedElementMention={viewMode === 'design' ? null : selectedElementMention}
+                            pendingLibraryItem={viewMode === 'inspect' ? activeLibraryItem : null}
+                            onLibraryItemPlace={handleLibraryItemPlace}
+                            onPreviewReadyChange={viewMode === 'inspect' ? markBuilderPreviewReady : undefined}
+                            themeDesignerSlot={(
+                                <Suspense fallback={lazyPanelFallback}>
+                                    <ThemeDesigner
+                                        currentTheme={appliedTheme}
+                                        onThemeSelect={applyThemeToPreview}
+                                        onApply={async (presetId) => {
+                                            setIsSavingTheme(true);
+                                            try {
+                                                const response = await axios.put(`/project/${project.id}/theme`, {
+                                                    theme_preset: presetId,
+                                                });
+                                                if (response.data.success) {
+                                                    setAppliedTheme(presetId);
+                                                    if (response.data.warning) {
+                                                        toast.warning(response.data.warning);
+                                                    } else {
+                                                        toast.success(t('Theme applied successfully'));
+                                                    }
+                                                    setPreviewRefreshTrigger(Date.now());
+                                                    setCaptureThumbnailTrigger(Date.now());
                                                 }
-                                                setPreviewRefreshTrigger(Date.now());
-                                                setCaptureThumbnailTrigger(Date.now());
+                                            } catch {
+                                                toast.error(t('Failed to apply theme'));
+                                            } finally {
+                                                setIsSavingTheme(false);
                                             }
-                                        } catch {
-                                            toast.error(t('Failed to apply theme'));
-                                        } finally {
-                                            setIsSavingTheme(false);
-                                        }
-                                    }}
-                                    isSaving={isSavingTheme}
-                                />
-                            </Suspense>
-                        )}
-                    />
+                                        }}
+                                        isSaving={isSavingTheme}
+                                    />
+                                </Suspense>
+                            )}
+                        />
+                    )}
                 </Suspense>
             )}
         />
     );
-
-    const initialGenerationScreen = shouldBlockBuilderDuringGeneration ? (
-        <div
-            className="fixed inset-0 z-[100] bg-background"
-            aria-busy="true"
-            aria-label={t('Generating your website...')}
-        >
-            <div className="flex h-full items-center justify-center px-6">
-                <div className="w-full max-w-xl rounded-[32px] border border-[#e8e6e3] bg-white/95 p-8 shadow-[0_24px_80px_rgba(28,25,23,0.08)] backdrop-blur">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5efe7] text-[#7c5c2f]">
-                            <Sparkles className="h-5 w-5" />
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-semibold text-[#1c1917]">
-                                {getBuilderGenerationHeadline(builderGenerationState)}
-                            </h1>
-                            <p className="mt-1 text-sm text-[#78716c]">
-                                {projectGeneration?.progress_message || t('The builder will open after the full layout and content are ready.')}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="mt-8 space-y-3">
-                        {BUILDER_GENERATION_STEPS.map((step) => {
-                            const status = getBuilderGenerationStepStatus(builderGenerationState, step.key);
-
-                            return (
-                                <div
-                                    key={step.key}
-                                    className={cn(
-                                        'flex items-center justify-between rounded-2xl border px-4 py-3 transition-colors',
-                                        status === 'complete' && 'border-emerald-200 bg-emerald-50 text-emerald-900',
-                                        status === 'active' && 'border-amber-200 bg-amber-50 text-amber-950',
-                                        status === 'pending' && 'border-[#ece7df] bg-[#faf8f5] text-[#78716c]',
-                                    )}
-                                >
-                                    <span className="text-sm font-medium">{t(step.label)}</span>
-                                    {status === 'active' ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : status === 'complete' ? (
-                                        <span className="text-xs font-semibold uppercase tracking-[0.14em]">{t('Done')}</span>
-                                    ) : (
-                                        <span className="text-xs font-semibold uppercase tracking-[0.14em]">{t('Pending')}</span>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            </div>
-        </div>
-    ) : null;
-
-    const generationFailedScreen = builderGenerationState === 'failed' ? (
-        <div className="fixed inset-0 z-[100] bg-background" role="alert" aria-live="polite">
-            <div className="flex h-full items-center justify-center px-6">
-                <div className="w-full max-w-xl rounded-[32px] border border-red-200 bg-white p-8 shadow-[0_24px_80px_rgba(28,25,23,0.08)]">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-700">
-                            <Sparkles className="h-5 w-5" />
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-semibold text-[#1c1917]">
-                                {t('Website generation failed')}
-                            </h1>
-                            <p className="mt-1 text-sm text-[#78716c]">
-                                {projectGeneration?.error_message || t('We could not finish creating this website.')}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="mt-6 flex gap-3">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => router.reload({ only: ['project'] })}
-                            className="rounded-full"
-                        >
-                            {t('Refresh status')}
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={() => router.visit('/create')}
-                            className="rounded-full"
-                        >
-                            {t('Create another project')}
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    ) : null;
 
     /** სანამ აგენტი მუშაობს (build_status === 'building'), საიტი დახურული — იგივე ლოადერი როგორც პროექტის შექმნისას. */
     if (project.build_status === 'building') {
@@ -2872,26 +2990,6 @@ export default function Chat({
                 <div className="fixed inset-0 z-[100] bg-background" aria-busy="true" aria-label={t('Building your project...')}>
                     <ChatPageSkeleton />
                 </div>
-            </>
-        );
-    }
-
-    if (initialGenerationScreen) {
-        return (
-            <>
-                <Head title={project.name} />
-                <Toaster />
-                {initialGenerationScreen}
-            </>
-        );
-    }
-
-    if (generationFailedScreen) {
-        return (
-            <>
-                <Head title={project.name} />
-                <Toaster />
-                {generationFailedScreen}
             </>
         );
     }
@@ -3123,7 +3221,7 @@ export default function Chat({
                             </div>
 
                             <div className="flex shrink-0 items-center gap-1.5">
-                                {viewMode === 'inspect' ? (
+                                {viewMode === 'inspect' && !showGenerationProgressInWorkspace && !showGenerationFailureInWorkspace ? (
                                     <div className="workspace-builder-header-actions">
                                         <PreviewViewportMenu
                                             value={previewViewport}

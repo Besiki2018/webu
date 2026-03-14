@@ -17,6 +17,10 @@ use Illuminate\Support\Str;
 
 class ImageImportService
 {
+    private const MAX_OPTIMIZE_SOURCE_BYTES = 2_500_000;
+
+    private const MAX_OPTIMIZE_PIXEL_COUNT = 3_500_000;
+
     /**
      * @var array<string, array<int, string>>
      */
@@ -43,6 +47,7 @@ class ImageImportService
      *   imported_by?: string|null,
      *   section_local_id?: string|null,
      *   component_key?: string|null,
+     *   prop_path?: string|null,
      *   page_slug?: string|null,
      *   page_id?: string|null,
      *   query?: string|null
@@ -115,6 +120,7 @@ class ImageImportService
                 'project_id' => (string) $project->id,
                 'section_local_id' => is_string($payload['section_local_id'] ?? null) ? trim((string) $payload['section_local_id']) : null,
                 'component_key' => is_string($payload['component_key'] ?? null) ? trim((string) $payload['component_key']) : null,
+                'prop_path' => is_string($payload['prop_path'] ?? null) ? trim((string) $payload['prop_path']) : null,
                 'page_slug' => is_string($payload['page_slug'] ?? null) ? trim((string) $payload['page_slug']) : null,
                 'page_id' => is_string($payload['page_id'] ?? null) ? trim((string) $payload['page_id']) : null,
                 'imported_at' => now()->toIso8601String(),
@@ -257,6 +263,16 @@ class ImageImportService
         $width = is_array($imageInfo) ? (int) ($imageInfo[0] ?? 0) : 0;
         $height = is_array($imageInfo) ? (int) ($imageInfo[1] ?? 0) : 0;
 
+        if ($this->shouldSkipOptimization($binary, $width, $height)) {
+            return [
+                'binary' => $binary,
+                'mime' => $mime,
+                'extension' => $extension,
+                'width' => $width > 0 ? $width : null,
+                'height' => $height > 0 ? $height : null,
+            ];
+        }
+
         if (! function_exists('imagecreatefromstring')) {
             return [
                 'binary' => $binary,
@@ -309,6 +325,17 @@ class ImageImportService
             'width' => $width > 0 ? $width : null,
             'height' => $height > 0 ? $height : null,
         ];
+    }
+
+    private function shouldSkipOptimization(string $binary, int $width, int $height): bool
+    {
+        if (strlen($binary) > self::MAX_OPTIMIZE_SOURCE_BYTES) {
+            return true;
+        }
+
+        return $width > 0
+            && $height > 0
+            && ($width * $height) > self::MAX_OPTIMIZE_PIXEL_COUNT;
     }
 
     private function buildFilename(string $provider, string $imageId, string $extension): string

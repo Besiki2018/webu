@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    getBuilderGenerationDefaultProgressMessage,
     getBuilderGenerationHeadline,
     getBuilderGenerationStepStatus,
     isBuilderGenerationBlocking,
@@ -19,13 +20,16 @@ describe('builderGenerationState', () => {
         expect(isBuilderGenerationBlocking('failed')).toBe(false);
     });
 
-    it('resolves deterministic step progress', () => {
-        expect(getBuilderGenerationStepStatus('planning', 'planning')).toBe('active');
-        expect(getBuilderGenerationStepStatus('scaffolding', 'planning')).toBe('complete');
-        expect(getBuilderGenerationStepStatus('scaffolding', 'scaffolding')).toBe('active');
-        expect(getBuilderGenerationStepStatus('writing_files', 'scaffolding')).toBe('complete');
-        expect(getBuilderGenerationStepStatus('building_preview', 'writing_files')).toBe('complete');
-        expect(getBuilderGenerationStepStatus('ready', 'building_preview')).toBe('complete');
+    it('maps backend statuses into the normalized builder generation state machine', () => {
+        expect(resolveBuilderGenerationState('queued')).toBe('queued');
+        expect(resolveBuilderGenerationState('planning')).toBe('planning');
+        expect(resolveBuilderGenerationState('generating_site_structure')).toBe('scaffolding');
+        expect(resolveBuilderGenerationState('writing_files')).toBe('writing_files');
+        expect(resolveBuilderGenerationState('finalizing')).toBe('building_preview');
+        expect(resolveBuilderGenerationState('completed')).toBe('ready');
+        expect(resolveBuilderGenerationState('ready')).toBe('ready');
+        expect(resolveBuilderGenerationState('failed')).toBe('failed');
+        expect(resolveBuilderGenerationState('unknown')).toBe('idle');
     });
 
     it('returns stable phase headlines', () => {
@@ -38,15 +42,22 @@ describe('builderGenerationState', () => {
         expect(getBuilderGenerationHeadline('failed')).toBe('Website generation failed');
     });
 
-    it('maps backend statuses into UI states', () => {
-        expect(resolveBuilderGenerationState('queued')).toBe('queued');
-        expect(resolveBuilderGenerationState('planning')).toBe('planning');
-        expect(resolveBuilderGenerationState('generating')).toBe('scaffolding');
-        expect(resolveBuilderGenerationState('writing_files')).toBe('writing_files');
-        expect(resolveBuilderGenerationState('finalizing')).toBe('building_preview');
-        expect(resolveBuilderGenerationState('completed')).toBe('ready');
-        expect(resolveBuilderGenerationState('ready')).toBe('ready');
-        expect(resolveBuilderGenerationState('failed')).toBe('failed');
-        expect(resolveBuilderGenerationState('unknown')).toBe('idle');
+    it('returns stable default progress copy for each stage', () => {
+        expect(getBuilderGenerationDefaultProgressMessage('queued')).toBe('Preparing generation.');
+        expect(getBuilderGenerationDefaultProgressMessage('planning')).toBe('Understanding your website brief.');
+        expect(getBuilderGenerationDefaultProgressMessage('writing_files')).toBe('Writing project files to the workspace.');
+        expect(getBuilderGenerationDefaultProgressMessage('ready')).toBe('Website ready.');
+    });
+
+    it('marks earlier steps complete and the current step active', () => {
+        expect(getBuilderGenerationStepStatus('planning', 'planning')).toBe('active');
+        expect(getBuilderGenerationStepStatus('scaffolding', 'planning')).toBe('complete');
+        expect(getBuilderGenerationStepStatus('scaffolding', 'scaffolding')).toBe('active');
+        expect(getBuilderGenerationStepStatus('writing_files', 'planning')).toBe('complete');
+        expect(getBuilderGenerationStepStatus('writing_files', 'scaffolding')).toBe('complete');
+        expect(getBuilderGenerationStepStatus('writing_files', 'writing_files')).toBe('active');
+        expect(getBuilderGenerationStepStatus('building_preview', 'writing_files')).toBe('complete');
+        expect(getBuilderGenerationStepStatus('ready', 'building_preview')).toBe('complete');
+        expect(getBuilderGenerationStepStatus('writing_files', 'building_preview')).toBe('pending');
     });
 });

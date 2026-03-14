@@ -27,6 +27,7 @@ class ProjectGenerationRunner
         }
 
         $project = $run->project;
+        $this->registerFatalFailureFallback($run);
 
         $this->markStarted($run, ProjectGenerationRun::STATUS_PLANNING, 'Understanding your website brief.');
         $this->projectWorkspace->syncInitialGenerationState($project, [
@@ -114,5 +115,59 @@ class ProjectGenerationRunner
             'error_message' => null,
             'failed_at' => null,
         ])->save();
+    }
+
+    private function registerFatalFailureFallback(ProjectGenerationRun $run): void
+    {
+        $runId = (string) $run->id;
+
+        register_shutdown_function(function () use ($runId): void {
+            $error = error_get_last();
+            if (! is_array($error) || ! in_array((int) ($error['type'] ?? 0), [
+                E_ERROR,
+                E_PARSE,
+                E_CORE_ERROR,
+                E_COMPILE_ERROR,
+                E_USER_ERROR,
+                E_RECOVERABLE_ERROR,
+            ], true)) {
+                return;
+            }
+
+            $failedRun = ProjectGenerationRun::query()
+                ->with('project')
+                ->find($runId);
+
+            if (! $failedRun || ! $failedRun->isActive()) {
+                return;
+            }
+
+            $message = trim((string) ($error['message'] ?? 'Project generation terminated unexpectedly.'));
+            if ($message === '') {
+                $message = 'Project generation terminated unexpectedly.';
+            }
+
+            $failedRun->forceFill([
+                'status' => ProjectGenerationRun::STATUS_FAILED,
+                'progress_message' => null,
+                'error_message' => $message,
+                'failed_at' => now(),
+                'completed_at' => null,
+            ])->save();
+
+            if ($failedRun->project) {
+                app(ProjectWorkspaceService::class)->syncInitialGenerationState($failedRun->project, [
+                    'phase' => ProjectGenerationRun::STATUS_FAILED,
+                    'error_message' => $message,
+                ]);
+            }
+
+            Log::error('project_generation.fatal_shutdown', [
+                'project_id' => $failedRun->project_id,
+                'generation_run_id' => $failedRun->id,
+                'message' => $message,
+                'error' => $error,
+            ]);
+        });
     }
 }

@@ -5,11 +5,13 @@ namespace Tests\Feature\Cms;
 use App\Models\Media;
 use App\Models\Page;
 use App\Models\PageRevision;
+use App\Models\ProjectGenerationRun;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\Assets\ImageImportService;
 use App\Services\Assets\ImageSearchService;
 use App\Services\AiWebsiteGeneration\GenerateWebsiteProjectService;
+use App\Services\ProjectGenerationRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Mockery;
@@ -30,6 +32,14 @@ class GenerateWebsiteProjectWorkspaceInitializationTest extends TestCase
     {
         $user = User::factory()->create();
 
+        $search = Mockery::mock(ImageSearchService::class);
+        $search->shouldReceive('search')->andThrow(new \RuntimeException('skip stock search for file scaffolding test'));
+        $this->app->instance(ImageSearchService::class, $search);
+
+        $import = Mockery::mock(ImageImportService::class);
+        $import->shouldReceive('import')->never();
+        $this->app->instance(ImageImportService::class, $import);
+
         $result = app(GenerateWebsiteProjectService::class)->generate([
             'userPrompt' => 'Create a website for restaurant',
             'user_id' => $user->id,
@@ -43,6 +53,9 @@ class GenerateWebsiteProjectWorkspaceInitializationTest extends TestCase
         $this->assertFileExists($workspaceRoot.'/index.html');
         $this->assertFileExists($workspaceRoot.'/src/main.tsx');
         $this->assertFileExists($workspaceRoot.'/src/pages/home/Page.tsx');
+        $this->assertFileExists($workspaceRoot.'/src/sections/HeroSection.tsx');
+        $this->assertFileExists($workspaceRoot.'/src/sections/CardsSection.tsx');
+        $this->assertFileExists($workspaceRoot.'/src/sections/CTASection.tsx');
         $this->assertFileExists($workspaceRoot.'/src/sections/HeadingSection.tsx');
         $this->assertFileExists($workspaceRoot.'/.webu/index.json');
         $this->assertFileExists($workspaceRoot.'/.webu/component-parameters.json');
@@ -52,8 +65,8 @@ class GenerateWebsiteProjectWorkspaceInitializationTest extends TestCase
         $this->assertIsArray($index);
         $this->assertArrayHasKey('component_parameters', $index);
         $this->assertArrayHasKey('sections', $index['component_parameters']);
-        $this->assertArrayHasKey('HeadingSection', $index['component_parameters']['sections']);
-        $this->assertArrayHasKey('fields', $index['component_parameters']['sections']['HeadingSection']);
+        $this->assertArrayHasKey('HeroSection', $index['component_parameters']['sections']);
+        $this->assertArrayHasKey('fields', $index['component_parameters']['sections']['HeroSection']);
 
         $homePage = Page::query()
             ->where('site_id', $result['site']->id)
@@ -89,6 +102,11 @@ class GenerateWebsiteProjectWorkspaceInitializationTest extends TestCase
         $search->shouldReceive('search')
             ->atLeast()
             ->once()
+            ->withArgs(static function (string $query, int $limit, array $options): bool {
+                return $limit === 5
+                    && trim($query) !== ''
+                    && in_array(($options['orientation'] ?? null), ['landscape', 'portrait', 'square'], true);
+            })
             ->andReturn([
                 [
                     'provider' => 'unsplash',
@@ -112,7 +130,7 @@ class GenerateWebsiteProjectWorkspaceInitializationTest extends TestCase
             ->andReturnUsing(static function ($project, $actor, array $payload): Media {
                 $media = new Media([
                     'site_id' => $project->site_id,
-                    'path' => sprintf('projects/%s/assets/images/generated-banner.webp', $project->id),
+                    'path' => sprintf('projects/%s/assets/images/generated-stock-image.webp', $project->id),
                     'mime' => 'image/webp',
                     'size' => 2048,
                     'meta_json' => [
@@ -144,18 +162,99 @@ class GenerateWebsiteProjectWorkspaceInitializationTest extends TestCase
             ->latest('version')
             ->firstOrFail();
 
-        $bannerSection = collect($homeRevision->content_json['sections'] ?? [])
-            ->first(static fn ($section): bool => data_get($section, 'type') === 'banner');
+        $heroSection = collect($homeRevision->content_json['sections'] ?? [])
+            ->first(static fn ($section): bool => data_get($section, 'type') === 'webu_general_hero_01');
 
-        $this->assertIsArray($bannerSection);
+        $this->assertIsArray($heroSection);
         $this->assertSame(
             route('public.sites.assets', [
                 'site' => $result['site']->id,
-                'path' => sprintf('projects/%s/assets/images/generated-banner.webp', $result['project']->id),
+                'path' => sprintf('projects/%s/assets/images/generated-stock-image.webp', $result['project']->id),
             ]),
-            data_get($bannerSection, 'props.backgroundImage')
+            data_get($heroSection, 'props.image')
         );
-        $this->assertContains('backgroundImage', data_get($bannerSection, 'binding.webu_v2.content_fields', []));
-        $this->assertSame('cms', data_get($bannerSection, 'binding.webu_v2.content_owner'));
+        $this->assertContains('image', data_get($heroSection, 'binding.webu_v2.content_fields', []));
+        $this->assertSame('cms', data_get($heroSection, 'binding.webu_v2.content_owner'));
+        $this->assertSame('unsplash', data_get($heroSection, 'binding.webu_v2.media_fields.image.provider'));
+        $this->assertSame('hero-stock-1', data_get($heroSection, 'binding.webu_v2.media_fields.image.provider_image_id'));
+        $this->assertSame('ai', data_get($heroSection, 'binding.webu_v2.media_fields.image.imported_by'));
+    }
+
+    public function test_generated_websites_fall_back_to_placeholder_images_when_stock_search_fails(): void
+    {
+        $user = User::factory()->create();
+
+        $search = Mockery::mock(ImageSearchService::class);
+        $search->shouldReceive('search')
+            ->atLeast()
+            ->once()
+            ->andThrow(new \RuntimeException('stock search unavailable'));
+        $this->app->instance(ImageSearchService::class, $search);
+
+        $import = Mockery::mock(ImageImportService::class);
+        $import->shouldReceive('import')->never();
+        $this->app->instance(ImageImportService::class, $import);
+
+        $result = app(GenerateWebsiteProjectService::class)->generate([
+            'userPrompt' => 'Create a website for a modern veterinary clinic',
+            'user_id' => $user->id,
+            'ultra_cheap_mode' => true,
+        ]);
+
+        $homePage = Page::query()
+            ->where('site_id', $result['site']->id)
+            ->where('slug', 'home')
+            ->firstOrFail();
+
+        $homeRevision = PageRevision::query()
+            ->where('site_id', $result['site']->id)
+            ->where('page_id', $homePage->id)
+            ->latest('version')
+            ->firstOrFail();
+
+        $heroSection = collect($homeRevision->content_json['sections'] ?? [])
+            ->first(static fn ($section): bool => data_get($section, 'type') === 'webu_general_hero_01');
+
+        $this->assertIsArray($heroSection);
+        $this->assertStringContainsString('/demo/hero/hero-', (string) data_get($heroSection, 'props.image'));
+        $this->assertSame('placeholder', data_get($heroSection, 'binding.webu_v2.media_fields.image.source'));
+        $this->assertSame('ai', data_get($heroSection, 'binding.webu_v2.media_fields.image.imported_by'));
+    }
+
+    public function test_project_generation_runner_keeps_workspace_manifest_ready_after_site_provisioning(): void
+    {
+        $user = User::factory()->create();
+
+        $search = Mockery::mock(ImageSearchService::class);
+        $search->shouldReceive('search')->andThrow(new \RuntimeException('skip stock search for runner test'));
+        $this->app->instance(ImageSearchService::class, $search);
+
+        $import = Mockery::mock(ImageImportService::class);
+        $import->shouldReceive('import')->never();
+        $this->app->instance(ImageImportService::class, $import);
+
+        $project = app(GenerateWebsiteProjectService::class)->createProjectShell($user->id, 'Create a website for restaurant');
+        $run = ProjectGenerationRun::query()->create([
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'status' => ProjectGenerationRun::STATUS_QUEUED,
+            'requested_prompt' => 'Create a website for restaurant',
+            'requested_input' => [
+                'prompt' => 'Create a website for restaurant',
+                'ultra_cheap_mode' => true,
+            ],
+            'progress_message' => 'Preparing generation.',
+        ]);
+
+        app(ProjectGenerationRunner::class)->run($run);
+
+        $run->refresh();
+        $this->assertSame(ProjectGenerationRun::STATUS_READY, $run->status);
+
+        $manifest = json_decode((string) File::get(storage_path('workspaces/'.$project->id.'/.webu/workspace-manifest.json')), true);
+
+        $this->assertSame(ProjectGenerationRun::STATUS_READY, data_get($manifest, 'preview.phase'));
+        $this->assertTrue((bool) data_get($manifest, 'preview.ready'));
+        $this->assertNull(data_get($manifest, 'activeGenerationRunId'));
     }
 }

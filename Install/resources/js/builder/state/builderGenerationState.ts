@@ -69,6 +69,28 @@ export function getBuilderGenerationHeadline(state: BuilderGenerationState): str
     }
 }
 
+export function getBuilderGenerationDefaultProgressMessage(state: BuilderGenerationState): string {
+    switch (state) {
+        case 'queued':
+            return 'Preparing generation.';
+        case 'planning':
+            return 'Understanding your website brief.';
+        case 'scaffolding':
+            return 'Generating the site structure and content.';
+        case 'writing_files':
+            return 'Writing project files to the workspace.';
+        case 'building_preview':
+            return 'Building the preview and validating workspace readiness.';
+        case 'ready':
+            return 'Website ready.';
+        case 'failed':
+            return 'We could not finish creating this website.';
+        case 'idle':
+        default:
+            return 'Preparing generation.';
+    }
+}
+
 export function resolveBuilderGenerationState(status?: string | null): BuilderGenerationState {
     switch ((status ?? '').trim().toLowerCase()) {
         case 'queued':
